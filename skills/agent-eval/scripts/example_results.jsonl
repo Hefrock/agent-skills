@@ -1,0 +1,8 @@
+{"id": "case_001", "score": 1.0, "category": "format", "rationale": "Valid JSON, matches required schema"}
+{"id": "case_002", "score": 0.9, "category": "format", "rationale": "Minor extra whitespace, otherwise valid"}
+{"id": "case_003", "score": 0.4, "category": "accuracy", "rationale": "Cited the wrong source for one claim"}
+{"id": "case_004", "score": 1.0, "category": "accuracy", "rationale": "Fully grounded in provided context"}
+{"id": "case_005", "score": 0.0, "category": "accuracy", "rationale": "Hallucinated a statistic not present in input"}
+{"id": "case_006", "score": 0.8, "category": "tool_use", "rationale": "Correct tool, slightly suboptimal argument order"}
+{"id": "case_007", "score": 1.0, "category": "tool_use", "rationale": "Correct tool and arguments on first attempt"}
+{"id": "case_008", "score": 0.5, "category": "tool_use", "rationale": "Called an unnecessary extra tool before the right one"}

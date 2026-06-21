@@ -19,6 +19,18 @@
         "./skill-gap-tracker"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "agent-eval",
+      "description": "Designs and runs evaluations for LLM or agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting.",
+      "author": { "name": "Hefrock" },
+      "category": "agent-design",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./agent-eval"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
     }
   ]
 }
