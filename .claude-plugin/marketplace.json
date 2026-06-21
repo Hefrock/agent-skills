@@ -1,0 +1,24 @@
+{
+  "name": "agent-skills",
+  "owner": {
+    "name": "Hefrock"
+  },
+  "metadata": {
+    "description": "Personal collection of Agent Skills for project management, agent design, and learning workflows.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "skill-gap-tracker",
+      "description": "Flags unfamiliar languages, frameworks, or techniques encountered while building projects and logs them to a learning backlog.",
+      "author": { "name": "Hefrock" },
+      "category": "productivity",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./skill-gap-tracker"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    }
+  ]
+}
