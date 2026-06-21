@@ -20,7 +20,18 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 
 3. **Build a small, reusable eval set, not a one-off.** Even 10-20 representative cases beats eyeballing a handful of outputs. Include a mix of: clear-pass cases, known-hard edge cases, and at least a few cases the current system is expected to fail — a sanity check that the eval can actually detect failure, not just confirm success.
 
-4. **Score it.** For rubric/LLM-as-judge evals, use the judge prompt template and request structured JSON output (a score plus a one-line rationale per criterion) — never a vibe-based pass/fail. For programmatic evals, write the check directly. Save raw per-case results to a JSON/JSONL file, not just a summary — the failure examples are what make this actionable.
+4. **Score it.** For rubric/LLM-as-judge evals, use the judge prompt template and request structured JSON output (a score plus a one-line rationale per criterion) — never a vibe-based pass/fail. For programmatic evals, write the check directly.
+
+   The judge prompt returns one nested object per case (per-criterion scores plus an `overall_score`) — that's a different shape from what `scripts/score_eval.py` reads. Flatten each case before saving, to this schema (one JSON object per line):
+   ```json
+   {"id": "case_001", "score": 0.83, "category": "accuracy", "rationale": "..."}
+   ```
+   - `id` — a stable identifier for the eval case, assigned when you build the eval set (not produced by the judge).
+   - `score` — the judge's `overall_score` for LLM-as-judge evals, or 1.0/0.0 for a programmatic pass/fail check.
+   - `category` — the criterion group or failure mode you're tracking (e.g. `accuracy`, `format`, `tool_use`), assigned by you, not read from the judge's per-criterion keys — this is what `score_eval.py` breaks results down by.
+   - `rationale` — a one-line reason for the score. For a multi-criterion judge response, use the rationale from the lowest-scoring criterion, since that's the one explaining the failure.
+
+   Save the flattened lines to a JSON/JSONL file, not just a summary — the failure examples are what make this actionable.
 
 5. **Aggregate and report using `scripts/score_eval.py`.** Don't manually tally pass rates — run the script against the results file:
    ```bash
