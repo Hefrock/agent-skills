@@ -31,6 +31,18 @@
         "./agent-eval"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-operator",
+      "description": "Operates a Karpathy-style personal knowledge wiki via Obsidian MCP — searches before writing, updates existing concept pages over creating duplicates, merges redundant notes, and maintains links. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-operator"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
     }
   ]
 }

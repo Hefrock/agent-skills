@@ -10,6 +10,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 |---|---|---|
 | [`skill-gap-tracker`](./skills/skill-gap-tracker) | Learning / Productivity | Flags unfamiliar languages, frameworks, or techniques encountered while building a project and logs them to a personal learning backlog. |
 | [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
+| [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | Operates a Karpathy-style personal knowledge wiki via Obsidian MCP — searches before writing, updates existing concept pages over creating duplicates, and maintains links. Requires Obsidian MCP connected. |
 
 *(More skills coming — see the [project board / roadmap] for what's planned: project-management skills like sprint planning and risk registers, agent-design skills like a skill validator and multi-agent scaffolder.)*
 
