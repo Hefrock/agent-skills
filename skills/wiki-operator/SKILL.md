@@ -101,6 +101,14 @@ Update a Map of Content navigation page.
 4. Add missing pages to the MOC; remove dead links.
 5. Set `updated:` to today's date.
 
+### /source [title or URL]
+Log a paper, book, video, or article to the vault.
+1. Create a page in the appropriate `Sources/` subfolder (e.g. `Sources/Papers/title.md`) using `assets/source.md`.
+2. Fill in author, link/DOI, and today's read date from whatever the user provides.
+3. Summarize the core argument in one paragraph.
+4. Link to any concept pages in `Knowledge/` the source references — create stubs with `status: draft` for concepts that don't exist yet.
+5. If the source relates to an active project, add a backlink in `Projects/[project].md`.
+
 ### /clean
 Merge duplicates and repair structure.
 1. Search for near-duplicate concept pages (same topic, different naming).
