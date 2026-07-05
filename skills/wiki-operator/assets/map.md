@@ -1,13 +1,13 @@
 ---
-type: moc
-status: evergreen
-confidence: high
+type: map
+status: mature
+confidence: high  # accurate=high; uncertain/incomplete=low — not about writing quality
 updated: YYYY-MM-DD
 ---
 
-# [Area] — Map of Content
+# [Area] — Index
 
-Navigation page for `Knowledge/[Area]/`. Maintained by the Librarian — do not edit links manually.
+Navigation page for `Knowledge/[Area]/`. Keep in sync with the pages under that folder.
 
 ## Core concepts
 

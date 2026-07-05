@@ -1,7 +1,7 @@
 ---
 type: concept
 status: draft
-confidence: medium
+confidence: medium  # accurate=high; uncertain/incomplete=low — not about writing quality
 updated: YYYY-MM-DD
 ---
 
@@ -23,7 +23,6 @@ updated: YYYY-MM-DD
 
 ## Open questions
 
-<!-- Remove this section when confidence is raised to high -->
 - 
 
 ## Related

@@ -1,7 +1,7 @@
 ---
 type: journal
 status: draft
-confidence: high
+confidence: high  # accurate=high; uncertain/incomplete=low — not about writing quality
 updated: YYYY-MM-DD
 ---
 
@@ -18,5 +18,5 @@ updated: YYYY-MM-DD
 
 ## Ideas to promote
 
-<!-- Concepts worth adding or updating in Knowledge/ — the Synthesizer picks these up -->
+<!-- Concepts worth adding or updating in Knowledge/ — flag here, run /learn when ready -->
 - 

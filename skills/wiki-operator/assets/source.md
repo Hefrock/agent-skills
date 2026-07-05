@@ -1,7 +1,7 @@
 ---
 type: source
 status: draft
-confidence: medium
+confidence: medium  # accurate=high; uncertain/incomplete=low — not about writing quality
 updated: YYYY-MM-DD
 ---
 
