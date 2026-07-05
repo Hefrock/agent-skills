@@ -4,19 +4,31 @@
     "name": "Hefrock"
   },
   "metadata": {
-    "description": "Personal collection of Agent Skills for project management, agent design, and learning workflows.",
-    "version": "0.1.0"
+    "description": "Personal collection of Agent Skills for agent design, evaluation, and knowledge management.",
+    "version": "0.2.0"
   },
   "plugins": [
     {
-      "name": "skill-gap-tracker",
-      "description": "Flags unfamiliar languages, frameworks, or techniques encountered while building projects and logs them to a learning backlog.",
+      "name": "agent-eval",
+      "description": "Designs and runs evaluations for LLM or agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting.",
       "author": { "name": "Hefrock" },
-      "category": "productivity",
+      "category": "agent-design",
       "source": "./skills",
       "strict": false,
       "skills": [
-        "./skill-gap-tracker"
+        "./agent-eval"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-operator",
+      "description": "Operates a Karpathy-style personal knowledge wiki via Obsidian MCP — searches before writing, updates existing concept pages over creating duplicates, merges redundant notes, and maintains links. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-operator"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     }
