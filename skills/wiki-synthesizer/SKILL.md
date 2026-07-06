@@ -13,6 +13,8 @@ The `obsidian-vault` MCP server must be connected (same setup as wiki-operator).
 
 The `wiki-operator` skill must also be loaded — wiki-synthesizer uses its note templates (`assets/concept.md`, `assets/source.md`). Install both skills together.
 
+**Optional upstream:** Load `wiki-journal-processor` if your journal entries are free-form and unstructured. Run `/process` on recent entries before `/synthesize` — the Processor populates `## Ideas to promote` so the Synthesizer has reliable input. Journal entries with a `processed:` frontmatter field have already been preprocessed.
+
 ## Principles
 
 1. **Distill, don't invent.** Only promote ideas explicitly flagged in journals or present in raw sources. Do not add claims that weren't in the input.
