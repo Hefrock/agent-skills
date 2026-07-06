@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, and knowledge management.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
@@ -29,6 +29,30 @@
       "strict": false,
       "skills": [
         "./wiki-operator"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-synthesizer",
+      "description": "Compiles raw material into the wiki — promotes flagged ideas from journal entries into Knowledge/ concept pages and compiles Sources/raw/ files into source pages. Run after learning sessions to crystallize captured knowledge. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-synthesizer"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-librarian",
+      "description": "Maintains structural health of the wiki — audits for broken links, orphan pages, stale notes, near-duplicates, and contradictions. Proposes fixes with user confirmation. Run weekly or before a major synthesis session. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-librarian"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     }
