@@ -56,17 +56,5 @@
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },
-    {
-      "name": "wiki-journal-processor",
-      "description": "Preprocesses daily journal entries for wiki synthesis — extracts durable knowledge fragments from free-form notes and structures them into a clean Ideas to promote section. Run before wiki-synthesizer when journals are messy. Requires Obsidian MCP connected.",
-      "author": { "name": "Hefrock" },
-      "category": "knowledge-management",
-      "source": "./skills",
-      "strict": false,
-      "skills": [
-        "./wiki-journal-processor"
-      ],
-      "homepage": "https://github.com/Hefrock/agent-skills"
-    }
   ]
 }

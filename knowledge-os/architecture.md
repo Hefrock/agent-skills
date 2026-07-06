@@ -12,8 +12,7 @@ How the wiki system fits together — the components, their responsibilities, an
 │                                                         │
 │  skills/                                                │
 │    wiki-operator       ← on-demand vault operations     │
-│    wiki-journal-processor ← journal preprocessing      │
-│    wiki-synthesizer    ← journal/source → wiki          │
+│    wiki-synthesizer    ← journal preprocessing + wiki   │
 │    wiki-librarian      ← structural audits              │
 └───────────────────┬─────────────────────────────────────┘
                     │ MCP (STDIO)
@@ -48,13 +47,12 @@ How the wiki system fits together — the components, their responsibilities, an
 Daily capture
     │
     ▼
-Journal/Daily/YYYY-MM-DD.md  (raw, free-form)
-    │
-    │  wiki-journal-processor (/process)
-    ▼
-Journal/Daily/YYYY-MM-DD.md  (structured: ## Ideas to promote)
+Journal/Daily/YYYY-MM-DD.md  (free-form or structured)
     │
     │  wiki-synthesizer (/synthesize)
+    │  Phase 0: preprocess if ## Ideas to promote is absent
+    │  Phase 1: promote ideas → Knowledge/ pages
+    │  Phase 2: compile Sources/raw/ → Sources/ pages
     ▼
 Knowledge/<concept>.md  +  Sources/<type>/<title>.md
     │
@@ -84,8 +82,7 @@ Sources/raw/file.txt
 
 For a full wiki session, load skills in this order:
 1. `wiki-operator` — always required
-2. `wiki-journal-processor` — if you have unstructured journals to process
-3. `wiki-synthesizer` — for batch compilation runs
-4. `wiki-librarian` — for maintenance passes
+2. `wiki-synthesizer` — for batch compilation runs (handles preprocessing automatically)
+3. `wiki-librarian` — for maintenance passes
 
 The MCP server must be connected before any skill is invoked.

@@ -10,9 +10,8 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 |---|---|---|
 | [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
 | [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
-| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — promotes flagged journal ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
+| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
-| [`wiki-journal-processor`](./skills/wiki-journal-processor) | Knowledge Management | Journal preprocessing — extracts durable knowledge fragments from free-form notes, structures them into `## Ideas to promote`, and flags open questions. Run before wiki-synthesizer when journals are messy. Requires Obsidian MCP connected. |
 
 ## Installing a skill
 
@@ -42,9 +41,8 @@ agent-skills/
 ├── skills/                     # flat — one folder per skill, no category nesting
 │   ├── agent-eval/
 │   ├── wiki-operator/          # on-demand vault operations
-│   ├── wiki-synthesizer/       # journal → concept page compilation
-│   ├── wiki-librarian/         # structural health audits
-│   └── wiki-journal-processor/ # journal preprocessing before synthesis
+│   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
+│   └── wiki-librarian/         # structural health audits
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
 │       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
@@ -65,7 +63,7 @@ agent-skills/
 
 ## Wiki system
 
-The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-journal-processor`) form a complete personal knowledge system built around an Obsidian vault.
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`) form a complete personal knowledge system built around an Obsidian vault.
 
 The operating layer lives in this repo:
 
