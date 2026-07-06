@@ -9,6 +9,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 CONTEXT_TEMPLATE="$REPO_ROOT/skills/wiki-operator/assets/context.md"
+TEMPLATES_SRC="$REPO_ROOT/templates"
+CONSTITUTION_SRC="$REPO_ROOT/knowledge-os/constitution.md"
 
 # ── Arg check ─────────────────────────────────────────────────────────────────
 if [[ $# -lt 1 ]]; then
@@ -40,10 +42,11 @@ mkdir -p "$VAULT/Sources/Books"
 mkdir -p "$VAULT/Sources/Videos"
 mkdir -p "$VAULT/Maps"
 mkdir -p "$VAULT/Projects"
+mkdir -p "$VAULT/System/templates"
 echo "  OK  Knowledge/{AI,Systems,Math,Engineering}"
 echo "  OK  Journal/Daily"
 echo "  OK  Sources/{raw,Papers,Books,Videos}"
-echo "  OK  Maps   Projects"
+echo "  OK  Maps   Projects   System/templates"
 
 # ── Hot cache ─────────────────────────────────────────────────────────────────
 echo ""
@@ -61,6 +64,36 @@ else
   sed "s/YYYY-MM-DD/$TODAY/g" "$CONTEXT_TEMPLATE" > "$CONTEXT_DEST"
   echo "  OK  created (dated $TODAY)"
 fi
+
+# ── System/ — constitution + templates ───────────────────────────────────────
+echo ""
+echo "→ System/constitution.md"
+CONSTITUTION_DEST="$VAULT/System/constitution.md"
+if [[ -f "$CONSTITUTION_DEST" ]]; then
+  echo "  SKIP  already exists"
+else
+  if [[ ! -f "$CONSTITUTION_SRC" ]]; then
+    echo "  ERROR: constitution not found at $CONSTITUTION_SRC" >&2
+    exit 1
+  fi
+  cp "$CONSTITUTION_SRC" "$CONSTITUTION_DEST"
+  echo "  OK  created"
+fi
+
+echo ""
+echo "→ System/templates/"
+for tmpl in concept journal source map; do
+  SRC="$TEMPLATES_SRC/$tmpl.md"
+  DEST="$VAULT/System/templates/$tmpl.md"
+  if [[ -f "$DEST" ]]; then
+    echo "  SKIP  $tmpl.md already exists"
+  elif [[ ! -f "$SRC" ]]; then
+    echo "  WARN  template not found: $SRC" >&2
+  else
+    cp "$SRC" "$DEST"
+    echo "  OK  $tmpl.md"
+  fi
+done
 
 # ── Vault README ──────────────────────────────────────────────────────────────
 echo ""

@@ -49,17 +49,33 @@ agent-skills/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
 │       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
 │       └── README.md           # setup and configuration guide
+├── knowledge-os/
+│   ├── constitution.md         # 10 laws Claude follows when operating the wiki
+│   └── architecture.md         # component map, data flow, note lifecycle
+├── templates/                  # note templates copied into vault by setup-vault.sh
+│   ├── concept.md
+│   ├── journal.md
+│   ├── source.md
+│   └── map.md
 ├── bin/
-│   └── setup-vault.sh          # one-command vault bootstrap
+│   └── setup-vault.sh          # one-command vault bootstrap (creates folders, copies templates + constitution)
 ├── template/                   # starting point for a new skill
 └── CONTRIBUTING.md             # how to add a skill, including portability rules
 ```
 
 ## Wiki system
 
-The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-journal-processor`) form a complete personal knowledge system. The operating system layer — constitution, architecture docs, and templates — lives in a companion repo:
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-journal-processor`) form a complete personal knowledge system built around an Obsidian vault.
 
-**[Hefrock/claude-knowledge-os](https://github.com/Hefrock/claude-knowledge-os)** — HOW Claude behaves. This repo is WHAT the skills do.
+The operating layer lives in this repo:
+
+| Path | Purpose |
+|---|---|
+| `knowledge-os/constitution.md` | 10 non-negotiable rules Claude follows when operating the wiki |
+| `knowledge-os/architecture.md` | Component map, data flow, and note lifecycle reference |
+| `templates/` | Note templates (concept, journal, source, map) — copied into `System/templates/` in your vault by `setup-vault.sh` |
+
+Run `./bin/setup-vault.sh ~/path/to/vault` to bootstrap the vault structure, copy templates and the constitution into `System/`, and print the MCP config snippet.
 
 ## License
 
