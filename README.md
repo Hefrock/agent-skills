@@ -18,7 +18,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 **Claude Code (plugin marketplace):**
 ```bash
 /plugin marketplace add Hefrock/agent-skills
-/plugin install agent-eval@agent-skills
+/plugin install agent-eval@hefrock-agent-skills
 ```
 
 **Claude Code (manual, no plugin system):**
