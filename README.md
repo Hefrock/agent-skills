@@ -9,7 +9,9 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | Skill | Category | Description |
 |---|---|---|
 | [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
-| [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | Operates a Karpathy-style personal knowledge wiki via Obsidian MCP — searches before writing, updates existing concept pages over creating duplicates, and maintains links. Requires Obsidian MCP connected. |
+| [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
+| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — promotes flagged journal ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
+| [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
 
 ## Installing a skill
 
@@ -35,12 +37,18 @@ Copy the skill folder into whatever directory that platform scans for skills —
 ```
 agent-skills/
 ├── .claude-plugin/
-│   └── marketplace.json   # Claude Code-only install metadata — optional, additive
-├── skills/                # flat — one folder per skill, no category nesting
+│   └── marketplace.json        # Claude Code-only install metadata — optional, additive
+├── skills/                     # flat — one folder per skill, no category nesting
 │   ├── agent-eval/
-│   └── wiki-operator/
-├── template/               # starting point for a new skill
-└── CONTRIBUTING.md         # how to add a skill, including portability rules
+│   ├── wiki-operator/          # on-demand vault operations
+│   ├── wiki-synthesizer/       # journal → concept page compilation
+│   └── wiki-librarian/         # structural health audits
+├── mcp/
+│   └── obsidian-vault/         # MCP server required by wiki-operator
+│       ├── src/index.ts        # 8 tools: search, read, write, patch, query, links
+│       └── README.md           # setup and configuration guide
+├── template/                   # starting point for a new skill
+└── CONTRIBUTING.md             # how to add a skill, including portability rules
 ```
 
 ## License

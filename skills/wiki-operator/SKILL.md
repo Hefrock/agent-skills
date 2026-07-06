@@ -1,6 +1,6 @@
 ---
 name: wiki-operator
-description: Operates a Karpathy-style personal knowledge wiki by reading and writing an Obsidian vault directly via MCP — searching before creating, updating existing concept pages over adding new ones, merging duplicates, and keeping all notes linked. Use this skill for any vault operation: processing new learning into wiki notes, improving a concept page, finding connections between ideas, reviewing note quality, generating study prompts, or running maintenance. Triggers on "add this to my wiki," "update my notes on X," "what do I know about Y," "connect these ideas," "clean up my vault," and the commands /learn /update /connect /review /quiz /map /source /clean. Requires an Obsidian MCP server connected with read and write tool access.
+description: Operates a Karpathy-style personal knowledge wiki by reading and writing an Obsidian vault directly via MCP — searching before creating, updating existing concept pages over adding new ones, merging duplicates, and keeping all notes linked. Use this skill for any vault operation: processing new learning into wiki notes, improving a concept page, finding connections between ideas, reviewing note quality, generating study prompts, or running maintenance. Triggers on "add this to my wiki," "update my notes on X," "what do I know about Y," "connect these ideas," "clean up my vault," and the commands /learn /update /connect /review /quiz /map /source /clean /health. Requires an Obsidian MCP server connected with read and write tool access.
 ---
 
 # Wiki Operator
@@ -9,7 +9,30 @@ Claude acts directly on an Obsidian vault via MCP — not as a suggestion engine
 
 ## Prerequisites
 
-An Obsidian MCP server must be connected with tools that can at minimum: search notes, read a note by path, create a note, and update a note. Confirm MCP is connected before any vault operation.
+The `obsidian-vault` MCP server (in `mcp/obsidian-vault/`) must be running and connected. Set it up once:
+
+```bash
+cd mcp/obsidian-vault && npm install && npm run build
+```
+
+Add to `~/.claude.json`:
+```json
+{
+  "mcpServers": {
+    "obsidian-vault": {
+      "command": "node",
+      "args": ["/absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js"],
+      "env": { "OBSIDIAN_VAULT_PATH": "/absolute/path/to/your/vault" }
+    }
+  }
+}
+```
+
+Verify with `/mcp` — should show `obsidian-vault` connected with 8 tools. If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.
+
+## Session start
+
+At the beginning of any wiki session, read `Maps/_context.md` first if it exists. It contains a compact summary of the wiki's current state — active areas, recently updated pages, open questions — so you don't start cold. After any session that makes significant changes, update `_context.md` to reflect what changed.
 
 ## Principles
 
@@ -48,10 +71,12 @@ Knowledge/          ← canonical concept pages  (type: concept)
 Journal/
   Daily/            ← daily notes              (type: journal)
 Sources/
-  Papers/           ← one page per source      (type: source)
+  raw/              ← unprocessed clippings, before /source compiles them
+  Papers/           ← one compiled page per source  (type: source)
   Books/
   Videos/
 Maps/               ← navigation/index pages   (type: map)
+  _context.md       ← hot cache: compact wiki state, read first each session
 Projects/           ← active project pages     (type: project)
 ```
 
@@ -103,18 +128,30 @@ Update a navigation/index page for an area of the vault.
 
 ### /source [title or URL]
 Log a paper, book, video, or article to the vault.
-1. Create a page in the appropriate `Sources/` subfolder (e.g. `Sources/Papers/title.md`) using `assets/source.md`.
-2. Fill in author, link/DOI, and today's read date from whatever the user provides.
-3. Summarize the core argument in one paragraph.
-4. Link to any concept pages in `Knowledge/` the source references — create stubs with `status: draft` for concepts that don't exist yet.
-5. If the source relates to an active project, add a backlink in `Projects/[project].md`.
+1. If raw content exists in `Sources/raw/`, read it first. Otherwise use what the user provides.
+2. Create a compiled page in the appropriate `Sources/` subfolder (e.g. `Sources/Papers/title.md`) using `assets/source.md`.
+3. Fill in author, link/DOI, and today's read date.
+4. Summarize the core argument in one paragraph.
+5. Link to any concept pages in `Knowledge/` the source references — create stubs with `status: draft` for concepts that don't exist yet.
+6. If the source relates to an active project, add a backlink in `Projects/[project].md`.
+7. Delete or archive the raw file once the compiled page is complete.
 
 ### /clean
-Merge duplicates and repair structure.
+Merge duplicates and consolidate structure.
 1. Search for near-duplicate concept pages (same topic, different naming).
 2. Propose the merge plan: which page becomes canonical, which gets absorbed.
 3. Wait for confirmation before changing anything.
 4. After confirmed: move content into the canonical page, fix or remove the absorbed page, repair backlinks throughout the vault.
+
+### /health
+Audit structural integrity of the vault. Run before any major compile session.
+1. **Broken links** — find wikilinks pointing to pages that don't exist. List them with their source note.
+2. **Orphan pages** — find notes with no inbound links and no outbound links to other wiki pages.
+3. **Stale notes** — query `status: stale` and notes with `updated:` older than 90 days.
+4. **Missing open questions** — find notes with `confidence: low` that lack a `## Open Questions` section.
+5. **Contradictions** — flag pairs of pages that make conflicting claims about the same concept (e.g., opposite definitions, incompatible properties).
+6. Present findings as a prioritized list. Do not fix anything automatically — confirm with the user which issues to address.
+7. After fixes are applied, update `Maps/_context.md` to reflect current vault state.
 
 ## Output discipline
 
