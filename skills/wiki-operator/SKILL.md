@@ -28,7 +28,9 @@ Add to `~/.claude.json`:
 }
 ```
 
-Verify with `/mcp` — should show `obsidian-vault` connected with 8 tools. If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.
+Verify with `/mcp` — should show `obsidian-vault` connected with 10 tools. If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.
+
+**Note on commands:** The trigger phrases like `/learn`, `/update`, `/synthesize`, etc. shown in this skill are natural-language shorthand — they work when written in the chat window as plain text (e.g. type `/learn` or "add this to my wiki: ..."). They are NOT Claude Code CLI slash commands. Typing `/learn` in the Claude Code terminal will hit the CLI parser and fail — use the phrase in a chat message instead.
 
 ## Session start
 
