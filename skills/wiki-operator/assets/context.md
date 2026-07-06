@@ -3,6 +3,7 @@ type: map
 status: mature
 confidence: high
 updated: YYYY-MM-DD
+last_synthesized: YYYY-MM-DD
 ---
 
 # Wiki Context

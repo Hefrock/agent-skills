@@ -11,6 +11,8 @@ Runs the raw → wiki compilation pipeline. Journals and raw sources are inputs;
 
 The `obsidian-vault` MCP server must be connected (same setup as wiki-operator). Verify with `/mcp` before running.
 
+The `wiki-operator` skill must also be loaded — wiki-synthesizer uses its note templates (`assets/concept.md`, `assets/source.md`). Install both skills together.
+
 ## Principles
 
 1. **Distill, don't invent.** Only promote ideas explicitly flagged in journals or present in raw sources. Do not add claims that weren't in the input.

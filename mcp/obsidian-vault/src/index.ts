@@ -17,8 +17,10 @@ const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? (() => {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function vaultPath(notePath: string): string {
-  const resolved = path.resolve(VAULT_PATH, notePath);
-  if (!resolved.startsWith(path.resolve(VAULT_PATH))) {
+  const vaultRoot = path.resolve(VAULT_PATH);
+  const resolved = path.resolve(vaultRoot, notePath);
+  // Append sep so "/vault" doesn't match "/vault-evil"
+  if (!resolved.startsWith(vaultRoot + path.sep) && resolved !== vaultRoot) {
     throw new Error("Path traversal not allowed");
   }
   return resolved;
@@ -133,12 +135,13 @@ async function patchSection(notePath: string, heading: string, newContent: strin
     return { error: `Heading "${heading}" not found in ${notePath}` };
   }
 
+  const tail = lines.slice(end);
   const updated = [
     ...lines.slice(0, start + 1),
     "",
     newContent.trim(),
-    "",
-    ...lines.slice(end),
+    ...(tail.length > 0 && tail[0] === "" ? [] : [""]),
+    ...tail,
   ].join("\n");
 
   await writeNote(notePath, updated);
@@ -187,6 +190,12 @@ async function listLinks(notePath: string): Promise<object> {
   }
 
   return { path: notePath, outbound, inbound };
+}
+
+async function deleteNote(notePath: string): Promise<object> {
+  const full = vaultPath(notePath);
+  await fs.unlink(full);
+  return { path: notePath, deleted: true };
 }
 
 async function listNotes(folder?: string): Promise<object> {
@@ -304,6 +313,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "delete_note",
+      description: "Permanently delete a note. Use only after confirming with the user. Cannot be undone via MCP — ensure the vault has git or Obsidian Sync enabled.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Vault-relative path of the note to delete" },
+        },
+        required: ["path"],
+      },
+    },
   ],
 }));
 
@@ -345,6 +365,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "list_notes":
         result = await listNotes(args.folder as string | undefined);
+        break;
+      case "delete_note":
+        result = await deleteNote(args.path as string);
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);
