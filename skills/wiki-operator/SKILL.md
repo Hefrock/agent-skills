@@ -9,7 +9,26 @@ Claude acts directly on an Obsidian vault via MCP — not as a suggestion engine
 
 ## Prerequisites
 
-An Obsidian MCP server must be connected with tools that can at minimum: search notes, read a note by path, create a note, and update a note. Confirm MCP is connected before any vault operation.
+The `obsidian-vault` MCP server (in `mcp/obsidian-vault/`) must be running and connected. Set it up once:
+
+```bash
+cd mcp/obsidian-vault && npm install && npm run build
+```
+
+Add to `~/.claude.json`:
+```json
+{
+  "mcpServers": {
+    "obsidian-vault": {
+      "command": "node",
+      "args": ["/absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js"],
+      "env": { "OBSIDIAN_VAULT_PATH": "/absolute/path/to/your/vault" }
+    }
+  }
+}
+```
+
+Verify with `/mcp` — should show `obsidian-vault` connected with 8 tools. If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.
 
 ## Principles
 

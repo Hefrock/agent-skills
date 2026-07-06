@@ -35,12 +35,16 @@ Copy the skill folder into whatever directory that platform scans for skills —
 ```
 agent-skills/
 ├── .claude-plugin/
-│   └── marketplace.json   # Claude Code-only install metadata — optional, additive
-├── skills/                # flat — one folder per skill, no category nesting
+│   └── marketplace.json        # Claude Code-only install metadata — optional, additive
+├── skills/                     # flat — one folder per skill, no category nesting
 │   ├── agent-eval/
 │   └── wiki-operator/
-├── template/               # starting point for a new skill
-└── CONTRIBUTING.md         # how to add a skill, including portability rules
+├── mcp/
+│   └── obsidian-vault/         # MCP server required by wiki-operator
+│       ├── src/index.ts        # 8 tools: search, read, write, patch, query, links
+│       └── README.md           # setup and configuration guide
+├── template/                   # starting point for a new skill
+└── CONTRIBUTING.md             # how to add a skill, including portability rules
 ```
 
 ## License
