@@ -157,9 +157,10 @@ function scoreNote(query: string, notePath: string, body: string, frontmatter: R
   const bodyLower = body.toLowerCase();
   let score = 0;
   for (const term of terms) {
-    score += (title.match(new RegExp(term, "g")) || []).length * 5;
-    score += (tags.match(new RegExp(term, "g")) || []).length * 3;
-    score += (bodyLower.match(new RegExp(term, "g")) || []).length;
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    score += (title.match(new RegExp(escaped, "g")) || []).length * 5;
+    score += (tags.match(new RegExp(escaped, "g")) || []).length * 3;
+    score += (bodyLower.match(new RegExp(escaped, "g")) || []).length;
   }
   return score;
 }
