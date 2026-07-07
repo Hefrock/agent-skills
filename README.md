@@ -10,7 +10,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 |---|---|---|
 | [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
 | [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
-| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — promotes flagged journal ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
+| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
 
 ## Installing a skill
@@ -41,15 +41,39 @@ agent-skills/
 ├── skills/                     # flat — one folder per skill, no category nesting
 │   ├── agent-eval/
 │   ├── wiki-operator/          # on-demand vault operations
-│   ├── wiki-synthesizer/       # journal → concept page compilation
+│   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
 │   └── wiki-librarian/         # structural health audits
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
-│       ├── src/index.ts        # 8 tools: search, read, write, patch, query, links
+│       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
 │       └── README.md           # setup and configuration guide
+├── knowledge-os/
+│   ├── constitution.md         # 10 laws Claude follows when operating the wiki
+│   └── architecture.md         # component map, data flow, note lifecycle
+├── templates/                  # note templates copied into vault by setup-vault.sh
+│   ├── concept.md
+│   ├── journal.md
+│   ├── source.md
+│   └── map.md
+├── bin/
+│   └── setup-vault.sh          # one-command vault bootstrap (creates folders, copies templates + constitution)
 ├── template/                   # starting point for a new skill
 └── CONTRIBUTING.md             # how to add a skill, including portability rules
 ```
+
+## Wiki system
+
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`) form a complete personal knowledge system built around an Obsidian vault.
+
+The operating layer lives in this repo:
+
+| Path | Purpose |
+|---|---|
+| `knowledge-os/constitution.md` | 10 non-negotiable rules Claude follows when operating the wiki |
+| `knowledge-os/architecture.md` | Component map, data flow, and note lifecycle reference |
+| `templates/` | Note templates (concept, journal, source, map) — copied into `System/templates/` in your vault by `setup-vault.sh` |
+
+Run `./bin/setup-vault.sh ~/path/to/vault` to bootstrap the vault structure, copy templates and the constitution into `System/`, and print the MCP config snippet.
 
 ## License
 
