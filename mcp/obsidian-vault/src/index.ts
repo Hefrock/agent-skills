@@ -187,10 +187,28 @@ async function searchNotes(query: string, folder?: string, limit = 10): Promise<
   return { results: results.slice(0, limit), total: results.length };
 }
 
-async function writeNoteContents(notePath: string, content: string): Promise<object> {
+async function writeNoteContents(notePath: string, content: string, mode: string = "upsert"): Promise<object> {
   const full = await vaultPathForWrite(notePath);
+  const exists = await fs.access(full).then(() => true).catch(() => false);
+
+  if (mode === "create" && exists) {
+    throw new Error(`File already exists: ${notePath}. Use mode "update" or "upsert" to overwrite.`);
+  }
+  if (mode === "update" && !exists) {
+    throw new Error(`File does not exist: ${notePath}. Use mode "create" or "upsert" to create it.`);
+  }
+
+  // Back up existing file to .trash/ before overwriting
+  if (exists) {
+    const trashDir = path.join(vaultRoot, ".trash");
+    await fs.mkdir(trashDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const trashName = `${path.basename(notePath, ".md")}_backup_${timestamp}.md`;
+    await fs.copyFile(full, path.join(trashDir, trashName));
+  }
+
   await atomicWrite(full, content);
-  return { path: notePath, written: true };
+  return { path: notePath, written: true, backed_up: exists };
 }
 
 // #1 — dedicated append tool so callers never accidentally clobber existing files
@@ -307,7 +325,7 @@ async function deleteNote(notePath: string): Promise<object> {
 // ── MCP Server ────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "obsidian-vault", version: "0.2.0" },
+  { name: "obsidian-vault", version: "0.3.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -339,12 +357,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "write_note",
-      description: "Create or fully overwrite a note. Always overwrites — to add content to an existing note without clobbering it, use append_note instead.",
+      description: "Create or overwrite a note. Before overwriting an existing file, the previous version is backed up to .trash/ automatically. Use mode to express intent: 'create' fails if the file exists, 'update' fails if it doesn't, 'upsert' (default) always writes. To add content without overwriting, use append_note instead.",
       inputSchema: {
         type: "object",
         properties: {
           path: { type: "string", description: "Vault-relative path (.md only)" },
           content: { type: "string", description: "Full markdown content including frontmatter" },
+          mode: { type: "string", enum: ["create", "update", "upsert"], description: "Write intent. 'create' errors if file exists; 'update' errors if it doesn't; 'upsert' always writes (default)." },
         },
         required: ["path", "content"],
       },
@@ -449,7 +468,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         })();
         break;
       case "write_note":
-        result = await writeNoteContents(requireString(args, "path"), requireString(args, "content"));
+        result = await writeNoteContents(requireString(args, "path"), requireString(args, "content"), optionalString(args, "mode") ?? "upsert");
         break;
       case "append_note":
         result = await appendNoteContents(requireString(args, "path"), requireString(args, "content"));
