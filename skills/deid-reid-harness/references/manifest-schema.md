@@ -38,12 +38,18 @@ generator and the scorer generalize them identically.
   "identity_key": "person-000001",       // true synthetic identity; the re-id target
   "note_text": "…full clinical note…",
   "identifiers": [ SPAN, ... ],          // Track 1 ground truth
-  "quasi_identifiers": QI_PROFILE        // Track 2 (ED) input; not scored in v0
+  "quasi_identifiers": QI_PROFILE,       // Track 2 (ED) input
+  "inference_case": INFERENCE_CASE       // Track 3 input; present only with --inference
 }
 ```
 
 `identity_key` is what a re-identification attacker is trying to recover. Two records
 with the same `identity_key` are the same synthetic person (supports linkage tests).
+
+`inference_case` is attached only when the corpus is generated with `--inference`. Its
+presence adds a field but never alters `note_text`, `identifiers`, or
+`quasi_identifiers` — those are produced from a disjoint RNG stream, so a corpus is
+byte-identical on the Track 1/2 fields with or without the flag.
 
 ## SPAN — one injected identifier instance
 
@@ -83,12 +89,34 @@ spelled out, mid-sentence, in a fax header) so coverage is measured as
 
 These are the fields an Expert Determination risk model consumes to compute
 population uniqueness (k-anonymity, prosecutor/journalist/marketer risk) against
-`population_ref`. Present now, scored later.
+`population_ref`.
+
+## INFERENCE_CASE — inference vignette (Track 3 input, present only with --inference)
+
+```json
+{
+  "target_attribute": "diagnosis",     // what the attacker must recover
+  "target_value": "Fabry disease",     // ground truth; NEVER a substring of `note`
+  "is_rare": true,                     // rare vs common — the key recovery slice
+  "note": "De-identified vignette: a 45-49 man presents with acroparesthesias…"
+}
+```
+
+`note` renders the diagnosis's clinical signature (an anchor finding plus a random
+subset of supporting features) with the diagnosis name withheld — so the target is
+*derivable from context but never stated*. The generator's `inference_self_test`
+enforces that `target_value` is not a substring of `note`; if it were, Track 3 would be
+measuring leakage (Track 1), not inference. Scoring is a normalized string match against
+`target_value` (exact, since the diagnosis is drawn from a closed set), so Track 3 is
+verifiable offline; an LLM attacker's free-text guesses move scoring to agent-eval's
+judge.
 
 ## Why generation-time ground truth matters
 
 Because the generator injects every identifier, leakage scoring is *deterministic*:
 "did this exact span survive?" has a yes/no answer with no judge in the loop. This is
 the whole reason to start with Track 1 — it produces trustworthy numbers before any
-LLM-judged track is attempted. The judge is reserved for the inference track, where
-ground truth genuinely can't be enumerated.
+LLM-judged track is attempted. Track 3 stays deterministically scorable too, but only
+because its inference target is drawn from a closed synthetic set; the LLM judge becomes
+necessary the moment a real attacker returns free-text guesses whose correctness is a
+matter of semantic, not string, equality.

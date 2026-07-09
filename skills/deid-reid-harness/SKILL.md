@@ -41,10 +41,11 @@ whole point of the harness — surface it, don't hide it.
 **Track 1 (Safe Harbor leakage)** is implemented **end to end** first, because it is the
 only track that is deterministically scorable — you get a working closed loop with
 trustworthy numbers before touching the harder tracks. **Track 2 (Expert Determination)**
-is now built too: a statistical-linkage attacker that needs no LLM judge either, so it
-is the second load-bearing, model-independent scorer. Track 3 (inference) is designed
-but not yet scored; the manifest already carries its inputs so no corpus regeneration is
-needed later.
+is a statistical-linkage attacker that needs no LLM judge either, the second
+load-bearing, model-independent scorer. **Track 3 (inference)** is now built too, with a
+deterministic, model-independent baseline attacker so it also verifies offline; a real
+LLM attacker is a documented swap-in that runs through the sibling agent-eval skill. All
+three tracks share one corpus generator; each attack is a separate scorer.
 
 The closed loops:
 
@@ -52,13 +53,17 @@ The closed loops:
 generate_corpus.py  ->  run_track1.py  ->  score_leakage.py     (Track 1: Safe Harbor)
    (synthetic notes       (defender runs        (deterministic Safe
     + ground-truth          over corpus)          Harbor coverage,
-    manifest + optional                           sliced by cat×form×context)
-    background population)
+    manifest; --population                        sliced by cat×form×context)
+    and --inference add
+    Track 2 & 3 inputs)
 
-generate_corpus.py  ------------------->  score_reid.py          (Track 2: Expert Det.)
-   (--population N emits                      (statistical linkage:
-    the denominator)                           k-anonymity + prosecutor/
-                                               journalist/marketer risk)
+generate_corpus.py --population N  ---->  score_reid.py          (Track 2: Expert Det.)
+                                             (statistical linkage: k-anonymity +
+                                              prosecutor/journalist/marketer risk)
+
+generate_corpus.py --inference  ------->  score_inference.py     (Track 3: inference)
+   (diagnosis-free vignettes)                (attacker recovers the withheld
+                                              diagnosis; emits agent-eval JSONL)
 ```
 
 ## Running it
@@ -66,12 +71,16 @@ generate_corpus.py  ------------------->  score_reid.py          (Track 2: Exper
 ```bash
 cd scripts
 # Track 1 — Safe Harbor leakage
-python generate_corpus.py --n 50 --seed 20260101 --population 100000 --out corpus.json
+python generate_corpus.py --n 50 --seed 20260101 --population 100000 --inference --out corpus.json
 python run_track1.py --corpus corpus.json --pipeline regex-baseline-v0 --out runs.jsonl
 python score_leakage.py --runs runs.jsonl --out leakage_report.json
 
 # Track 2 — Expert Determination re-id risk (reads population_ref from the corpus)
 python score_reid.py --corpus corpus.json --out reid_report.json
+
+# Track 3 — free-text inference (attacker recovers the withheld diagnosis)
+python score_inference.py --corpus corpus.json --out inference_report.json --eval-out inference_eval.jsonl
+python ../../agent-eval/scripts/score_eval.py inference_eval.jsonl   # optional: aggregate/diff
 ```
 
 **Track 1.** The bundled `regex-baseline-v0` defender is deliberately weak. On the
@@ -95,7 +104,18 @@ uniformly, so the QI space is more dispersed than real geography — the prosecu
 k-anonymity numbers are an upper bound, and the population-side risks are the
 load-bearing figures. A Synthea-backed population restores realistic class sizes.
 
-## Architecture — four swappable parts + your eval harness as orchestrator
+**Track 3.** Each note gets a diagnosis-free vignette rendering the diagnosis's clinical
+signature; the attacker must name the withheld diagnosis from context alone. The bundled
+knowledge-only `signature-match-v0` attacker recovers it in **~0.94 of cases** — **1.0
+for rare diagnoses** (distinctive signatures leak almost perfectly), 0.93 for common
+ones — while correctly abstaining on the ~6% of vignettes reduced to non-specific
+features. These notes carry no direct identifiers (Safe Harbor would pass them) and are
+not being linked (Track 2's job); the leak is pure inference, which neither other track
+can see. Scoring is programmatic against the closed diagnosis set, and the scorer emits
+agent-eval's JSONL schema so a real LLM attacker's free-text guesses can later be graded
+and calibrated through the agent-eval skill.
+
+## Architecture — swappable parts + your eval harness as orchestrator
 
 **Corpus generator** (`generate_corpus.py`). Emits synthetic notes and a manifest whose
 spans are **exact by construction**: notes are assembled from segments and each
@@ -115,15 +135,18 @@ hybrid — comparing pipelines on one frontier is the deliverable. A pipeline th
 its redaction spans gets exact scoring; a black-box pipeline returns `None` and the
 scorer falls back to surface-string presence checks.
 
-**Re-id attackers / scorers** (`score_leakage.py` = Track 1; `score_reid.py` = Track 2).
-For Track 1 the attacker is deterministic: did each ground-truth span survive? Output is
-coverage sliced by category, by category×surface-form, and by context — never averaged
-into one figure. For Track 2 the attacker is statistical: over the generalized QI
-equivalence classes it computes k-anonymity and prosecutor/journalist/marketer risk
-against the background population (`qi_model.py` holds the one generalization both the
-population generator and the scorer share). Both are model-independent, so neither can
-share a base model with the defender. Track 3 adds the LLM-inference attacker as a
-sibling scorer.
+**Re-id attackers / scorers** (`score_leakage.py` = Track 1; `score_reid.py` = Track 2;
+`score_inference.py` + `inference_attackers.py` = Track 3). For Track 1 the attacker is
+deterministic: did each ground-truth span survive? Output is coverage sliced by category,
+by category×surface-form, and by context — never averaged into one figure. For Track 2
+the attacker is statistical: over the generalized QI equivalence classes it computes
+k-anonymity and prosecutor/journalist/marketer risk against the background population
+(`qi_model.py` holds the one generalization both the population generator and the scorer
+share). For Track 3 the attacker is a swappable inference engine (registry in
+`inference_attackers.py`, like the defenders) that recovers a withheld attribute from
+context; the bundled baseline is model-independent, and a real LLM attacker is the
+documented swap-in. All three bundled attackers are model-independent, so none can share
+a base model with the defender — the harness's cardinal rule holds by construction.
 
 **Orchestrator** (`run_track1.py`, and later your existing **agent-eval** harness).
 agent-eval is where the adversarial-eval and judge-calibration machinery plug in: it
@@ -144,24 +167,25 @@ a safe default.
 blind spots correlate — the attacker misses exactly what the defender missed and the
 score looks great and means nothing. Use diverse model families, and keep the
 model-independent attackers (deterministic manifest check for Track 1; statistical
-linkage for Track 2) load-bearing so the score never depends on one model's blind spots.
+linkage for Track 2; knowledge-only signature match for Track 3) load-bearing so the
+score never depends on one model's blind spots.
 
 ## Extending the harness
 
-- **Track 2 (Expert Determination) — BUILT.** `score_reid.py` reads the background
-  population from `population_ref` and reports k-anonymity + prosecutor/journalist/
-  marketer risk over the generalized QI set in `qi_model.py`. The default population is
-  synthetic (same `make_person` distribution as the corpus); swapping `make_person` for a
-  Synthea driver upgrades *both* the corpus and the population at once and restores
-  realistic equivalence-class sizes. The QI set and generalization are the tuning knobs —
-  edit `qi_model.py` and both counts move together.
-- **Track 3 (inference) — designed, not built.** Add an LLM attacker that tries to derive
-  `identity_key` or a sensitive attribute from the scrubbed note. This is where
-  agent-eval's judge calibration is essential, since ground truth can't be enumerated.
-- **Utility scorer — the missing second axis.** Both tracks measure privacy only. Adding
-  a utility metric (does the scrubbed note still support NER / phenotype extraction / a
-  CDS trigger?) turns the output from a leaderboard into the privacy-utility frontier the
-  harness is really after.
+- **Track 3 (inference) — BUILT (baseline).** `score_inference.py` runs an attacker over
+  the `--inference` vignettes and scores recovery of the withheld diagnosis, emitting
+  agent-eval JSONL. The bundled `signature-match-v0` is model-independent. **The real
+  next step here is the LLM attacker + judge:** register an LLM attacker in
+  `inference_attackers.py` (respecting the no-shared-base-model rule) and move scoring to
+  agent-eval's LLM judge for semantic grading of free-text guesses and confidence
+  calibration. See `references/inference-threat.md`.
+- **Utility scorer — the missing second axis.** All three tracks measure privacy only.
+  Adding a utility metric (does the scrubbed note still support NER / phenotype
+  extraction / a CDS trigger?) turns the output from a leaderboard into the
+  privacy-utility frontier the harness is really after. Highest-leverage next build.
+- **Population / data fidelity.** Swap `make_person` for a Synthea driver to upgrade the
+  corpus, the Track 2 population, and the Track 3 vignettes' realism at once — this is
+  what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate.
 
 ## Reference files
 
@@ -169,6 +193,12 @@ linkage for Track 2) load-bearing so the score never depends on one model's blin
   generator or writing any scorer; every scorer depends on it.
 - `references/safe-harbor-identifiers.md` — the 18 identifier categories as the Track 1
   test taxonomy, and where Safe Harbor and Expert Determination diverge.
+- `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
+  equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
+  marketer). Read before changing `qi_model.py` or `score_reid.py`.
+- `references/inference-threat.md` — the Track 3 contract: inference vs leakage, the
+  withheld-target invariant, programmatic-vs-judged scoring, and how the inference
+  attacker plugs into agent-eval. Read before changing the inference generator or scorer.
 - `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
   equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
   marketer). Read before changing `qi_model.py` or `score_reid.py`.

@@ -4,3 +4,5 @@ runs.jsonl
 leakage_report.json
 population.jsonl
 reid_report.json
+inference_report.json
+inference_eval.jsonl

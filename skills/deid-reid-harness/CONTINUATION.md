@@ -58,8 +58,31 @@ anchored on k≥5 with all three risks reported. Known caveat (stated in the rep
 `caveats` field): v0's uniform ZIP3 inflates sample uniqueness, so prosecutor/k-anonymity
 are an upper bound and the population-side risks are load-bearing.
 
-**Track 3 — DESIGNED, NOT BUILT.** The manifest already carries its inputs
-(`identity_key`, the `quasi_identifiers` profile), so no corpus regeneration is needed.
+**Track 3 (inference) — BUILT (deterministic baseline).** `--inference` attaches a
+diagnosis-free vignette per record (`inference_case`), rendered from a per-diagnosis
+clinical signature with the diagnosis name withheld and enforced absent by
+`inference_self_test`. `inference_attackers.py` is a registry (like the defenders) with a
+model-independent `signature-match-v0` baseline; `score_inference.py` scores recovery of
+the withheld diagnosis and emits agent-eval JSONL:
+
+```bash
+python generate_corpus.py --n 50 --seed 20260101 --inference --out corpus.json
+python score_inference.py --corpus corpus.json --out inference_report.json --eval-out inference_eval.jsonl
+python ../../agent-eval/scripts/score_eval.py inference_eval.jsonl   # optional aggregate/diff
+```
+
+Verified output (n=50): overall recovery ~0.94 (rare 1.0, common 0.93, abstain 0.06).
+Vignettes carry no direct identifiers (Safe Harbor passes them) yet the signature leaks
+the diagnosis — pure inference. Settled build decisions (recommended defaults; the
+AskUserQuestion prompt was interrupted so they were confirmed by the user's "continue"):
+inference-proper via signatures; deterministic programmatic scoring on the closed
+diagnosis set + documented agent-eval judge path; interface+mock, no live LLM calls
+(reversible — a live attacker is just a new registry entry). RNG-isolated (`seed+2`) so
+Tracks 1/2 stay byte-identical (verified: Track 1 still 0.449 on an --inference corpus).
+
+**The real Track 3 next step is the LLM attacker + judge** (see below) — the baseline
+proves the loop and the threat; a live model is strictly stronger and needs agent-eval's
+semantic judge + calibration.
 
 ## Decisions already made (treat as settled unless the user reopens them)
 
@@ -82,29 +105,35 @@ are an upper bound and the population-side risks are load-bearing.
   a utility scorer (does the scrubbed note still support NER / phenotype extraction / a
   CDS trigger?) is a legitimate parallel next step.
 - **Attacker and defender must never share a base model.** Correlated blind spots =
-  falsely optimistic scores. Keep the model-independent attackers (Track 1's
-  manifest check; Track 2's statistical linkage) load-bearing.
+  falsely optimistic scores. Keep the model-independent attackers (Track 1's manifest
+  check; Track 2's statistical linkage; Track 3's signature-match baseline) load-bearing.
+  When an LLM attacker is added it must also differ from the judge that grades it.
 
 ## Swap points (already designed for extension)
 
 - **Real data:** `make_person()` in `generate_corpus.py` is the ONLY function to replace
   to drop in a Synthea driver (the user has fhir-synthea-lab). Injection + manifest
-  machinery stay put.
+  machinery stay put; corpus, Track 2 population, and Track 3 vignettes all upgrade at once.
 - **Defender:** registry in `deid_pipelines.py`. Add rule-based / LLM / hybrid scrubbers
   as new `DeidPipeline` subclasses. Pipelines that return redaction spans get exact
   scoring; black-box ones return `None` and the scorer falls back to presence checks.
+- **Inference attacker:** registry in `inference_attackers.py`. Add an LLM attacker as a
+  new `InferenceAttacker` subclass returning `{guess, confidence, rationale}`; move
+  scoring to agent-eval's judge for free-text guesses.
 
 ## Recommended next build (in order)
 
-1. **Utility scorer.** Both tracks now measure privacy only. Add the second axis (does
+1. **Track 3 LLM attacker + judge.** The deterministic baseline is in; the real threat
+   model is an LLM attacker registered in `inference_attackers.py` with scoring moved to
+   agent-eval's LLM judge (semantic grading of free-text guesses + confidence
+   calibration). This is where agent-eval becomes load-bearing rather than optional.
+2. **Utility scorer.** All three tracks measure privacy only. Add the second axis (does
    the scrubbed note still support NER / phenotype extraction / a CDS trigger?) so results
    become the privacy-utility frontier, not a leaderboard. Smallest, highest-leverage
-   next step.
-2. **Track 3 (inference).** LLM attacker deriving `identity_key` / sensitive attributes
-   from scrubbed text, orchestrated and calibrated through the existing agent-eval skill.
-3. **Population fidelity.** Swap `make_person` for a Synthea driver so both the corpus and
-   the Track 2 population get realistic geography — this is what turns Track 2's
-   uniform-ZIP3 upper bound into a defensible risk estimate.
+   structural step.
+3. **Population / data fidelity.** Swap `make_person` for a Synthea driver so the corpus,
+   the Track 2 population, and the Track 3 vignettes all get realistic clinical structure
+   — this is what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate.
 
 ## Known limitations to keep visible
 
@@ -115,3 +144,8 @@ are an upper bound and the population-side risks are load-bearing.
 - The fallback presence-check scorer is approximate even with its per-literal
   occurrence budget (a surviving coincidental substring still counts against the
   budget). Prefer span-reporting defenders so scoring stays exact.
+- Track 3's inference is idealized: each diagnosis has one clean signature and the
+  baseline attacker shares that vocabulary, so recovery (~0.94) is an upper-ish bound on
+  what a *keyword* attacker manages, and a lower bound on what a strong LLM would do from
+  subtler context. Real inference draws on comorbidities, meds, temporal patterns, and
+  writing style the signatures don't model. The LLM-attacker swap is what closes this.
