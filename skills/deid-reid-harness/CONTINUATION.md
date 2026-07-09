@@ -26,7 +26,7 @@ number.
 
 ```bash
 cd scripts
-python generate_corpus.py --n 50 --seed 20260101 --out corpus.json
+python generate_corpus.py --n 50 --seed 20260101 --population 100000 --out corpus.json
 python run_track1.py --corpus corpus.json --pipeline regex-baseline-v0 --out runs.jsonl
 python score_leakage.py --runs runs.jsonl --out leakage_report.json
 ```
@@ -39,9 +39,27 @@ thesis; a single averaged score would hide it. The report also emits
 `categories_not_exercised` so the number is never read as coverage of all 18 categories
 when the corpus only injects 8.
 
-**Tracks 2 and 3 — DESIGNED, NOT BUILT.** The manifest already carries their inputs
-(`quasi_identifiers` profile, `identity_key`, and an empty `population_ref` slot), so no
-corpus regeneration is needed to add them.
+**Track 2 (Expert Determination) — BUILT and VERIFIED.** `--population N` on the
+generator emits a background population (`population.jsonl`, sets `population_ref`); the
+new `score_reid.py` reads it and reports k-anonymity + prosecutor/journalist/marketer
+risk over the generalized QI set in `qi_model.py`:
+
+```bash
+python score_reid.py --corpus corpus.json --out reid_report.json
+```
+
+Verified output (n=50, population 100k): the released cohort is not k-anonymous (min_k=1,
+prosecutor risk 1.0) and **6/50 records are unique against the full 100k population**
+(mean journalist/marketer risk ≈ 0.37). That is the divergence made concrete: a note
+that passes Safe Harbor is still an Expert Determination failure through QIs that must
+clinically remain. Settled build decisions (confirmed with the user): population size
+100k, generalized QIs (age→5-yr bands 90+ capped; sex/zip3/rare_diagnosis raw), verdict
+anchored on k≥5 with all three risks reported. Known caveat (stated in the report's
+`caveats` field): v0's uniform ZIP3 inflates sample uniqueness, so prosecutor/k-anonymity
+are an upper bound and the population-side risks are load-bearing.
+
+**Track 3 — DESIGNED, NOT BUILT.** The manifest already carries its inputs
+(`identity_key`, the `quasi_identifiers` profile), so no corpus regeneration is needed.
 
 ## Decisions already made (treat as settled unless the user reopens them)
 
@@ -50,10 +68,11 @@ corpus regeneration is needed to add them.
    every span, so leakage is a yes/no fact. This is why Track 1 shipped first.
 2. **Manifest schema is frozen (v1).** See `references/manifest-schema.md`. Every scorer
    depends on it. Don't change span/offset semantics without updating all scorers.
-3. **Population-model fidelity is deferred, not forgotten.** `population_ref` exists in
-   the schema, empty, awaiting the Expert Determination denominator. Its size and risk
-   model (prosecutor vs. journalist vs. marketer) are a deliberate open decision for the
-   user — ask before choosing.
+3. **Population and risk model — decided for v0.** `population_ref` is now populated by
+   `--population N`. Size 100k, generalized QIs, k≥5 verdict with prosecutor/journalist/
+   marketer all reported (see `references/expert-determination.md`). Population *fidelity*
+   is still deferred: the v0 denominator is synthetic with uniform ZIP3; a Synthea-backed
+   population (the `make_person` swap) is the realism upgrade.
 
 ## Two invariants that keep the harness honest (do not violate)
 
@@ -77,15 +96,15 @@ corpus regeneration is needed to add them.
 
 ## Recommended next build (in order)
 
-1. **Track 2 (Expert Determination).** Generate a large Synthea background population,
-   write it to `population_ref`, and add a statistical-linkage scorer (k-anonymity /
-   population uniqueness + prosecutor/journalist/marketer risk) as a sibling to
-   `score_leakage.py`. This is where a Safe Harbor pass gets exposed as an Expert
-   Determination failure — the divergence the harness exists to demonstrate. Confirm
-   population size and risk model with the user first.
-2. **Utility scorer.** Add the second axis so results become a frontier.
-3. **Track 3 (inference).** LLM attacker deriving `identity_key` / sensitive attributes
+1. **Utility scorer.** Both tracks now measure privacy only. Add the second axis (does
+   the scrubbed note still support NER / phenotype extraction / a CDS trigger?) so results
+   become the privacy-utility frontier, not a leaderboard. Smallest, highest-leverage
+   next step.
+2. **Track 3 (inference).** LLM attacker deriving `identity_key` / sensitive attributes
    from scrubbed text, orchestrated and calibrated through the existing agent-eval skill.
+3. **Population fidelity.** Swap `make_person` for a Synthea driver so both the corpus and
+   the Track 2 population get realistic geography — this is what turns Track 2's
+   uniform-ZIP3 upper bound into a defensible risk estimate.
 
 ## Known limitations to keep visible
 
