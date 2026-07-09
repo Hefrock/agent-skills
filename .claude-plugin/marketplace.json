@@ -21,6 +21,18 @@
       "homepage": "https://github.com/Hefrock/agent-skills"
     },
     {
+      "name": "deid-reid-harness",
+      "description": "Adversarial de-identification vs re-identification eval harness for clinical text — generates synthetic notes with ground-truth identifier spans, runs a pluggable de-id pipeline, and scores Safe Harbor leakage by category × surface form × context. Track 1 verified; Tracks 2-3 (Expert Determination, LLM inference) designed.",
+      "author": { "name": "Hefrock" },
+      "category": "agent-design",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./deid-reid-harness"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
       "name": "wiki-operator",
       "description": "Operates a Karpathy-style personal knowledge wiki via Obsidian MCP — searches before writing, updates existing concept pages over creating duplicates, merges redundant notes, and maintains links. Requires Obsidian MCP connected.",
       "author": { "name": "Hefrock" },
