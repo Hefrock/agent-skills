@@ -15,9 +15,11 @@ function that would change to swap in fhir-synthea-lab output.
 
 Usage:
     python generate_corpus.py --n 50 --seed 20260101 --out corpus.json
+    # also emit a background population for Track 2 (Expert Determination):
+    python generate_corpus.py --n 50 --seed 20260101 --population 100000 --out corpus.json
 """
 from __future__ import annotations
-import argparse, json, random, string
+import argparse, json, os, random, string
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -240,7 +242,6 @@ def self_test(corpus: dict) -> None:
 
 
 def main():
-    import os
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=50)
     ap.add_argument("--seed", type=int, default=20260101)
