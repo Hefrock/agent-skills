@@ -17,11 +17,14 @@ Usage:
     python generate_corpus.py --n 50 --seed 20260101 --out corpus.json
     # also emit a background population for Track 2 (Expert Determination):
     python generate_corpus.py --n 50 --seed 20260101 --population 100000 --out corpus.json
+    # also attach diagnosis-free inference vignettes for Track 3:
+    python generate_corpus.py --n 50 --seed 20260101 --inference --out corpus.json
 """
 from __future__ import annotations
 import argparse, json, os, random, string
 from dataclasses import dataclass, field
 from typing import Callable
+from qi_model import age_band
 
 # --- Segment-based note builder -------------------------------------------------
 # A note is a list of Segment objects. Plain segments are literal text; identifier
@@ -71,6 +74,52 @@ CITIES = ["Springfield", "Riverton", "Fairview", "Lakeside", "Georgetown"]
 DIAGNOSES = ["community-acquired pneumonia", "type 2 diabetes", "acute gout flare",
              "atrial fibrillation", "cellulitis of the left leg", "migraine"]
 RARE = ["Fabry disease", "acute intermittent porphyria", "Erdheim-Chester disease"]
+
+# --- Clinical signatures for the inference track (Track 3) -----------------------
+# Each diagnosis maps to an `anchor` (a near-pathognomonic finding) and `supporting`
+# features (some deliberately shared across diagnoses — e.g. "fever and chills"). The
+# inference note (see build_inference_case) renders a diagnosis-FREE vignette from
+# these, so the target diagnosis is DERIVABLE from context but never stated. That is
+# the whole point of Track 3: inference, not leakage. None of these phrases contains
+# its own diagnosis name — enforced by inference_self_test().
+DIAGNOSIS_SIGNATURES = {
+    "community-acquired pneumonia": {
+        "anchor": "a lobar infiltrate on chest radiograph",
+        "supporting": ["a productive cough", "fever and chills",
+                       "focal crackles on auscultation", "pleuritic chest pain"]},
+    "type 2 diabetes": {
+        "anchor": "an HbA1c of 8.9% with a fasting glucose over 200",
+        "supporting": ["polyuria and polydipsia", "unintentional weight loss",
+                       "blurred vision", "fatigue"]},
+    "acute gout flare": {
+        "anchor": "monosodium urate crystals on joint aspiration",
+        "supporting": ["acute pain and swelling of the first toe", "onset overnight",
+                       "a markedly elevated serum urate", "a single warm red joint"]},
+    "atrial fibrillation": {
+        "anchor": "an irregularly irregular rhythm with absent P waves on ECG",
+        "supporting": ["palpitations", "a rapid ventricular rate", "lightheadedness",
+                       "exertional breathlessness"]},
+    "cellulitis of the left leg": {
+        "anchor": "a sharply demarcated area of spreading erythema over the lower leg",
+        "supporting": ["warmth and tenderness", "fever and chills", "swelling of the limb",
+                       "a skin portal of entry"]},
+    "migraine": {
+        "anchor": "a recurrent unilateral throbbing headache with photophobia",
+        "supporting": ["nausea", "relief with rest in a dark room",
+                       "a visual aura preceding the pain", "phonophobia"]},
+    "Fabry disease": {
+        "anchor": "reduced alpha-galactosidase A activity on enzyme assay",
+        "supporting": ["acroparesthesias of the hands and feet", "clusters of angiokeratomas",
+                       "corneal verticillata on slit-lamp exam", "hypohidrosis"]},
+    "acute intermittent porphyria": {
+        "anchor": "elevated urinary porphobilinogen with urine that darkens on standing",
+        "supporting": ["severe diffuse abdominal pain without peritoneal signs",
+                       "hyponatremia", "tachycardia and hypertension", "a peripheral neuropathy"]},
+    "Erdheim-Chester disease": {
+        "anchor": "bilateral symmetric osteosclerosis of the long bones with a BRAF V600E mutation",
+        "supporting": ["xanthomatous infiltration", "retroperitoneal fibrosis",
+                       "diabetes insipidus", "periaortic sheathing"]},
+}
 
 def make_person(rng: random.Random) -> dict:
     rare = rng.random() < 0.15
@@ -180,8 +229,40 @@ def build_note(person: dict, rng: random.Random) -> Note:
 
 # --- Driver --------------------------------------------------------------------
 
-def generate(n_records: int, seed: int) -> dict:
+def build_inference_case(person: dict, rng: random.Random) -> dict:
+    """A diagnosis-FREE clinical vignette + the withheld diagnosis as ground truth.
+
+    The vignette renders the diagnosis's signature (anchor + a random subset of
+    supporting features) plus coarse demographics that survive Safe Harbor (age band,
+    sex). The diagnosis is DERIVABLE from this context but never named — so Track 3
+    tests inference, not the surface leakage Track 1 measures. The anchor is dropped
+    ~30% of the time so difficulty varies: notes reduced to shared, non-specific
+    features are genuinely ambiguous, which is what makes the attacker's score < 100%.
+    """
+    sig = DIAGNOSIS_SIGNATURES[person["diagnosis"]]
+    phrases = []
+    if rng.random() < 0.70:
+        phrases.append(sig["anchor"])
+    k = rng.randint(1, 3)
+    phrases += rng.sample(sig["supporting"], min(k, len(sig["supporting"])))
+    rng.shuffle(phrases)
+    sex_word = "woman" if person["sex"] == "F" else "man"
+    note = (f"De-identified vignette: a {age_band(person['age'])} {sex_word} presents "
+            f"with {'; '.join(phrases)}. Working diagnosis withheld for inference testing.")
+    return {
+        "target_attribute": "diagnosis",
+        "target_value": person["diagnosis"],
+        "is_rare": person["rare"],
+        "note": note,
+    }
+
+
+def generate(n_records: int, seed: int, with_inference: bool = False) -> dict:
     rng = random.Random(seed)
+    # Isolated RNG for the inference-note layer (anchor dropout, feature subset), so
+    # enabling inference never perturbs the main stream — the Track 1/2 corpus is
+    # byte-identical with or without --inference.
+    inf_rng = random.Random(seed + 2) if with_inference else None
     records = []
     for i in range(n_records):
         person = make_person(rng)
@@ -190,7 +271,7 @@ def generate(n_records: int, seed: int) -> dict:
         rid = f"rec-{i:06d}"
         for j, s in enumerate(spans):
             s["span_id"] = f"{rid}:s{j:02d}"
-        records.append({
+        rec = {
             "record_id": rid,
             "identity_key": f"person-{i:06d}",
             "note_text": text,
@@ -200,7 +281,10 @@ def generate(n_records: int, seed: int) -> dict:
                 "admission_date": person["admission"], "rare_diagnosis": person["rare"],
                 "facility_id": person["facility"],
             },
-        })
+        }
+        if with_inference:
+            rec["inference_case"] = build_inference_case(person, inf_rng)
+        records.append(rec)
     return {"manifest_version": "1", "seed": seed, "generator": "synthetic-v0",
             "population_ref": None, "records": records}
 
@@ -241,6 +325,20 @@ def self_test(corpus: dict) -> None:
         raise AssertionError(f"{bad} spans failed the offset invariant — corpus invalid")
 
 
+def inference_self_test(corpus: dict) -> None:
+    """Enforce the inference invariant: the withheld diagnosis is NEVER stated in the
+    vignette the attacker sees. If it were, Track 3 would measure leakage, not
+    inference — so this is checked at generation time, not trusted."""
+    leaked = 0
+    for rec in corpus["records"]:
+        case = rec.get("inference_case")
+        if case and case["target_value"].lower() in case["note"].lower():
+            leaked += 1
+    if leaked:
+        raise AssertionError(
+            f"{leaked} inference notes state their own target diagnosis — not inference")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=50)
@@ -249,11 +347,16 @@ def main():
     ap.add_argument("--population", type=int, default=0,
                     help="if >0, also emit a background population of this size for Track 2")
     ap.add_argument("--population-out", default="population.jsonl")
+    ap.add_argument("--inference", action="store_true",
+                    help="attach a diagnosis-free inference vignette per record for Track 3")
     args = ap.parse_args()
-    # Corpus is generated first and independently, so adding --population never
-    # perturbs its RNG stream — the Track 1 corpus is byte-identical with or without it.
-    corpus = generate(args.n, args.seed)
+    # Corpus is generated first and independently, so adding --population or --inference
+    # never perturbs the main RNG stream — the Track 1 corpus is byte-identical with or
+    # without either flag (inference uses a disjoint derived RNG).
+    corpus = generate(args.n, args.seed, with_inference=args.inference)
     self_test(corpus)
+    if args.inference:
+        inference_self_test(corpus)
 
     if args.population > 0:
         # Derived-but-independent seed: reproducible from --seed, disjoint from the
@@ -274,6 +377,9 @@ def main():
     if args.population > 0:
         print(f"Wrote background population of {args.population} QI profiles "
               f"-> {args.population_out}  (population_ref set)")
+    if args.inference:
+        print(f"Attached {len(corpus['records'])} inference vignettes "
+              f"(diagnosis withheld) for Track 3.")
 
 
 if __name__ == "__main__":

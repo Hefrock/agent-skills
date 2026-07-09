@@ -22,7 +22,7 @@
     },
     {
       "name": "deid-reid-harness",
-      "description": "Adversarial de-identification vs re-identification eval harness for clinical text — generates synthetic notes with ground-truth identifier spans and a background population, then scores Safe Harbor leakage (Track 1) and Expert Determination re-id risk (Track 2: k-anonymity + prosecutor/journalist/marketer). Tracks 1-2 verified; Track 3 (LLM inference) designed.",
+      "description": "Adversarial de-identification vs re-identification eval harness for clinical text — generates synthetic notes with ground-truth identifier spans, a background population, and diagnosis-free inference vignettes, then scores three attacks separately: Safe Harbor leakage (Track 1), Expert Determination re-id risk (Track 2: k-anonymity + prosecutor/journalist/marketer), and free-text inference (Track 3: recovering a withheld diagnosis, with an agent-eval judge path). All three verified offline; LLM attacker/judge is a documented swap-in.",
       "author": { "name": "Hefrock" },
       "category": "agent-design",
       "source": "./skills",
