@@ -36,40 +36,64 @@ models with three different standards. Never collapse them into one number:
 A Safe Harbor pass can still be an Expert Determination failure. That divergence is the
 whole point of the harness — surface it, don't hide it.
 
-## What this slice builds (Track 1)
+## What this slice builds (Tracks 1 and 2)
 
-This slice implements Track 1 (Safe Harbor leakage) **end to end**, because it is the
+**Track 1 (Safe Harbor leakage)** is implemented **end to end** first, because it is the
 only track that is deterministically scorable — you get a working closed loop with
-trustworthy numbers before touching the harder tracks. Tracks 2 and 3 are designed for
-but not yet scored; the manifest already carries their inputs so no corpus regeneration
-is needed later.
+trustworthy numbers before touching the harder tracks. **Track 2 (Expert Determination)**
+is now built too: a statistical-linkage attacker that needs no LLM judge either, so it
+is the second load-bearing, model-independent scorer. Track 3 (inference) is designed
+but not yet scored; the manifest already carries its inputs so no corpus regeneration is
+needed later.
 
-The closed loop:
+The closed loops:
 
 ```
-generate_corpus.py  ->  run_track1.py  ->  score_leakage.py
+generate_corpus.py  ->  run_track1.py  ->  score_leakage.py     (Track 1: Safe Harbor)
    (synthetic notes       (defender runs        (deterministic Safe
     + ground-truth          over corpus)          Harbor coverage,
-    manifest)                                     sliced by cat×form×context)
+    manifest + optional                           sliced by cat×form×context)
+    background population)
+
+generate_corpus.py  ------------------->  score_reid.py          (Track 2: Expert Det.)
+   (--population N emits                      (statistical linkage:
+    the denominator)                           k-anonymity + prosecutor/
+                                               journalist/marketer risk)
 ```
 
 ## Running it
 
 ```bash
 cd scripts
-python generate_corpus.py --n 50 --seed 20260101 --out corpus.json
+# Track 1 — Safe Harbor leakage
+python generate_corpus.py --n 50 --seed 20260101 --population 100000 --out corpus.json
 python run_track1.py --corpus corpus.json --pipeline regex-baseline-v0 --out runs.jsonl
 python score_leakage.py --runs runs.jsonl --out leakage_report.json
+
+# Track 2 — Expert Determination re-id risk (reads population_ref from the corpus)
+python score_reid.py --corpus corpus.json --out reid_report.json
 ```
 
-The bundled `regex-baseline-v0` defender is deliberately weak. On the default corpus it
-scores ~0.45 Safe Harbor coverage, and the breakdown is the point: ISO dates are caught
-100%, but spelled-out and narrative dates 0%, names 0%, and the patient's city and
-facility code 0%. That is the `category × surface_form × context` diagnostic working as
-intended — a single averaged number would have hidden exactly the gaps that matter. The
-report also lists `categories_not_exercised` — the Safe Harbor categories the corpus
-never injects (fax, URL, IP, device IDs, …) — so a coverage number over 8 categories is
-never mistaken for coverage of the full 18-item checklist.
+**Track 1.** The bundled `regex-baseline-v0` defender is deliberately weak. On the
+default corpus it scores ~0.45 Safe Harbor coverage, and the breakdown is the point: ISO
+dates are caught 100%, but spelled-out and narrative dates 0%, names 0%, and the
+patient's city and facility code 0%. That is the `category × surface_form × context`
+diagnostic working as intended — a single averaged number would have hidden exactly the
+gaps that matter. The report also lists `categories_not_exercised` — the Safe Harbor
+categories the corpus never injects (fax, URL, IP, device IDs, …) — so a coverage number
+over 8 categories is never mistaken for coverage of the full 18-item checklist.
+
+**Track 2.** Against a 100k-person background population, every one of the 50 notes is
+unique on its generalized QIs (age band, sex, ZIP3, rare-diagnosis flag) — so the
+released cohort is **not k-anonymous at any k ≥ 2** (min_k = 1), prosecutor risk is 1.0,
+and **6 of 50 records are unique even against the full 100,000-person population** (mean
+journalist/marketer risk ≈ 0.37). Read against Track 1, that is the entire thesis in one
+run: a note whose 18 direct identifiers are perfectly scrubbed (Safe Harbor pass) is
+still a re-identification target through the QIs that must clinically remain (Expert
+Determination fail). One caveat the report states in-band: the v0 generator draws ZIP3
+uniformly, so the QI space is more dispersed than real geography — the prosecutor /
+k-anonymity numbers are an upper bound, and the population-side risks are the
+load-bearing figures. A Synthea-backed population restores realistic class sizes.
 
 ## Architecture — four swappable parts + your eval harness as orchestrator
 
@@ -91,11 +115,15 @@ hybrid — comparing pipelines on one frontier is the deliverable. A pipeline th
 its redaction spans gets exact scoring; a black-box pipeline returns `None` and the
 scorer falls back to surface-string presence checks.
 
-**Re-id attacker / scorer** (`score_leakage.py` = the Track 1 attacker). For Track 1 the
-"attacker" is deterministic: did each ground-truth span survive? Output is coverage
-sliced by category, by category×surface-form, and by context — never averaged into one
-figure. Tracks 2 and 3 add the statistical-linkage attacker and the LLM-inference
-attacker as sibling scorers.
+**Re-id attackers / scorers** (`score_leakage.py` = Track 1; `score_reid.py` = Track 2).
+For Track 1 the attacker is deterministic: did each ground-truth span survive? Output is
+coverage sliced by category, by category×surface-form, and by context — never averaged
+into one figure. For Track 2 the attacker is statistical: over the generalized QI
+equivalence classes it computes k-anonymity and prosecutor/journalist/marketer risk
+against the background population (`qi_model.py` holds the one generalization both the
+population generator and the scorer share). Both are model-independent, so neither can
+share a base model with the defender. Track 3 adds the LLM-inference attacker as a
+sibling scorer.
 
 **Orchestrator** (`run_track1.py`, and later your existing **agent-eval** harness).
 agent-eval is where the adversarial-eval and judge-calibration machinery plug in: it
@@ -118,17 +146,22 @@ score looks great and means nothing. Use diverse model families, and keep the
 model-independent attackers (deterministic manifest check for Track 1; statistical
 linkage for Track 2) load-bearing so the score never depends on one model's blind spots.
 
-## Extending to Tracks 2 and 3
+## Extending the harness
 
-- **Track 2 (Expert Determination).** Generate a large Synthea **background population**
-  and write it to `population_ref`; the corpus already emits each record's
-  `quasi_identifiers` profile. Add a statistical-linkage scorer computing population
-  uniqueness / k-anonymity and prosecutor-vs-journalist-vs-marketer risk. Decide
-  population size and risk model deliberately — this is the most novel, highest-surface
-  piece.
-- **Track 3 (inference).** Add an LLM attacker that tries to derive `identity_key` or a
-  sensitive attribute from the scrubbed note. This is where agent-eval's judge
-  calibration is essential, since ground truth can't be enumerated.
+- **Track 2 (Expert Determination) — BUILT.** `score_reid.py` reads the background
+  population from `population_ref` and reports k-anonymity + prosecutor/journalist/
+  marketer risk over the generalized QI set in `qi_model.py`. The default population is
+  synthetic (same `make_person` distribution as the corpus); swapping `make_person` for a
+  Synthea driver upgrades *both* the corpus and the population at once and restores
+  realistic equivalence-class sizes. The QI set and generalization are the tuning knobs —
+  edit `qi_model.py` and both counts move together.
+- **Track 3 (inference) — designed, not built.** Add an LLM attacker that tries to derive
+  `identity_key` or a sensitive attribute from the scrubbed note. This is where
+  agent-eval's judge calibration is essential, since ground truth can't be enumerated.
+- **Utility scorer — the missing second axis.** Both tracks measure privacy only. Adding
+  a utility metric (does the scrubbed note still support NER / phenotype extraction / a
+  CDS trigger?) turns the output from a leaderboard into the privacy-utility frontier the
+  harness is really after.
 
 ## Reference files
 
@@ -136,6 +169,9 @@ linkage for Track 2) load-bearing so the score never depends on one model's blin
   generator or writing any scorer; every scorer depends on it.
 - `references/safe-harbor-identifiers.md` — the 18 identifier categories as the Track 1
   test taxonomy, and where Safe Harbor and Expert Determination diverge.
+- `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
+  equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
+  marketer). Read before changing `qi_model.py` or `score_reid.py`.
 
 ## Standard traceability
 

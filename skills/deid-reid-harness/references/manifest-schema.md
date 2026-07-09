@@ -22,9 +22,13 @@ added later without regenerating corpora.
 }
 ```
 
-`population_ref` points at the denominator population used later by the Expert
-Determination track. It is written even when that track isn't scored yet, so the
-corpus and its reference population always travel together.
+`population_ref` points at the denominator population used by the Expert Determination
+track (Track 2). It is `null` until you generate with `--population N`, which emits a
+`population.jsonl` of QI profiles alongside the corpus and sets this field to its
+filename (resolved relative to the corpus). The corpus and its reference population thus
+always travel together. The population rows share the QI field names of a record's
+`quasi_identifiers` block by construction (see `generate_corpus.qi_profile`), so the
+generator and the scorer generalize them identically.
 
 ## RECORD
 
