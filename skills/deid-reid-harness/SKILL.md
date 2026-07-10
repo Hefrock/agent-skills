@@ -124,7 +124,7 @@ what a defender *destroys*. `--utility` marks the clinical spans a good scrubber
 (diagnosis, age ≤ 89, sex — clinically necessary, non-identifying), and `score_frontier.py`
 gives each defender a `(privacy, utility)` pair. The two bundled defenders sit at opposite
 corners — `regex-baseline-v0` at **privacy 0.449 / utility 1.00** (barely redacts) and
-`over-redact-v0` at **privacy 0.704 / utility 0.60** (sweeps up names and dates but deletes
+`over-redact-v0` at **privacy 0.900 / utility 0.60** (sweeps up names and dates but deletes
 every age and the capitalized diagnoses). Neither dominates; the gap between them is the
 frontier, and the whole reason a privacy score is never reported alone.
 
@@ -183,7 +183,7 @@ utility metric is meaningless. This is now enforced in code: `--utility` marks t
 clinical spans a scrubber must keep, `score_utility.py` measures preservation, and
 `score_frontier.py` plots each defender as a `(privacy, utility)` point. The real
 deliverable is that **frontier** across pipelines, not a leaderboard; over-redaction is a
-measured cost (`over-redact-v0` buys privacy 0.45→0.70 by dropping utility 1.0→0.60), not
+measured cost (`over-redact-v0` buys privacy 0.45→0.90 by dropping utility 1.0→0.60), not
 a safe default.
 
 **Never let attacker and defender share a base model.** If both are the same LLM their

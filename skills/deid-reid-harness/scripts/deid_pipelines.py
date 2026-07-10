@@ -80,6 +80,12 @@ class OverRedactor(DeidPipeline):
     """
     name = "over-redact-v0"
     EXTRA = re.compile(r"\b(?:[A-Z][A-Za-z'.-]+|\S*\d\S*)\b")
+    # A gap made only of separators is bridged, so a multi-token identifier (e.g. a name
+    # "Sarah Alvarez", or "Alvarez, Sarah") collapses into ONE redacted span rather than
+    # two — otherwise Track 1's single-span coverage rule would score a fully-redacted
+    # name as leaked. The gap must contain no letters, so lowercase clinical content
+    # (diagnosis, sex) between capitalized tokens is never swallowed.
+    SEP_GAP = re.compile(r"[\s,.;:/()\-]*")
 
     def scrub(self, text: str):
         hits = []
@@ -91,9 +97,11 @@ class OverRedactor(DeidPipeline):
         hits.sort()
         merged = []
         for s, e in hits:
-            if merged and s < merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], e))  # extend on overlap
-                continue
+            if merged:
+                ps, pe = merged[-1]
+                if s <= pe or self.SEP_GAP.fullmatch(text[pe:s]):  # overlap or separators-only gap
+                    merged[-1] = (ps, max(pe, e))
+                    continue
             merged.append((s, e))
         redacted = [{"start": s, "end": e, "text": text[s:e]} for s, e in merged]
         out = text

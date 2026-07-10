@@ -44,17 +44,18 @@ pair each, reusing the two model-independent scorers directly. On the default co
 | defender | privacy (Safe Harbor coverage) | utility (clinical preserved) |
 |----------|-------------------------------|------------------------------|
 | `regex-baseline-v0` | 0.449 | 1.000 |
-| `over-redact-v0` | 0.704 | 0.600 |
+| `over-redact-v0` | 0.900 | 0.600 |
 
 Read it as a tradeoff, not a ranking. The baseline barely redacts, so it leaks
 identifiers (low privacy) but keeps all clinical content (full utility). `over-redact-v0`
-sweeps up every capitalized token and every number — catching the names and spelled-out
-dates the baseline misses (privacy up to 0.70) — but in doing so it deletes every
-patient's **age** (a bare number: 0/50 preserved) and the **capitalized diagnoses** like
-"Fabry disease" (40/50), while lowercase diagnoses and `sex` survive. Neither defender
-dominates the other; the gap between them is the frontier. A third, smarter pipeline
-would try to push up and to the right of both — and this is exactly the plot on which to
-prove it did.
+sweeps up every capitalized token and every number, and merges redactions separated only
+by separators so a multi-token name collapses into one span — catching the names,
+spelled-out dates, and geography the baseline misses (privacy up to 0.90) — but in doing
+so it deletes every patient's **age** (a bare number: 0/50 preserved) and the
+**capitalized diagnoses** like "Fabry disease" (40/50), while lowercase diagnoses and
+`sex` survive. Neither defender dominates the other; the gap between them is the frontier.
+A third, smarter pipeline would try to push up and to the right of both — and this is
+exactly the plot on which to prove it did.
 
 ## Why this stays model-independent
 

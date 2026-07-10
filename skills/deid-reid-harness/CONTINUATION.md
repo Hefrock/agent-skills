@@ -97,10 +97,12 @@ python score_frontier.py --corpus corpus.json --out frontier.json
 ```
 
 Verified frontier (n=50): `regex-baseline-v0` at privacy 0.449 / utility 1.00 (under-
-redacts), `over-redact-v0` at privacy 0.704 / utility 0.60 (catches names+dates but
+redacts), `over-redact-v0` at privacy 0.900 / utility 0.60 (catches names+dates but
 deletes every age and the capitalized diagnoses; age utility 0/50, diagnosis 40/50, sex
 50/50). Neither dominates — the gap is the frontier. This closes the harness's own
-cardinal gap: privacy was previously reported with no paired utility.
+cardinal gap: privacy was previously reported with no paired utility. (over-redact merges
+redactions separated only by separators, so a fully-redacted multi-token name counts as
+covered under Track 1's single-span rule rather than scoring as leaked.)
 
 ## Decisions already made (treat as settled unless the user reopens them)
 
