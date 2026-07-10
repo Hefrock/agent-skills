@@ -21,6 +21,8 @@ Usage:
     python generate_corpus.py --n 50 --seed 20260101 --inference --out corpus.json
     # also mark clinical spans for the utility axis / privacy-utility frontier:
     python generate_corpus.py --n 50 --seed 20260101 --utility --out corpus.json
+    # source real people from Synthea FHIR output instead of make_person:
+    python generate_corpus.py --person-source fhir-synthea --fhir-dir ./synthea_output --out corpus.json
 """
 from __future__ import annotations
 import argparse, json, os, random, string
@@ -280,7 +282,13 @@ def build_inference_case(person: dict, rng: random.Random) -> dict:
 
 
 def generate(n_records: int, seed: int, with_inference: bool = False,
-             with_utility: bool = False) -> dict:
+             with_utility: bool = False, source=None) -> dict:
+    # Default person source wraps make_person, so the corpus is byte-identical to before.
+    # A FHIR/Synthea source (person_sources.FhirSynthaSource) swaps in real demographics
+    # without touching the injection/manifest machinery below.
+    if source is None:
+        from person_sources import SyntheticSource
+        source = SyntheticSource(make_person)
     rng = random.Random(seed)
     # Isolated RNG for the inference-note layer (anchor dropout, feature subset), so
     # enabling inference never perturbs the main stream — the Track 1/2 corpus is
@@ -288,7 +296,7 @@ def generate(n_records: int, seed: int, with_inference: bool = False,
     inf_rng = random.Random(seed + 2) if with_inference else None
     records = []
     for i in range(n_records):
-        person = make_person(rng)
+        person = source.person(i, rng)
         note = build_note(person, rng)
         text, spans, clinical = note.render()
         rid = f"rec-{i:06d}"
@@ -314,7 +322,7 @@ def generate(n_records: int, seed: int, with_inference: bool = False,
         if with_inference:
             rec["inference_case"] = build_inference_case(person, inf_rng)
         records.append(rec)
-    return {"manifest_version": "1", "seed": seed, "generator": "synthetic-v0",
+    return {"manifest_version": "1", "seed": seed, "generator": source.name,
             "population_ref": None, "records": records}
 
 
@@ -382,13 +390,27 @@ def main():
                     help="attach a diagnosis-free inference vignette per record for Track 3")
     ap.add_argument("--utility", action="store_true",
                     help="mark clinical spans (diagnosis, age, sex) that must survive scrubbing")
+    ap.add_argument("--person-source", default="synthetic-v0",
+                    help="synthetic-v0 (default) or fhir-synthea (needs --fhir-dir)")
+    ap.add_argument("--fhir-dir", default=None,
+                    help="directory of Synthea FHIR R4 patient bundles (for fhir-synthea)")
     args = ap.parse_args()
+
+    from person_sources import get_source
+    source = get_source(args.person_source, make_fn=make_person, fhir_dir=args.fhir_dir)
+    n = args.n
+    if hasattr(source, "__len__"):  # a file-backed source has a fixed supply of people
+        n = min(n, len(source))
+        if n < args.n:
+            print(f"note: {args.person_source} supplied only {n} patients "
+                  f"(requested {args.n}); using {n}.")
+
     # Corpus is generated first and independently, so adding --population, --inference,
     # or --utility never perturbs the main RNG stream — the Track 1 corpus is byte-
     # identical with any combination of flags (inference uses a disjoint derived RNG;
     # clinical spans are metadata over the note as generated).
-    corpus = generate(args.n, args.seed, with_inference=args.inference,
-                      with_utility=args.utility)
+    corpus = generate(n, args.seed, with_inference=args.inference,
+                      with_utility=args.utility, source=source)
     self_test(corpus)
     if args.inference:
         inference_self_test(corpus)

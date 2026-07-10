@@ -20,6 +20,7 @@ sys.path.insert(0, HERE)
 
 import generate_corpus as gc
 from deid_pipelines import get_pipeline, REGISTRY, REDACTION
+from person_sources import get_source, PERSON_KEYS
 import score_utility
 
 SEED, N, POP = 20260101, 50, 100000
@@ -181,6 +182,58 @@ class HeadlineNumbers(unittest.TestCase):
         r = run("score_crosstrack.py", "--corpus", plain, "--out", self._out("z.json"))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("--population AND --inference", r.stderr)
+
+
+class FhirPersonSource(unittest.TestCase):
+    """The Synthea/FHIR person source: real demographics flow through unchanged machinery."""
+    FIX = os.path.join(HERE, "fixtures", "fhir")
+
+    def test_parses_all_patients_with_required_keys(self):
+        src = get_source("fhir-synthea", fhir_dir=self.FIX)
+        self.assertEqual(len(src), 3)
+        for i in range(len(src)):
+            p = src.person(i, None)
+            for k in PERSON_KEYS:
+                self.assertIn(k, p, f"FHIR person missing {k}")
+
+    def test_field_mapping(self):
+        src = get_source("fhir-synthea", fhir_dir=self.FIX)
+        alice = next(p for p in src.persons if p["last"] == "Okafor")
+        self.assertEqual(alice["first"], "Adaeze")          # Synthea digit-suffix stripped
+        self.assertEqual(alice["sex"], "F")                 # gender female -> F
+        self.assertEqual(alice["zip3"], "021")              # from postalCode 02127
+        self.assertEqual(alice["age"], 2026 - 1979)         # from birthDate
+        self.assertEqual(alice["diagnosis"], "Fabry disease")  # mapped from SNOMED condition
+        self.assertTrue(alice["rare"])
+        self.assertEqual(alice["facility"], "Riverton General Hospital")
+
+    def test_full_pipeline_on_fhir_corpus(self):
+        src = get_source("fhir-synthea", fhir_dir=self.FIX)
+        c = gc.generate(3, 20260101, with_inference=True, with_utility=True, source=src)
+        gc.self_test(c)             # offset invariant holds on FHIR-sourced notes
+        gc.inference_self_test(c)   # withheld diagnosis absent from the vignette
+        self.assertEqual(len(c["records"]), 3)
+        self.assertEqual(c["generator"], "fhir-synthea")
+
+    def test_unknown_source_raises(self):
+        with self.assertRaises(KeyError):
+            get_source("bogus")
+
+    def test_missing_fhir_dir_raises(self):
+        with self.assertRaises(SystemExit):
+            get_source("fhir-synthea", fhir_dir="/no/such/dir")
+
+    def test_malformed_file_skipped_not_fatal(self):
+        tmp = tempfile.mkdtemp(prefix="fhirbad_")
+        try:
+            for name in os.listdir(self.FIX):
+                shutil.copy(os.path.join(self.FIX, name), tmp)
+            with open(os.path.join(tmp, "broken.json"), "w") as f:
+                f.write("{not valid json")
+            src = get_source("fhir-synthea", fhir_dir=tmp)  # must not raise
+            self.assertEqual(len(src), 3)  # the 3 good patients still parsed
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

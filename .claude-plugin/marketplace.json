@@ -22,7 +22,7 @@
     },
     {
       "name": "deid-reid-harness",
-      "description": "Adversarial de-identification vs re-identification eval harness for clinical text — generates synthetic notes with ground-truth identifier spans, a background population, diagnosis-free inference vignettes, and clinical spans, then scores three privacy attacks plus a utility axis: Safe Harbor leakage (Track 1), Expert Determination re-id risk (Track 2: k-anonymity + prosecutor/journalist/marketer), free-text inference (Track 3: recovering a withheld diagnosis, agent-eval judge path), and a privacy-utility frontier across de-id pipelines. All model-independent and verified offline; LLM attacker/judge is a documented swap-in.",
+      "description": "Adversarial de-identification vs re-identification eval harness for clinical text — generates synthetic notes with ground-truth identifier spans, a background population, diagnosis-free inference vignettes, and clinical spans, then scores three privacy attacks plus a utility axis: Safe Harbor leakage (Track 1), Expert Determination re-id risk (Track 2: k-anonymity + prosecutor/journalist/marketer), free-text inference (Track 3: recovering a withheld diagnosis, agent-eval judge path), and a privacy-utility frontier across de-id pipelines. All model-independent and verified offline. People come from a pluggable source — a synthetic default or a Synthea FHIR reader for real demographics; the LLM attacker/judge is a documented swap-in.",
       "author": { "name": "Hefrock" },
       "category": "agent-design",
       "source": "./skills",

@@ -1,0 +1,36 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "carla-pneumonia-003",
+        "name": [{"use": "official", "family": "Alvarez7", "given": ["Carla12"]}],
+        "gender": "female",
+        "birthDate": "1948-09-03",
+        "address": [{"city": "Lakeside", "state": "MA", "postalCode": "01432"}],
+        "telecom": [{"system": "phone", "value": "555-908-7715"}],
+        "identifier": [
+          {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "203-45-6612"},
+          {"type": {"coding": [{"code": "MR"}]}, "system": "urn:hospital", "value": "9910233"}
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "subject": {"reference": "Patient/carla-pneumonia-003"},
+        "code": {"coding": [{"system": "http://snomed.info/sct", "code": "385093006", "display": "Community acquired pneumonia (disorder)"}], "text": "Community acquired pneumonia"}
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Encounter",
+        "subject": {"reference": "Patient/carla-pneumonia-003"},
+        "period": {"start": "2026-03-28T08:40:00Z"},
+        "serviceProvider": {"display": "Lakeside Medical Center"}
+      }
+    }
+  ]
+}
