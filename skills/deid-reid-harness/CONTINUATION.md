@@ -84,6 +84,24 @@ Tracks 1/2 stay byte-identical (verified: Track 1 still 0.449 on an --inference 
 proves the loop and the threat; a live model is strictly stronger and needs agent-eval's
 semantic judge + calibration.
 
+**Utility axis + privacy-utility frontier — BUILT and VERIFIED.** `--utility` marks
+clinical spans that must SURVIVE scrubbing (diagnosis, age ≤ 89, sex — the mirror of
+identifier spans), in place over the note so the corpus stays byte-identical on the
+Track 1/2/3 fields (verified with all flags on). `score_utility.py` scores preservation;
+`score_frontier.py` reports `(privacy, utility)` per defender. A second defender,
+`over-redact-v0`, was added so the frontier has two contrasting corners:
+
+```bash
+python generate_corpus.py --n 50 --seed 20260101 --utility --out corpus.json
+python score_frontier.py --corpus corpus.json --out frontier.json
+```
+
+Verified frontier (n=50): `regex-baseline-v0` at privacy 0.449 / utility 1.00 (under-
+redacts), `over-redact-v0` at privacy 0.704 / utility 0.60 (catches names+dates but
+deletes every age and the capitalized diagnoses; age utility 0/50, diagnosis 40/50, sex
+50/50). Neither dominates — the gap is the frontier. This closes the harness's own
+cardinal gap: privacy was previously reported with no paired utility.
+
 ## Decisions already made (treat as settled unless the user reopens them)
 
 1. **Deterministic track first.** Track 1 is scored with no LLM judge — the generator
@@ -101,9 +119,9 @@ semantic judge + calibration.
 
 - **Privacy is never reported without a paired utility metric.** A scrubber that redacts
   everything has perfect privacy and zero value. The deliverable is a privacy-utility
-  frontier, not a leaderboard. Track 1 currently measures only the privacy axis; adding
-  a utility scorer (does the scrubbed note still support NER / phenotype extraction / a
-  CDS trigger?) is a legitimate parallel next step.
+  frontier, not a leaderboard. NOW ENFORCED: `--utility` + `score_utility.py` +
+  `score_frontier.py` give every defender a paired (privacy, utility) point. Keep it that
+  way — don't report a track's privacy number in isolation.
 - **Attacker and defender must never share a base model.** Correlated blind spots =
   falsely optimistic scores. Keep the model-independent attackers (Track 1's manifest
   check; Track 2's statistical linkage; Track 3's signature-match baseline) load-bearing.
@@ -120,6 +138,8 @@ semantic judge + calibration.
 - **Inference attacker:** registry in `inference_attackers.py`. Add an LLM attacker as a
   new `InferenceAttacker` subclass returning `{guess, confidence, rationale}`; move
   scoring to agent-eval's judge for free-text guesses.
+- **Defender for the frontier:** add more `DeidPipeline` subclasses to fill in the frontier
+  between the `regex-baseline-v0` (under-redact) and `over-redact-v0` (over-redact) corners.
 
 ## Recommended next build (in order)
 
@@ -127,13 +147,13 @@ semantic judge + calibration.
    model is an LLM attacker registered in `inference_attackers.py` with scoring moved to
    agent-eval's LLM judge (semantic grading of free-text guesses + confidence
    calibration). This is where agent-eval becomes load-bearing rather than optional.
-2. **Utility scorer.** All three tracks measure privacy only. Add the second axis (does
-   the scrubbed note still support NER / phenotype extraction / a CDS trigger?) so results
-   become the privacy-utility frontier, not a leaderboard. Smallest, highest-leverage
-   structural step.
-3. **Population / data fidelity.** Swap `make_person` for a Synthea driver so the corpus,
+   Needs live API access (this dev sandbox had none).
+2. **Population / data fidelity.** Swap `make_person` for a Synthea driver so the corpus,
    the Track 2 population, and the Track 3 vignettes all get realistic clinical structure
-   — this is what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate.
+   — this is what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate, and
+   lets the utility axis carry richer clinical content (labs, meds) than diagnosis/age/sex.
+3. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
+   bundled corners — the frontier now exists to prove it did.
 
 ## Known limitations to keep visible
 

@@ -67,9 +67,45 @@ class RegexBaseline(DeidPipeline):
         return out, redacted
 
 
+class OverRedactor(DeidPipeline):
+    """The opposite failure mode: redact aggressively and ask questions later.
+
+    Catches everything the regex baseline does, PLUS every Capitalized token and every
+    token containing a digit. That sweeps up the names and spelled-out dates the baseline
+    misses (privacy goes UP) — but it also clobbers clinically necessary, non-identifying
+    content: a patient's age (a number) and capitalized diagnoses like "Fabry" (utility
+    goes DOWN). It exists to put a SECOND point on the privacy-utility frontier: a
+    scrubber is only meaningful relative to what it destroys, and this one trades utility
+    for privacy in exactly the direction the baseline does not.
+    """
+    name = "over-redact-v0"
+    EXTRA = re.compile(r"\b(?:[A-Z][A-Za-z'.-]+|\S*\d\S*)\b")
+
+    def scrub(self, text: str):
+        hits = []
+        for _cat, pat in RegexBaseline.PATTERNS:
+            for m in pat.finditer(text):
+                hits.append((m.start(), m.end()))
+        for m in self.EXTRA.finditer(text):
+            hits.append((m.start(), m.end()))
+        hits.sort()
+        merged = []
+        for s, e in hits:
+            if merged and s < merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))  # extend on overlap
+                continue
+            merged.append((s, e))
+        redacted = [{"start": s, "end": e, "text": text[s:e]} for s, e in merged]
+        out = text
+        for s, e in sorted(merged, reverse=True):
+            out = out[:s] + REDACTION + out[e:]
+        return out, redacted
+
+
 # Registry so the orchestrator (and later, config) can select a defender by name.
 REGISTRY: dict = {
     RegexBaseline.name: RegexBaseline,
+    OverRedactor.name: OverRedactor,
 }
 
 def get_pipeline(name: str) -> DeidPipeline:
