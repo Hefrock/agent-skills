@@ -19,6 +19,8 @@ Usage:
     python generate_corpus.py --n 50 --seed 20260101 --population 100000 --out corpus.json
     # also attach diagnosis-free inference vignettes for Track 3:
     python generate_corpus.py --n 50 --seed 20260101 --inference --out corpus.json
+    # also mark clinical spans for the utility axis / privacy-utility frontier:
+    python generate_corpus.py --n 50 --seed 20260101 --utility --out corpus.json
 """
 from __future__ import annotations
 import argparse, json, os, random, string
@@ -38,6 +40,8 @@ class Seg:
     hipaa_category: str = ""
     surface_form: str = ""
     context: str = ""
+    is_clinical: bool = False
+    clinical_category: str = ""
 
 @dataclass
 class Note:
@@ -48,9 +52,15 @@ class Note:
     def add_id(self, text, category, surface_form, context):
         self.segments.append(Seg(text, True, category, surface_form, context))
 
+    def add_clinical(self, text, category):
+        """A clinically-necessary, non-identifying span that a good scrubber must LEAVE
+        intact. This is the utility mirror of add_id: identifiers must not survive,
+        clinical content must. Adds metadata only — the text is placed exactly as add()."""
+        self.segments.append(Seg(text, is_clinical=True, clinical_category=category))
+
     def render(self):
-        """Return (note_text, spans). Offsets are exact by construction."""
-        parts, spans, cursor = [], [], 0
+        """Return (note_text, spans, clinical_spans). Offsets are exact by construction."""
+        parts, spans, clinical, cursor = [], [], [], 0
         for i, seg in enumerate(self.segments):
             start = cursor
             parts.append(seg.text)
@@ -61,7 +71,12 @@ class Note:
                     "hipaa_category": seg.hipaa_category,
                     "surface_form": seg.surface_form, "context": seg.context,
                 })
-        return "".join(parts), spans
+            if seg.is_clinical:
+                clinical.append({
+                    "start": start, "end": cursor, "text": seg.text,
+                    "clinical_category": seg.clinical_category,
+                })
+        return "".join(parts), spans, clinical
 
 
 # --- Synthetic person (swap this for a Synthea driver) --------------------------
@@ -197,16 +212,23 @@ def build_note(person: dict, rng: random.Random) -> Note:
     n.add("\n\n")
 
     # Narrative body (the hard context — identifiers hide in prose) -----
-    # Ages > 89 are themselves Safe Harbor identifiers (category 3); younger ages are not.
+    # Ages > 89 are themselves Safe Harbor identifiers (category 3); younger ages are
+    # clinical content that must SURVIVE scrubbing. Sex and the diagnosis are likewise
+    # clinically necessary and non-identifying — marked as utility spans (add_clinical)
+    # so over-redaction that clobbers them is measurable. Text placement is unchanged.
     n.add("HPI: ")
     if person["age"] > 89:
         n.add_id(str(person["age"]), "date", "age_over_89", "narrative")
     else:
-        n.add(str(person["age"]))
-    n.add(f"-year-old {'woman' if person['sex']=='F' else 'man'} from ")
+        n.add_clinical(str(person["age"]), "age")
+    n.add("-year-old ")
+    n.add_clinical("woman" if person["sex"] == "F" else "man", "sex")
+    n.add(" from ")
     n.add_id(person["city"], "geo_subdivision", "city", "narrative")
     n.add(" (ZIP "); n.add_id(person["zip3"], "geo_subdivision", "zip3", "narrative")
-    n.add(f") presenting with {person['diagnosis']}. ")
+    n.add(") presenting with ")
+    n.add_clinical(person["diagnosis"], "diagnosis")
+    n.add(". ")
     # a date buried mid-sentence, distinct from the admission date
     fu_t, fu_sf = date_forms(person["last_seen"], rng)
     n.add("Patient was last seen on "); n.add_id(fu_t, "date", fu_sf, "narrative")
@@ -257,7 +279,8 @@ def build_inference_case(person: dict, rng: random.Random) -> dict:
     }
 
 
-def generate(n_records: int, seed: int, with_inference: bool = False) -> dict:
+def generate(n_records: int, seed: int, with_inference: bool = False,
+             with_utility: bool = False) -> dict:
     rng = random.Random(seed)
     # Isolated RNG for the inference-note layer (anchor dropout, feature subset), so
     # enabling inference never perturbs the main stream — the Track 1/2 corpus is
@@ -267,7 +290,7 @@ def generate(n_records: int, seed: int, with_inference: bool = False) -> dict:
     for i in range(n_records):
         person = make_person(rng)
         note = build_note(person, rng)
-        text, spans = note.render()
+        text, spans, clinical = note.render()
         rid = f"rec-{i:06d}"
         for j, s in enumerate(spans):
             s["span_id"] = f"{rid}:s{j:02d}"
@@ -282,6 +305,12 @@ def generate(n_records: int, seed: int, with_inference: bool = False) -> dict:
                 "facility_id": person["facility"],
             },
         }
+        if with_utility:
+            # Clinical spans are computed from the note as generated (no new text, no
+            # RNG), so attaching them leaves note_text and identifiers byte-identical.
+            for j, c in enumerate(clinical):
+                c["span_id"] = f"{rid}:c{j:02d}"
+            rec["clinical_spans"] = clinical
         if with_inference:
             rec["inference_case"] = build_inference_case(person, inf_rng)
         records.append(rec)
@@ -314,11 +343,13 @@ def generate_population(n_people: int, seed: int) -> list:
 
 
 def self_test(corpus: dict) -> None:
-    """Enforce the core invariant: every span's offsets slice out its own text."""
+    """Enforce the core invariant: every span's offsets slice out its own text.
+    Applies to identifier spans and, when present, clinical (utility) spans — both are
+    exact by construction, so both are checked here rather than trusted."""
     bad = 0
     for rec in corpus["records"]:
         t = rec["note_text"]
-        for s in rec["identifiers"]:
+        for s in rec["identifiers"] + rec.get("clinical_spans", []):
             if t[s["start"]:s["end"]] != s["text"]:
                 bad += 1
     if bad:
@@ -349,11 +380,15 @@ def main():
     ap.add_argument("--population-out", default="population.jsonl")
     ap.add_argument("--inference", action="store_true",
                     help="attach a diagnosis-free inference vignette per record for Track 3")
+    ap.add_argument("--utility", action="store_true",
+                    help="mark clinical spans (diagnosis, age, sex) that must survive scrubbing")
     args = ap.parse_args()
-    # Corpus is generated first and independently, so adding --population or --inference
-    # never perturbs the main RNG stream — the Track 1 corpus is byte-identical with or
-    # without either flag (inference uses a disjoint derived RNG).
-    corpus = generate(args.n, args.seed, with_inference=args.inference)
+    # Corpus is generated first and independently, so adding --population, --inference,
+    # or --utility never perturbs the main RNG stream — the Track 1 corpus is byte-
+    # identical with any combination of flags (inference uses a disjoint derived RNG;
+    # clinical spans are metadata over the note as generated).
+    corpus = generate(args.n, args.seed, with_inference=args.inference,
+                      with_utility=args.utility)
     self_test(corpus)
     if args.inference:
         inference_self_test(corpus)
@@ -380,6 +415,9 @@ def main():
     if args.inference:
         print(f"Attached {len(corpus['records'])} inference vignettes "
               f"(diagnosis withheld) for Track 3.")
+    if args.utility:
+        n_cs = sum(len(r.get("clinical_spans", [])) for r in corpus["records"])
+        print(f"Marked {n_cs} clinical spans (must survive scrubbing) for the utility axis.")
 
 
 if __name__ == "__main__":

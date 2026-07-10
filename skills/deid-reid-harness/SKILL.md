@@ -71,7 +71,7 @@ generate_corpus.py --inference  ------->  score_inference.py     (Track 3: infer
 ```bash
 cd scripts
 # Track 1 — Safe Harbor leakage
-python generate_corpus.py --n 50 --seed 20260101 --population 100000 --inference --out corpus.json
+python generate_corpus.py --n 50 --seed 20260101 --population 100000 --inference --utility --out corpus.json
 python run_track1.py --corpus corpus.json --pipeline regex-baseline-v0 --out runs.jsonl
 python score_leakage.py --runs runs.jsonl --out leakage_report.json
 
@@ -81,6 +81,10 @@ python score_reid.py --corpus corpus.json --out reid_report.json
 # Track 3 — free-text inference (attacker recovers the withheld diagnosis)
 python score_inference.py --corpus corpus.json --out inference_report.json --eval-out inference_eval.jsonl
 python ../../agent-eval/scripts/score_eval.py inference_eval.jsonl   # optional: aggregate/diff
+
+# Utility axis + privacy-utility frontier (needs a --utility corpus for clinical spans)
+python score_utility.py --corpus corpus.json --runs runs.jsonl --leakage-report leakage_report.json
+python score_frontier.py --corpus corpus.json --out frontier.json   # (privacy, utility) per defender
 ```
 
 **Track 1.** The bundled `regex-baseline-v0` defender is deliberately weak. On the
@@ -115,6 +119,15 @@ can see. Scoring is programmatic against the closed diagnosis set, and the score
 agent-eval's JSONL schema so a real LLM attacker's free-text guesses can later be graded
 and calibrated through the agent-eval skill.
 
+**Utility axis / frontier.** All three tracks measure privacy; the utility axis measures
+what a defender *destroys*. `--utility` marks the clinical spans a good scrubber must keep
+(diagnosis, age ≤ 89, sex — clinically necessary, non-identifying), and `score_frontier.py`
+gives each defender a `(privacy, utility)` pair. The two bundled defenders sit at opposite
+corners — `regex-baseline-v0` at **privacy 0.449 / utility 1.00** (barely redacts) and
+`over-redact-v0` at **privacy 0.900 / utility 0.60** (sweeps up names and dates but deletes
+every age and the capitalized diagnoses). Neither dominates; the gap between them is the
+frontier, and the whole reason a privacy score is never reported alone.
+
 ## Architecture — swappable parts + your eval harness as orchestrator
 
 **Corpus generator** (`generate_corpus.py`). Emits synthetic notes and a manifest whose
@@ -131,9 +144,11 @@ messy.
 **De-id pipeline / defender** (`deid_pipelines.py`). A pluggable interface
 (`scrub(text) -> (scrubbed_text, redacted_spans_or_None)`) with a registry, so the same
 eval runs against a regex baseline, a rule-based scrubber, an LLM scrubber, and a
-hybrid — comparing pipelines on one frontier is the deliverable. A pipeline that reports
-its redaction spans gets exact scoring; a black-box pipeline returns `None` and the
-scorer falls back to surface-string presence checks.
+hybrid — comparing pipelines on one frontier is the deliverable. Two ship: the weak
+`regex-baseline-v0` (under-redacts) and `over-redact-v0` (over-redacts), the two corners
+of the frontier. A pipeline that reports its redaction spans gets exact scoring; a
+black-box pipeline returns `None` and the scorers fall back to surface-string presence
+checks.
 
 **Re-id attackers / scorers** (`score_leakage.py` = Track 1; `score_reid.py` = Track 2;
 `score_inference.py` + `inference_attackers.py` = Track 3). For Track 1 the attacker is
@@ -148,6 +163,12 @@ context; the bundled baseline is model-independent, and a real LLM attacker is t
 documented swap-in. All three bundled attackers are model-independent, so none can share
 a base model with the defender — the harness's cardinal rule holds by construction.
 
+**Utility scorer + frontier** (`score_utility.py`, `score_frontier.py`). The mirror of the
+Track 1 attacker: instead of "did an identifier survive?" it asks "did clinical content
+survive?" over the `--utility` clinical spans, then `score_frontier.py` pairs each
+defender's privacy and utility into the frontier point. Deterministic, so it never depends
+on a model's blind spots.
+
 **Orchestrator** (`run_track1.py`, and later your existing **agent-eval** harness).
 agent-eval is where the adversarial-eval and judge-calibration machinery plug in: it
 orchestrates runs, calibrates the inference-track judge and the attacker's confidence
@@ -158,9 +179,11 @@ across runs so hardening the scrubber shows up as movement on the frontier.
 
 **Always pair privacy with utility.** A scrubber that redacts every token has perfect
 privacy and zero clinical value — so any privacy number reported without a paired
-utility metric (does the scrubbed note still support a downstream task: NER, phenotype
-extraction, a CDS trigger?) is meaningless. The real deliverable is a **privacy-utility
-frontier** across pipelines, not a leaderboard. Over-redaction is a measurable cost, not
+utility metric is meaningless. This is now enforced in code: `--utility` marks the
+clinical spans a scrubber must keep, `score_utility.py` measures preservation, and
+`score_frontier.py` plots each defender as a `(privacy, utility)` point. The real
+deliverable is that **frontier** across pipelines, not a leaderboard; over-redaction is a
+measured cost (`over-redact-v0` buys privacy 0.45→0.90 by dropping utility 1.0→0.60), not
 a safe default.
 
 **Never let attacker and defender share a base model.** If both are the same LLM their
@@ -179,13 +202,15 @@ score never depends on one model's blind spots.
   `inference_attackers.py` (respecting the no-shared-base-model rule) and move scoring to
   agent-eval's LLM judge for semantic grading of free-text guesses and confidence
   calibration. See `references/inference-threat.md`.
-- **Utility scorer — the missing second axis.** All three tracks measure privacy only.
-  Adding a utility metric (does the scrubbed note still support NER / phenotype
-  extraction / a CDS trigger?) turns the output from a leaderboard into the
-  privacy-utility frontier the harness is really after. Highest-leverage next build.
+- **Utility axis / frontier — BUILT.** `--utility` marks clinical spans, `score_utility.py`
+  scores preservation, and `score_frontier.py` reports `(privacy, utility)` per defender
+  over one corpus. Extend it by adding richer clinical content (labs, meds) as clinical
+  spans and more defenders to the registry to fill in the frontier between the two
+  bundled corners.
 - **Population / data fidelity.** Swap `make_person` for a Synthea driver to upgrade the
   corpus, the Track 2 population, and the Track 3 vignettes' realism at once — this is
-  what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate.
+  what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate. Bigger clinical
+  content would also strengthen the utility axis.
 
 ## Reference files
 
@@ -199,6 +224,9 @@ score never depends on one model's blind spots.
 - `references/inference-threat.md` — the Track 3 contract: inference vs leakage, the
   withheld-target invariant, programmatic-vs-judged scoring, and how the inference
   attacker plugs into agent-eval. Read before changing the inference generator or scorer.
+- `references/utility-and-frontier.md` — the utility axis: clinical spans as the mirror of
+  identifier spans, how preservation is scored, and how the privacy-utility frontier is
+  assembled across defenders. Read before changing `score_utility.py` or `score_frontier.py`.
 - `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
   equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
   marketer). Read before changing `qi_model.py` or `score_reid.py`.

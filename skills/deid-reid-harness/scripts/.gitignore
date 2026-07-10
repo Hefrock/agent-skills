@@ -6,3 +6,5 @@ population.jsonl
 reid_report.json
 inference_report.json
 inference_eval.jsonl
+utility_report.json
+frontier.json

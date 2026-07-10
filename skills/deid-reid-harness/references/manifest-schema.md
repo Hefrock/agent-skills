@@ -39,7 +39,8 @@ generator and the scorer generalize them identically.
   "note_text": "…full clinical note…",
   "identifiers": [ SPAN, ... ],          // Track 1 ground truth
   "quasi_identifiers": QI_PROFILE,       // Track 2 (ED) input
-  "inference_case": INFERENCE_CASE       // Track 3 input; present only with --inference
+  "inference_case": INFERENCE_CASE,      // Track 3 input; present only with --inference
+  "clinical_spans": [ CLINICAL_SPAN, ... ] // utility ground truth; present only with --utility
 }
 ```
 
@@ -110,6 +111,23 @@ measuring leakage (Track 1), not inference. Scoring is a normalized string match
 `target_value` (exact, since the diagnosis is drawn from a closed set), so Track 3 is
 verifiable offline; an LLM attacker's free-text guesses move scoring to agent-eval's
 judge.
+
+## CLINICAL_SPAN — clinical content that must survive (utility ground truth, --utility only)
+
+```json
+{
+  "span_id": "rec-000001:c00",
+  "start": 92, "end": 94, "text": "54",   // note_text[start:end] == text, same invariant
+  "clinical_category": "age"              // diagnosis | age | sex
+}
+```
+
+The utility mirror of a SPAN: an identifier span must not survive scrubbing, a clinical
+span must. Marked in place over the note as already generated (no new text, no RNG), so a
+`--utility` corpus is byte-identical on `note_text`/`identifiers`/`quasi_identifiers`.
+`score_utility.py` counts a clinical span as preserved when no redacted span overlaps it;
+`score_frontier.py` pairs that preservation rate with Track 1 coverage into a
+privacy-utility point. See `references/utility-and-frontier.md`.
 
 ## Why generation-time ground truth matters
 
