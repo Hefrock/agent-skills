@@ -157,8 +157,10 @@ adds no new assumptions.
 spans are **exact by construction**: notes are assembled from segments and each
 identifier's offset is recorded at placement time, then a self-test asserts
 `note_text[start:end] == text` for every span. This is why Track 1 needs no tagger and
-no judge. `make_person()` is the ONLY function to replace to swap in a real Synthea
-driver (e.g. fhir-synthea-lab) — the injection and manifest machinery stay put. The
+no judge. The **person source** is a registry (`person_sources.py`): `synthetic-v0`
+(default, `make_person`, byte-identical) or `fhir-synthea`, which reads Synthea FHIR R4
+bundles so real demographics flow through the same injection/manifest machinery
+(`--person-source fhir-synthea --fhir-dir …`; see `references/data-sources.md`). The
 **surface-form layer** renders each logical identifier several realistic ways (a date
 as ISO, slashed, spelled-out, or narrative; a name as initials; identifiers in headers,
 signatures, and buried in narrative), because real notes leak precisely where they are
@@ -234,10 +236,12 @@ score never depends on one model's blind spots.
   over one corpus. Extend it by adding richer clinical content (labs, meds) as clinical
   spans and more defenders to the registry to fill in the frontier between the two
   bundled corners.
-- **Population / data fidelity.** Swap `make_person` for a Synthea driver to upgrade the
-  corpus, the Track 2 population, and the Track 3 vignettes' realism at once — this is
-  what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate. Bigger clinical
-  content would also strengthen the utility axis.
+- **Data fidelity — BUILT (reader), pending real data.** The `fhir-synthea` person source
+  reads Synthea FHIR bundles so real demographics enter at the source — this is what turns
+  Track 2's uniform-ZIP3 upper bound into a defensible estimate. Validated against a
+  bundled fixture; point it at real Synthea output and sanity-check the first run. Still
+  open: a FHIR-sourced Track 2 population, and richer clinical content (labs, meds) for the
+  utility axis.
 
 ## Reference files
 
@@ -254,6 +258,8 @@ score never depends on one model's blind spots.
 - `references/utility-and-frontier.md` — the utility axis: clinical spans as the mirror of
   identifier spans, how preservation is scored, and how the privacy-utility frontier is
   assembled across defenders. Read before changing `score_utility.py` or `score_frontier.py`.
+- `references/data-sources.md` — the person-source registry and the Synthea FHIR → person
+  mapping contract. Read before changing `person_sources.py` or feeding real Synthea data.
 - `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
   equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
   marketer). Read before changing `qi_model.py` or `score_reid.py`.

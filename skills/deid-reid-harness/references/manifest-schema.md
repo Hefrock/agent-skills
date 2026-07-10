@@ -16,7 +16,7 @@ added later without regenerating corpora.
 {
   "manifest_version": "1",
   "seed": 20260101,
-  "generator": "synthetic-v0",
+  "generator": "synthetic-v0",           // the person source: synthetic-v0 | fhir-synthea
   "population_ref": "population.jsonl",   // background population for the ED track (optional in v0)
   "records": [ RECORD, ... ]
 }

@@ -1,0 +1,36 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ben-diabetes-002",
+        "name": [{"use": "official", "family": "Nguyen91", "given": ["Bao55"]}],
+        "gender": "male",
+        "birthDate": "1962-01-22",
+        "address": [{"city": "Springfield", "state": "MA", "postalCode": "01109"}],
+        "telecom": [{"system": "phone", "value": "555-733-6042"}],
+        "identifier": [
+          {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "556-21-9984"},
+          {"type": {"coding": [{"code": "MR"}]}, "system": "urn:hospital", "value": "3320148"}
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "subject": {"reference": "Patient/ben-diabetes-002"},
+        "code": {"coding": [{"system": "http://snomed.info/sct", "code": "44054006", "display": "Type 2 diabetes mellitus (disorder)"}], "text": "Diabetes mellitus type 2"}
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Encounter",
+        "subject": {"reference": "Patient/ben-diabetes-002"},
+        "period": {"start": "2026-05-17T11:00:00Z"},
+        "serviceProvider": {"display": "Springfield Community Clinic"}
+      }
+    }
+  ]
+}

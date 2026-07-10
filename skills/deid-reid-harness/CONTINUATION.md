@@ -123,6 +123,18 @@ identifiable or inferable despite being Safe-Harbor-clean (34 re-id, 47 inferabl
 both; rare 6/6, common 43/44). This IS the thesis — "a Safe Harbor pass can still be an
 Expert Determination failure / inference leak" — made a single number.
 
+**Person source / Synthea reader — BUILT (reader), pending real data.** `make_person` is
+now one source behind a registry (`person_sources.py`): `synthetic-v0` (default, byte-
+identical) and `fhir-synthea`, which reads Synthea FHIR R4 bundles and maps each Patient
+to the person dict the generator consumes (`--person-source fhir-synthea --fhir-dir …`).
+Real demographics flow through the unchanged injection/manifest/scoring machinery — the
+fix for Track 2's uniform-ZIP3 upper bound, once fed real data. Validated end-to-end
+against a bundled Synthea-structured fixture (`fixtures/fhir/`); the reader has NOT been
+run against a live Synthea export in this environment, so the first real run should be
+sanity-checked. Open follow-ups: a FHIR-sourced Track 2 population (denominator is still
+synthetic) and mapping open-vocabulary conditions for Track 3 (currently mapped to the
+nearest known signature diagnosis). See `references/data-sources.md`.
+
 ## Decisions already made (treat as settled unless the user reopens them)
 
 1. **Deterministic track first.** Track 1 is scored with no LLM judge — the generator
@@ -150,9 +162,10 @@ Expert Determination failure / inference leak" — made a single number.
 
 ## Swap points (already designed for extension)
 
-- **Real data:** `make_person()` in `generate_corpus.py` is the ONLY function to replace
-  to drop in a Synthea driver (the user has fhir-synthea-lab). Injection + manifest
-  machinery stay put; corpus, Track 2 population, and Track 3 vignettes all upgrade at once.
+- **Real data:** DONE via the person-source registry (`person_sources.py`) — `make_person`
+  is `synthetic-v0`; `fhir-synthea` reads Synthea FHIR bundles. Injection + manifest
+  machinery unchanged. Remaining: FHIR-sourced Track 2 population; the corpus sample now
+  upgrades directly.
 - **Defender:** registry in `deid_pipelines.py`. Add rule-based / LLM / hybrid scrubbers
   as new `DeidPipeline` subclasses. Pipelines that return redaction spans get exact
   scoring; black-box ones return `None` and the scorer falls back to presence checks.
@@ -173,17 +186,18 @@ by whether it can be verified offline:
    structure, utility overlap, cross-track ≡ standalone scorers) and the headline numbers
    (0.449 baseline, frontier corners, 0.94 recovery, 49/50 cross-track). Run it before
    committing generator/scorer changes; if a number moved on purpose, update it in the
-   same commit.
-1. **Population / data fidelity (offline).** Swap `make_person` for a Synthea driver so the
-   corpus, Track 2 population, and Track 3 vignettes get realistic clinical structure — the
-   biggest fidelity win. Turns Track 2's uniform-ZIP3 upper bound into a defensible
-   estimate (and the cross-track re-id axis with it), and lets the utility axis carry labs
-   and meds, not just diagnosis/age/sex.
+   same commit. (Now also covers the FHIR person source: parsing, field mapping, full
+   pipeline on a FHIR corpus — 18 tests total.)
+1. **Feed real Synthea data through `fhir-synthea` (offline once you have the data).** The
+   reader is built and fixture-tested; point `--fhir-dir` at real fhir-synthea-lab output,
+   sanity-check the mapping, then add a FHIR-sourced Track 2 population so the denominator
+   matches the sample. This is what actually retires Track 2's uniform-ZIP3 upper bound.
 2. **Track 3 LLM attacker + judge (needs live API — this dev sandbox had none).** Register
    an LLM attacker in `inference_attackers.py`, move scoring to agent-eval's LLM judge for
    semantic grading + confidence calibration. Its recoveries flow straight into the cross-
    track report. This is where agent-eval becomes load-bearing rather than optional, and
-   where the no-shared-base-model rule finally gets exercised for real.
+   where the no-shared-base-model rule finally gets exercised for real. Also unlocks
+   open-vocabulary Track 3 (no more mapping real conditions to the nearest signature).
 3. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
    bundled corners — the frontier now exists to prove it did.
 

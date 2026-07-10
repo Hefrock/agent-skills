@@ -1,0 +1,44 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "id": "alice-fabry-001",
+        "name": [{"use": "official", "family": "Okafor428", "given": ["Adaeze317"]}],
+        "gender": "female",
+        "birthDate": "1979-06-14",
+        "address": [{"city": "Riverton", "state": "MA", "postalCode": "02127"}],
+        "telecom": [{"system": "phone", "value": "555-482-1190"}],
+        "identifier": [
+          {"system": "http://hl7.org/fhir/sid/us-ssn", "value": "412-88-3071"},
+          {"type": {"coding": [{"code": "MR"}]}, "system": "urn:hospital", "value": "7741029"}
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "subject": {"reference": "Patient/alice-fabry-001"},
+        "code": {"coding": [{"system": "http://snomed.info/sct", "code": "16652001", "display": "Fabry disease (disorder)"}], "text": "Fabry disease"}
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Encounter",
+        "subject": {"reference": "Patient/alice-fabry-001"},
+        "period": {"start": "2026-02-09T14:20:00Z"},
+        "serviceProvider": {"display": "Riverton General Hospital"}
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Encounter",
+        "subject": {"reference": "Patient/alice-fabry-001"},
+        "period": {"start": "2025-11-30T09:05:00Z"},
+        "serviceProvider": {"display": "Riverton General Hospital"}
+      }
+    }
+  ]
+}
