@@ -165,24 +165,26 @@ Expert Determination failure / inference leak" — made a single number.
 ## Recommended next build (in order)
 
 Everything below is enhancement, not a gap — the three tracks + utility frontier + cross-
-track synthesis are complete and verified. Split by whether it can be verified offline:
+track synthesis are complete and verified, and a regression suite now guards them. Split
+by whether it can be verified offline:
 
-1. **A committed test suite (offline, do this first).** All verification so far has been
-   ad-hoc. Commit `test_harness.py` asserting the load-bearing invariants: byte-identical
-   corpus across flags, span offset self-tests, redacted-span structure, utility overlap
-   logic, and cross-track ≡ standalone-scorer consistency. Cheap insurance against silent
-   regressions as the LLM/Synthea work lands.
-2. **Population / data fidelity (offline).** Swap `make_person` for a Synthea driver so the
+0. **Regression suite — BUILT.** `test_harness.py` (stdlib unittest, ~3s, 13 tests) locks
+   the invariants (byte-identical corpus across flags, span offsets, redacted-span
+   structure, utility overlap, cross-track ≡ standalone scorers) and the headline numbers
+   (0.449 baseline, frontier corners, 0.94 recovery, 49/50 cross-track). Run it before
+   committing generator/scorer changes; if a number moved on purpose, update it in the
+   same commit.
+1. **Population / data fidelity (offline).** Swap `make_person` for a Synthea driver so the
    corpus, Track 2 population, and Track 3 vignettes get realistic clinical structure — the
    biggest fidelity win. Turns Track 2's uniform-ZIP3 upper bound into a defensible
    estimate (and the cross-track re-id axis with it), and lets the utility axis carry labs
    and meds, not just diagnosis/age/sex.
-3. **Track 3 LLM attacker + judge (needs live API — this dev sandbox had none).** Register
+2. **Track 3 LLM attacker + judge (needs live API — this dev sandbox had none).** Register
    an LLM attacker in `inference_attackers.py`, move scoring to agent-eval's LLM judge for
    semantic grading + confidence calibration. Its recoveries flow straight into the cross-
    track report. This is where agent-eval becomes load-bearing rather than optional, and
    where the no-shared-base-model rule finally gets exercised for real.
-4. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
+3. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
    bundled corners — the frontier now exists to prove it did.
 
 ## Known limitations to keep visible

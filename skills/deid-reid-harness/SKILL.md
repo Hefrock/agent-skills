@@ -88,7 +88,16 @@ python score_frontier.py --corpus corpus.json --out frontier.json   # (privacy, 
 
 # Cross-track synthesis — the punchline (needs --population AND --inference)
 python score_crosstrack.py --corpus corpus.json --out crosstrack_report.json
+
+# Regression suite — invariants + verified headline numbers (stdlib only, ~3s)
+python test_harness.py
 ```
+
+`test_harness.py` locks the load-bearing invariants (byte-identical corpus across flags,
+span offset self-tests, redacted-span structure, utility-overlap logic, cross-track ≡
+standalone-scorer consistency) and the verified numbers (0.449 baseline, the two frontier
+corners, 0.94 recovery, 49/50 cross-track). A failure means a result moved — run it before
+committing changes to the generator or any scorer.
 
 **Track 1.** The bundled `regex-baseline-v0` defender is deliberately weak. On the
 default corpus it scores ~0.45 Safe Harbor coverage, and the breakdown is the point: ISO
