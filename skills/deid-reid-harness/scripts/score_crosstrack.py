@@ -38,38 +38,34 @@ from inference_attackers import get_attacker
 from score_inference import normalize
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", required=True)
-    ap.add_argument("--population", default=None, help="defaults to the corpus's population_ref")
-    ap.add_argument("--attacker", default="signature-match-v0")
-    ap.add_argument("--k", type=int, default=K_ANONYMITY_THRESHOLD,
-                    help=f"re-identifiable if k_population < K (default {K_ANONYMITY_THRESHOLD})")
-    ap.add_argument("--out", default="crosstrack_report.json")
-    args = ap.parse_args()
-
-    corpus = json.load(open(args.corpus))
-    records = corpus["records"]
-    missing = [x for x, ok in (("--population/population_ref", corpus.get("population_ref") or args.population),
-                               ("--inference/inference_case", all(r.get("inference_case") for r in records)))
-               if not ok]
+def require_corpus_ready(corpus: dict, population_arg) -> None:
+    missing = [x for x, ok in (
+        ("--population/population_ref", corpus.get("population_ref") or population_arg),
+        ("--inference/inference_case", all(r.get("inference_case") for r in corpus["records"])))
+        if not ok]
     if missing:
         raise SystemExit("cross-track needs a corpus built with --population AND --inference; "
                          f"missing: {', '.join(missing)}")
 
-    # --- Track 2 linkage: population equivalence classes (journalist k_population) ---
-    population = load_population(resolve_population_path(args.population, corpus, args.corpus))
+
+def compute_per_record(corpus: dict, population: list, attacker_name: str = "signature-match-v0",
+                       k: int = K_ANONYMITY_THRESHOLD) -> list:
+    """The reusable core: per-record {reidentifiable, inferable, ...} verdicts. Both
+    score_crosstrack's CLI and score_stats.py's bootstrap CIs call this directly, so a
+    bootstrap point estimate is guaranteed identical to the standalone report's numbers —
+    the same parity discipline as cross-track's own reuse of Track 2/3 logic."""
+    records = corpus["records"]
+    # Track 2 linkage: population equivalence classes (journalist k_population)
     sample_keys = [generalize(r["quasi_identifiers"]) for r in records]
     F = Counter(generalize(p) for p in population)
     F.update(sample_keys)
-
-    # --- Track 3 inference attacker ---
-    attacker = get_attacker(args.attacker)
+    # Track 3 inference attacker
+    attacker = get_attacker(attacker_name)
 
     per_record = []
     for rec, key in zip(records, sample_keys):
         k_pop = F[key]
-        reidentifiable = k_pop < args.k
+        reidentifiable = k_pop < k
         case = rec["inference_case"]
         guess = attacker.infer(case["note"])["guess"]
         inferable = normalize(guess) == normalize(case["target_value"])
@@ -82,7 +78,24 @@ def main():
             "inferable": inferable,               # Track 3 (diagnosis recovered)
             "safe_harbor_but_vulnerable": reidentifiable or inferable,
         })
+    return per_record
 
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--corpus", required=True)
+    ap.add_argument("--population", default=None, help="defaults to the corpus's population_ref")
+    ap.add_argument("--attacker", default="signature-match-v0")
+    ap.add_argument("--k", type=int, default=K_ANONYMITY_THRESHOLD,
+                    help=f"re-identifiable if k_population < K (default {K_ANONYMITY_THRESHOLD})")
+    ap.add_argument("--out", default="crosstrack_report.json")
+    args = ap.parse_args()
+
+    corpus = json.load(open(args.corpus))
+    require_corpus_ready(corpus, args.population)
+    population = load_population(resolve_population_path(args.population, corpus, args.corpus))
+    attacker = get_attacker(args.attacker)
+    per_record = compute_per_record(corpus, population, args.attacker, args.k)
     n = len(per_record)
 
     def frac(pred, pop=per_record):

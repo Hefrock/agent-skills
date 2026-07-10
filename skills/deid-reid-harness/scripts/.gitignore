@@ -9,3 +9,6 @@ inference_eval.jsonl
 utility_report.json
 frontier.json
 crosstrack_report.json
+stats_report.json
+stats.json
+stats_sweep.json
