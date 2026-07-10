@@ -104,6 +104,25 @@ cardinal gap: privacy was previously reported with no paired utility. (over-reda
 redactions separated only by separators, so a fully-redacted multi-token name counts as
 covered under Track 1's single-span rule rather than scoring as leaked.)
 
+**Cross-track synthesis — BUILT and VERIFIED.** `score_crosstrack.py` joins the tracks
+per record to compute the harness's punchline: assume a PERFECT Safe Harbor scrub (all 18
+direct-identifier categories gone), then count how many records stay re-identifiable
+(Track 2, population k < 5) or inferable (Track 3, diagnosis recovered). It reuses Track
+2's linkage and Track 3's attacker directly — per-record k_population and inferable were
+verified identical (0 mismatches) to the standalone `score_reid`/`score_inference`, so it
+introduces no new logic or assumptions. Needs a corpus with BOTH --population and
+--inference.
+
+```bash
+python generate_corpus.py --n 50 --seed 20260101 --population 100000 --inference --out corpus.json
+python score_crosstrack.py --corpus corpus.json --out crosstrack_report.json
+```
+
+Verified (n=50): 550 direct identifiers removed, yet 49/50 records (98%) are re-
+identifiable or inferable despite being Safe-Harbor-clean (34 re-id, 47 inferable, 32
+both; rare 6/6, common 43/44). This IS the thesis — "a Safe Harbor pass can still be an
+Expert Determination failure / inference leak" — made a single number.
+
 ## Decisions already made (treat as settled unless the user reopens them)
 
 1. **Deterministic track first.** Track 1 is scored with no LLM judge — the generator
@@ -145,16 +164,25 @@ covered under Track 1's single-span rule rather than scoring as leaked.)
 
 ## Recommended next build (in order)
 
-1. **Track 3 LLM attacker + judge.** The deterministic baseline is in; the real threat
-   model is an LLM attacker registered in `inference_attackers.py` with scoring moved to
-   agent-eval's LLM judge (semantic grading of free-text guesses + confidence
-   calibration). This is where agent-eval becomes load-bearing rather than optional.
-   Needs live API access (this dev sandbox had none).
-2. **Population / data fidelity.** Swap `make_person` for a Synthea driver so the corpus,
-   the Track 2 population, and the Track 3 vignettes all get realistic clinical structure
-   — this is what turns Track 2's uniform-ZIP3 upper bound into a defensible estimate, and
-   lets the utility axis carry richer clinical content (labs, meds) than diagnosis/age/sex.
-3. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
+Everything below is enhancement, not a gap — the three tracks + utility frontier + cross-
+track synthesis are complete and verified. Split by whether it can be verified offline:
+
+1. **A committed test suite (offline, do this first).** All verification so far has been
+   ad-hoc. Commit `test_harness.py` asserting the load-bearing invariants: byte-identical
+   corpus across flags, span offset self-tests, redacted-span structure, utility overlap
+   logic, and cross-track ≡ standalone-scorer consistency. Cheap insurance against silent
+   regressions as the LLM/Synthea work lands.
+2. **Population / data fidelity (offline).** Swap `make_person` for a Synthea driver so the
+   corpus, Track 2 population, and Track 3 vignettes get realistic clinical structure — the
+   biggest fidelity win. Turns Track 2's uniform-ZIP3 upper bound into a defensible
+   estimate (and the cross-track re-id axis with it), and lets the utility axis carry labs
+   and meds, not just diagnosis/age/sex.
+3. **Track 3 LLM attacker + judge (needs live API — this dev sandbox had none).** Register
+   an LLM attacker in `inference_attackers.py`, move scoring to agent-eval's LLM judge for
+   semantic grading + confidence calibration. Its recoveries flow straight into the cross-
+   track report. This is where agent-eval becomes load-bearing rather than optional, and
+   where the no-shared-base-model rule finally gets exercised for real.
+4. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
    bundled corners — the frontier now exists to prove it did.
 
 ## Known limitations to keep visible

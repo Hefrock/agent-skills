@@ -85,6 +85,9 @@ python ../../agent-eval/scripts/score_eval.py inference_eval.jsonl   # optional:
 # Utility axis + privacy-utility frontier (needs a --utility corpus for clinical spans)
 python score_utility.py --corpus corpus.json --runs runs.jsonl --leakage-report leakage_report.json
 python score_frontier.py --corpus corpus.json --out frontier.json   # (privacy, utility) per defender
+
+# Cross-track synthesis — the punchline (needs --population AND --inference)
+python score_crosstrack.py --corpus corpus.json --out crosstrack_report.json
 ```
 
 **Track 1.** The bundled `regex-baseline-v0` defender is deliberately weak. On the
@@ -127,6 +130,17 @@ corners — `regex-baseline-v0` at **privacy 0.449 / utility 1.00** (barely reda
 `over-redact-v0` at **privacy 0.900 / utility 0.60** (sweeps up names and dates but deletes
 every age and the capitalized diagnoses). Neither dominates; the gap between them is the
 frontier, and the whole reason a privacy score is never reported alone.
+
+**Cross-track synthesis — the punchline.** `score_crosstrack.py` joins the tracks per
+record to compute the claim the whole harness exists to make. It assumes the best case for
+the defender — a *perfect* Safe Harbor scrub, all 18 direct-identifier categories gone —
+then asks of each record: still re-identifiable (Track 2, population k < 5) or still
+inferable (Track 3, diagnosis recovered)? On the default corpus, **49 of 50 records (98%)
+are re-identifiable or inferable despite being perfectly Safe-Harbor-clean** (34 re-id, 47
+inferable, 32 both; rare diagnoses 6/6). Those are checklist false-negatives: certified
+de-identified, and not. It reuses Track 2's linkage and Track 3's attacker directly (per-
+record outputs verified identical to the standalone scorers), so it is deterministic and
+adds no new assumptions.
 
 ## Architecture — swappable parts + your eval harness as orchestrator
 
@@ -195,6 +209,10 @@ score never depends on one model's blind spots.
 
 ## Extending the harness
 
+- **Cross-track synthesis — BUILT.** `score_crosstrack.py` reports how many records pass
+  Safe Harbor yet stay re-identifiable or inferable. Extend it when a live LLM attacker
+  lands (its recoveries flow straight in) or when Track 2 gets a Synthea population (the
+  re-id axis stops being an upper bound).
 - **Track 3 (inference) — BUILT (baseline).** `score_inference.py` runs an attacker over
   the `--inference` vignettes and scores recovery of the withheld diagnosis, emitting
   agent-eval JSONL. The bundled `signature-match-v0` is model-independent. **The real
