@@ -223,6 +223,18 @@ class FhirPersonSource(unittest.TestCase):
         with self.assertRaises(SystemExit):
             get_source("fhir-synthea", fhir_dir="/no/such/dir")
 
+    def test_malformed_file_skipped_not_fatal(self):
+        tmp = tempfile.mkdtemp(prefix="fhirbad_")
+        try:
+            for name in os.listdir(self.FIX):
+                shutil.copy(os.path.join(self.FIX, name), tmp)
+            with open(os.path.join(tmp, "broken.json"), "w") as f:
+                f.write("{not valid json")
+            src = get_source("fhir-synthea", fhir_dir=tmp)  # must not raise
+            self.assertEqual(len(src), 3)  # the 3 good patients still parsed
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

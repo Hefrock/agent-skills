@@ -27,7 +27,7 @@ circular — generate_corpus imports this). SyntheticSource is handed make_perso
 caller, and the FHIR diagnosis mapping imports the known-diagnosis tables lazily.
 """
 from __future__ import annotations
-import glob, hashlib, json, os, re
+import glob, hashlib, json, os, re, sys
 
 # The keys build_note / qi_profile / build_inference_case consume. A source that omits
 # any of these would break generation, so every source is checked against this set.
@@ -102,12 +102,19 @@ class FhirSynthaSource(PersonSource):
         if not fhir_dir or not os.path.isdir(fhir_dir):
             raise SystemExit(f"--fhir-dir not found: {fhir_dir!r}")
         self.persons = []
+        skipped = []
         for path in sorted(glob.glob(os.path.join(fhir_dir, "*.json"))):
-            with open(path) as f:
-                doc = json.load(f)
+            try:
+                with open(path) as f:
+                    doc = json.load(f)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                skipped.append((path, str(e)))
+                continue
             person = self._bundle_to_person(doc)
             if person:
                 self.persons.append(self._check(person))
+        for path, err in skipped:
+            print(f"warning: skipping unparseable FHIR file {path!r}: {err}", file=sys.stderr)
         if not self.persons:
             raise SystemExit(f"no FHIR Patient resources found under {fhir_dir!r}")
 
