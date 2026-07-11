@@ -22,6 +22,8 @@ import generate_corpus as gc
 from deid_pipelines import get_pipeline, REGISTRY, REDACTION
 from person_sources import get_source, PERSON_KEYS
 import score_utility
+from bootstrap import bootstrap_ratio_ci, paired_bootstrap_diff
+import score_stats
 
 SEED, N, POP = 20260101, 50, 100000
 
@@ -234,6 +236,110 @@ class FhirPersonSource(unittest.TestCase):
             self.assertEqual(len(src), 3)  # the 3 good patients still parsed
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class BootstrapPrimitives(unittest.TestCase):
+    """bootstrap.py in isolation: correctness on hand-computable cases, not the harness."""
+
+    def test_ratio_ci_point_estimate_is_exact_ratio(self):
+        pairs = [(1, 1), (0, 1), (1, 1), (1, 1)]  # 3/4 caught
+        ci = bootstrap_ratio_ci(pairs, n_boot=500)
+        self.assertAlmostEqual(ci["point"], 0.75)
+        self.assertTrue(ci["ci_lo"] <= ci["point"] <= ci["ci_hi"])
+
+    def test_ratio_ci_reproducible_given_seed(self):
+        pairs = [(1, 2), (0, 2), (2, 2), (1, 2), (0, 2)]
+        a = bootstrap_ratio_ci(pairs, n_boot=500, boot_seed=7)
+        b = bootstrap_ratio_ci(pairs, n_boot=500, boot_seed=7)
+        self.assertEqual(a, b)
+
+    def test_ratio_ci_no_variance_when_all_records_identical(self):
+        pairs = [(1, 1)] * 20  # every record scores 1/1 -> zero bootstrap variance
+        ci = bootstrap_ratio_ci(pairs, n_boot=500)
+        self.assertEqual(ci["point"], 1.0)
+        self.assertEqual(ci["ci_lo"], 1.0)
+        self.assertEqual(ci["ci_hi"], 1.0)
+
+    def test_paired_diff_detects_a_real_difference(self):
+        # A always scores 1/1, B always scores 0/1 on the SAME 20 records -> diff must be 1.0
+        pairs_a = [(1, 1)] * 20
+        pairs_b = [(0, 1)] * 20
+        d = paired_bootstrap_diff(pairs_a, pairs_b, n_boot=500)
+        self.assertAlmostEqual(d["diff"], 1.0)
+        self.assertTrue(d["significant_at_0.05"])
+        self.assertLess(d["p_value"], 0.05)
+
+    def test_paired_diff_no_difference_when_identical(self):
+        pairs = [(1, 1), (0, 1), (1, 1), (0, 1), (1, 1), (0, 1)] * 5
+        d = paired_bootstrap_diff(pairs, pairs, n_boot=500)
+        self.assertAlmostEqual(d["diff"], 0.0)
+        self.assertFalse(d["significant_at_0.05"])
+
+    def test_mismatched_lengths_raise(self):
+        with self.assertRaises(ValueError):
+            paired_bootstrap_diff([(1, 1)], [(1, 1), (0, 1)])
+
+
+class StatisticalRigor(unittest.TestCase):
+    """score_stats.py end-to-end: bootstrap CIs must reproduce the locked point estimates,
+    correctly flag the two known frontier differences as significant, and a seed sweep
+    must show the same ordering holds across independently generated corpora."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="statstest_")
+        cls.corpus_path = os.path.join(cls.tmp, "c.json")
+        r = run("generate_corpus.py", "--n", str(N), "--seed", str(SEED),
+                "--population", str(POP), "--inference", "--utility",
+                "--out", cls.corpus_path, "--population-out", os.path.join(cls.tmp, "population.jsonl"))
+        assert r.returncode == 0, r.stderr
+        cls.corpus = load(cls.corpus_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_bootstrap_point_estimates_match_locked_numbers(self):
+        report = score_stats.bootstrap_report(
+            self.corpus, self.corpus_path, list(REGISTRY), "signature-match-v0",
+            None, n_boot=500, boot_seed=12345)
+        self.assertAlmostEqual(report["privacy"]["regex-baseline-v0"]["point"], 0.449, places=3)
+        self.assertAlmostEqual(report["privacy"]["over-redact-v0"]["point"], 0.900, places=3)
+        self.assertAlmostEqual(report["utility"]["regex-baseline-v0"]["point"], 1.000, places=3)
+        self.assertAlmostEqual(report["utility"]["over-redact-v0"]["point"], 0.600, places=3)
+        self.assertAlmostEqual(report["inference_recovery"]["point"], 0.94, places=3)
+        self.assertAlmostEqual(report["crosstrack_vulnerable"]["point"], 0.98, places=3)  # 49/50
+
+    def test_frontier_differences_are_statistically_significant(self):
+        report = score_stats.bootstrap_report(
+            self.corpus, self.corpus_path, list(REGISTRY), "signature-match-v0",
+            None, n_boot=500, boot_seed=12345)
+        self.assertTrue(report["privacy_diff"]["significant_at_0.05"],
+                        "over-redact's higher privacy vs baseline should be significant at n=50")
+        self.assertTrue(report["utility_diff"]["significant_at_0.05"],
+                        "over-redact's lower utility vs baseline should be significant at n=50")
+        # direction: over-redact (pipeline B, second in REGISTRY) has HIGHER privacy,
+        # so privacy_diff (A - B) must be negative; and LOWER utility, so utility_diff positive.
+        self.assertLess(report["privacy_diff"]["diff"], 0)
+        self.assertGreater(report["utility_diff"]["diff"], 0)
+
+    def test_bootstrap_reproducible(self):
+        r1 = score_stats.bootstrap_report(self.corpus, self.corpus_path, list(REGISTRY),
+                                          "signature-match-v0", None, n_boot=300, boot_seed=1)
+        r2 = score_stats.bootstrap_report(self.corpus, self.corpus_path, list(REGISTRY),
+                                          "signature-match-v0", None, n_boot=300, boot_seed=1)
+        self.assertEqual(r1, r2)
+
+    def test_seed_sweep_confirms_frontier_ordering_holds_across_corpora(self):
+        seeds = [SEED + i * 100000 for i in range(3)]
+        report = score_stats.seed_sweep_report(
+            N, seeds, list(REGISTRY), "signature-match-v0",
+            with_population=20000, with_inference=True, with_utility=True)
+        for row in report["per_seed"]:
+            self.assertLess(row["privacy::regex-baseline-v0"], row["privacy::over-redact-v0"],
+                            "baseline must be lower-privacy than over-redact on EVERY seed")
+            self.assertGreater(row["utility::regex-baseline-v0"], row["utility::over-redact-v0"],
+                               "baseline must be higher-utility than over-redact on EVERY seed")
 
 
 if __name__ == "__main__":

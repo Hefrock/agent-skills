@@ -89,7 +89,12 @@ python score_frontier.py --corpus corpus.json --out frontier.json   # (privacy, 
 # Cross-track synthesis — the punchline (needs --population AND --inference)
 python score_crosstrack.py --corpus corpus.json --out crosstrack_report.json
 
-# Regression suite — invariants + verified headline numbers (stdlib only, ~3s)
+# Statistical rigor — 95% CIs + paired significance test on ONE corpus
+python score_stats.py --corpus corpus.json --out stats.json
+# ...or a seed sweep across K independently generated corpora
+python score_stats.py --seeds 10 --n 50 --out stats_sweep.json
+
+# Regression suite — invariants + verified headline numbers (stdlib only, ~6s)
 python test_harness.py
 ```
 
@@ -98,6 +103,16 @@ span offset self-tests, redacted-span structure, utility-overlap logic, cross-tr
 standalone-scorer consistency) and the verified numbers (0.449 baseline, the two frontier
 corners, 0.94 recovery, 49/50 cross-track). A failure means a result moved — run it before
 committing changes to the generator or any scorer.
+
+**Statistical rigor.** Every number above is a point estimate on n=50, one seed —
+`score_stats.py` puts a 95% confidence interval on each of them (a **cluster bootstrap
+over records**, since a note's spans are correlated, not independent evidence — see
+`references/statistical-rigor.md`), and a **paired** bootstrap test of whether two
+defenders' privacy/utility genuinely differ on the same records. On the bundled
+defenders, both frontier gaps are significant at α=0.05. A `--seeds K` sweep regenerates
+the corpus across K independent seeds to confirm a result isn't an artifact of one draw:
+over-redact's privacy (0.886–0.900 across 5 seeds) never overlaps the baseline's
+(0.417–0.456).
 
 **Track 1.** The bundled `regex-baseline-v0` defender is deliberately weak. On the
 default corpus it scores ~0.45 Safe Harbor coverage, and the breakdown is the point: ISO
@@ -220,6 +235,10 @@ score never depends on one model's blind spots.
 
 ## Extending the harness
 
+- **Statistical rigor — BUILT.** `bootstrap.py` + `score_stats.py` add cluster-bootstrap
+  CIs and a paired significance test to every headline metric, plus a seed-sweep mode.
+  Extend it toward a real study by growing n well past 50 and reporting effect sizes
+  alongside CIs, not just significance. See `references/statistical-rigor.md`.
 - **Cross-track synthesis — BUILT.** `score_crosstrack.py` reports how many records pass
   Safe Harbor yet stay re-identifiable or inferable. Extend it when a live LLM attacker
   lands (its recoveries flow straight in) or when Track 2 gets a Synthea population (the
@@ -260,6 +279,9 @@ score never depends on one model's blind spots.
   assembled across defenders. Read before changing `score_utility.py` or `score_frontier.py`.
 - `references/data-sources.md` — the person-source registry and the Synthea FHIR → person
   mapping contract. Read before changing `person_sources.py` or feeding real Synthea data.
+- `references/statistical-rigor.md` — why the bootstrap resamples records (not spans), the
+  bootstrap vs. seed-sweep distinction, and the paired significance test. Read before
+  changing `bootstrap.py` or `score_stats.py`, or before citing a number in a writeup.
 - `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
   equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
   marketer). Read before changing `qi_model.py` or `score_reid.py`.

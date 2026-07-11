@@ -135,6 +135,25 @@ sanity-checked. Open follow-ups: a FHIR-sourced Track 2 population (denominator 
 synthetic) and mapping open-vocabulary conditions for Track 3 (currently mapped to the
 nearest known signature diagnosis). See `references/data-sources.md`.
 
+**Statistical rigor — BUILT.** `bootstrap.py` implements a cluster bootstrap over
+RECORDS (not spans — a note's spans are correlated, not independent, so span-level
+bootstrapping would understate uncertainty). `score_stats.py` puts a 95% CI on every
+headline metric (Track 1 coverage, utility, Track 3 recovery, cross-track vulnerable
+fraction), reusing each scorer's per-record logic directly so bootstrap point estimates
+are guaranteed identical to the standalone reports (required a small refactor:
+`score_crosstrack.py`'s per-record logic is now `compute_per_record()`, callable by both
+its own CLI and `score_stats.py`). It also runs a **paired** bootstrap difference test
+(same resampled record indices on both sides — the correct comparison since both
+defenders score the same corpus) and a `--seeds K` sweep that regenerates the corpus
+across independent seeds to check a result isn't an artifact of one draw.
+
+Verified: bootstrap point estimates reproduce every locked number exactly (0.449, 0.900,
+1.00/0.60, 0.94, 0.98). Both frontier differences (privacy and utility) are significant
+at α=0.05. A 5-seed sweep shows the ordering holds on every seed — over-redact's privacy
+(0.886–0.900) never overlaps the baseline's (0.417–0.456). See
+`references/statistical-rigor.md`, including its explicit caveat: wider CIs on synthetic
+data are not a substitute for external validity on real notes.
+
 ## Decisions already made (treat as settled unless the user reopens them)
 
 1. **Deterministic track first.** Track 1 is scored with no LLM judge — the generator
@@ -181,13 +200,13 @@ Everything below is enhancement, not a gap — the three tracks + utility fronti
 track synthesis are complete and verified, and a regression suite now guards them. Split
 by whether it can be verified offline:
 
-0. **Regression suite — BUILT.** `test_harness.py` (stdlib unittest, ~3s, 13 tests) locks
-   the invariants (byte-identical corpus across flags, span offsets, redacted-span
-   structure, utility overlap, cross-track ≡ standalone scorers) and the headline numbers
-   (0.449 baseline, frontier corners, 0.94 recovery, 49/50 cross-track). Run it before
-   committing generator/scorer changes; if a number moved on purpose, update it in the
-   same commit. (Now also covers the FHIR person source: parsing, field mapping, full
-   pipeline on a FHIR corpus — 18 tests total.)
+0. **Regression suite + statistical rigor — BUILT.** `test_harness.py` (stdlib unittest,
+   ~6s, 29 tests) locks the invariants (byte-identical corpus across flags, span offsets,
+   redacted-span structure, utility overlap, cross-track ≡ standalone scorers, FHIR
+   parsing/mapping/resilience) AND the bootstrap machinery (point estimates match every
+   locked number, both frontier differences are significant, seed-sweep ordering holds).
+   Run it before committing generator/scorer changes; if a number moved on purpose, update
+   it in the same commit.
 1. **Feed real Synthea data through `fhir-synthea` (offline once you have the data).** The
    reader is built and fixture-tested; point `--fhir-dir` at real fhir-synthea-lab output,
    sanity-check the mapping, then add a FHIR-sourced Track 2 population so the denominator
