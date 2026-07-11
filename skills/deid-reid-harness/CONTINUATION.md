@@ -131,9 +131,12 @@ Real demographics flow through the unchanged injection/manifest/scoring machiner
 fix for Track 2's uniform-ZIP3 upper bound, once fed real data. Validated end-to-end
 against a bundled Synthea-structured fixture (`fixtures/fhir/`); the reader has NOT been
 run against a live Synthea export in this environment, so the first real run should be
-sanity-checked. Open follow-ups: a FHIR-sourced Track 2 population (denominator is still
-synthetic) and mapping open-vocabulary conditions for Track 3 (currently mapped to the
-nearest known signature diagnosis). See `references/data-sources.md`.
+sanity-checked. The Track 2 population now uses the SAME source as the sample:
+`--population-source` defaults to `--person-source`, and `--population-fhir-dir` points at
+a (larger, ideally disjoint) background bundle directory, so a FHIR corpus gets a FHIR
+denominator — apples-to-apples linkage, capped at the directory's supply. Remaining
+follow-up: mapping open-vocabulary conditions for Track 3 (currently mapped to the nearest
+known signature diagnosis — the LLM attacker's job). See `references/data-sources.md`.
 
 **Statistical rigor — BUILT.** `bootstrap.py` implements a cluster bootstrap over
 RECORDS (not spans — a note's spans are correlated, not independent, so span-level
@@ -208,16 +211,24 @@ by whether it can be verified offline:
    Run it before committing generator/scorer changes; if a number moved on purpose, update
    it in the same commit.
 1. **Feed real Synthea data through `fhir-synthea` (offline once you have the data).** The
-   reader is built and fixture-tested; point `--fhir-dir` at real fhir-synthea-lab output,
-   sanity-check the mapping, then add a FHIR-sourced Track 2 population so the denominator
-   matches the sample. This is what actually retires Track 2's uniform-ZIP3 upper bound.
-2. **Track 3 LLM attacker + judge (needs live API — this dev sandbox had none).** Register
+   reader AND the FHIR-sourced population are built and fixture-tested; point `--fhir-dir`
+   at your released cohort and `--population-fhir-dir` at a larger background export,
+   sanity-check the mapping, and the denominator now matches the sample's distribution.
+   Feeding ~100k real bundles is what actually retires Track 2's uniform-ZIP3 upper bound.
+2. **A real de-id baseline defender (offline, some install risk).** Wire Presidio (or
+   Philter / a clinical-BERT de-identifier) into `deid_pipelines.py` so the frontier
+   measures a REAL scrubber, not just the toy regex/over-redact corners. Biggest
+   credibility jump available without real notes.
+3. **A downstream-task utility scorer.** Replace span-preservation with a real task proxy
+   (phenotype/NER extraction on scrubbed vs original), behind a pluggable interface so the
+   real clinical model swaps in with real data.
+4. **Track 3 LLM attacker + judge (needs live API — this dev sandbox had none).** Register
    an LLM attacker in `inference_attackers.py`, move scoring to agent-eval's LLM judge for
    semantic grading + confidence calibration. Its recoveries flow straight into the cross-
    track report. This is where agent-eval becomes load-bearing rather than optional, and
    where the no-shared-base-model rule finally gets exercised for real. Also unlocks
    open-vocabulary Track 3 (no more mapping real conditions to the nearest signature).
-3. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
+5. **A better defender.** A rule-based or hybrid scrubber that pushes up-and-right of both
    bundled corners — the frontier now exists to prove it did.
 
 ## Known limitations to keep visible

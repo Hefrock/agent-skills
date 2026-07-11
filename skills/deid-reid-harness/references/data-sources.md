@@ -56,9 +56,25 @@ is always complete and reproducible.
   each condition to the nearest known diagnosis (keyword match, else a deterministic
   fallback) so the signature-based Track 3 still runs. True open-vocabulary inference is
   the LLM attacker's job, not the deterministic baseline's.
-- **The Track 2 population is still synthetic.** `--population` draws from `make_person`
-  regardless of source, so a fully FHIR-consistent Track 2 needs a FHIR-sourced population
-  too (a larger directory of bundles). Until then, read a FHIR-sample-vs-synthetic-
-  population run as mixed, not apples-to-apples.
 - Adding a source is a registry entry in `person_sources.py` — a `PersonSource` subclass
   whose `person(i, rng)` returns a dict carrying every key in `PERSON_KEYS`.
+
+## Matching the Track 2 population to the sample
+
+Track 2's linkage risk is only meaningful if the background population is drawn from the
+**same distribution** as the sample. The population therefore uses the **same person
+source** as the corpus by default: `--population-source` defaults to `--person-source`, so
+`--person-source fhir-synthea --population 100000` draws the denominator from FHIR too, not
+from `make_person`. Point `--population-fhir-dir` at a **larger, ideally disjoint** bundle
+directory (your full background export) while `--fhir-dir` holds the released cohort:
+
+```bash
+python generate_corpus.py --person-source fhir-synthea --fhir-dir ./cohort \
+    --population 100000 --population-source fhir-synthea --population-fhir-dir ./background \
+    --inference --out corpus.json
+```
+
+A file-backed population is capped at the directory's supply (with a printed note), so a
+real 100k-person denominator needs ~100k bundles — that volume is what actually retires
+Track 2's uniform-ZIP3 upper bound. The synthetic population path is unchanged and
+byte-identical when `--person-source` is left at the default.

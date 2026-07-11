@@ -237,6 +237,25 @@ class FhirPersonSource(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_fhir_sourced_population_matches_sample_distribution(self):
+        # A FHIR population must carry the SAME real QI values the sample does (not
+        # synthetic ones), so Track 2's denominator is distributionally consistent.
+        src = get_source("fhir-synthea", fhir_dir=self.FIX)
+        pop = gc.generate_population(100000, 999, source=src)  # requested >> available
+        self.assertEqual(len(pop), 3, "population capped at the source's supply")
+        # Alice's real ZIP3 (from postalCode 02127) must appear in the population profiles.
+        zips = {p["zip3"] for p in pop}
+        self.assertIn("021", zips)
+        for p in pop:  # QI profile shape is exactly what Track 2 consumes
+            self.assertEqual(set(p), {"age", "sex", "zip3", "admission_date",
+                                      "rare_diagnosis", "facility_id"})
+
+    def test_synthetic_population_unchanged_by_source_param(self):
+        # generate_population(source=None) must be byte-identical to the pre-change call.
+        a = gc.generate_population(200, 7)
+        b = gc.generate_population(200, 7, source=None)
+        self.assertEqual(a, b)
+
 
 class BootstrapPrimitives(unittest.TestCase):
     """bootstrap.py in isolation: correctness on hand-computable cases, not the harness."""
