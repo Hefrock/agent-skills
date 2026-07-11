@@ -23,6 +23,9 @@ Usage:
     python generate_corpus.py --n 50 --seed 20260101 --utility --out corpus.json
     # source real people from Synthea FHIR output instead of make_person:
     python generate_corpus.py --person-source fhir-synthea --fhir-dir ./synthea_output --out corpus.json
+    # ...with a FHIR-sourced Track 2 population (denominator matches the sample):
+    python generate_corpus.py --person-source fhir-synthea --fhir-dir ./sample \
+        --population 100000 --population-source fhir-synthea --population-fhir-dir ./background --out corpus.json
 """
 from __future__ import annotations
 import argparse, json, os, random, string
@@ -337,17 +340,24 @@ def qi_profile(person: dict) -> dict:
     }
 
 
-def generate_population(n_people: int, seed: int) -> list:
+def generate_population(n_people: int, seed: int, source=None) -> list:
     """Background population for the Expert Determination (Track 2) denominator.
 
-    Drawn from the SAME make_person distribution as the corpus, so sample and
-    population are distributionally identical — the precondition for a meaningful
-    linkage risk. Only QI profiles are kept (no notes, no direct identifiers): the
-    population is a denominator, not a corpus. Swap make_person for a Synthea driver
-    here exactly as for the corpus, and the two stay consistent by construction.
+    Must be drawn from the SAME distribution as the corpus sample, or the linkage risk
+    is meaningless — that is the whole point of Track 2. So the population uses the SAME
+    person source: synthetic (make_person) for a synthetic corpus, FHIR for a FHIR corpus.
+    Only QI profiles are kept (no notes, no direct identifiers): the population is a
+    denominator, not a corpus.
+
+    Default (source=None) is the synthetic path, byte-identical to before. A file-backed
+    source (FHIR) has a finite supply, so the population is capped at what it can provide.
     """
+    if source is None:
+        rng = random.Random(seed)
+        return [qi_profile(make_person(rng)) for _ in range(n_people)]
     rng = random.Random(seed)
-    return [qi_profile(make_person(rng)) for _ in range(n_people)]
+    available = len(source) if hasattr(source, "__len__") else n_people
+    return [qi_profile(source.person(i, rng)) for i in range(min(n_people, available))]
 
 
 def self_test(corpus: dict) -> None:
@@ -394,6 +404,11 @@ def main():
                     help="synthetic-v0 (default) or fhir-synthea (needs --fhir-dir)")
     ap.add_argument("--fhir-dir", default=None,
                     help="directory of Synthea FHIR R4 patient bundles (for fhir-synthea)")
+    ap.add_argument("--population-source", default=None,
+                    help="synthetic-v0 or fhir-synthea; defaults to --person-source so the "
+                         "Track 2 denominator matches the sample's distribution")
+    ap.add_argument("--population-fhir-dir", default=None,
+                    help="FHIR bundle dir for a fhir-synthea population; defaults to --fhir-dir")
     args = ap.parse_args()
 
     from person_sources import get_source
@@ -419,7 +434,16 @@ def main():
         # Derived-but-independent seed: reproducible from --seed, disjoint from the
         # corpus stream. The sample is NOT drawn from this file; the scorer folds the
         # sample into the population counts so every record's class size is >= 1.
-        pop = generate_population(args.population, args.seed + 1)
+        # The population uses the SAME source as the sample by default, so the Track 2
+        # denominator matches the sample's distribution (the precondition for a
+        # meaningful linkage risk).
+        pop_source_name = args.population_source or args.person_source
+        if pop_source_name in ("synthetic", "synthetic-v0"):
+            pop_source = None  # synthetic path stays byte-identical
+        else:
+            pop_source = get_source(pop_source_name, make_fn=make_person,
+                                    fhir_dir=args.population_fhir_dir or args.fhir_dir)
+        pop = generate_population(args.population, args.seed + 1, source=pop_source)
         with open(args.population_out, "w") as pf:
             for prof in pop:
                 pf.write(json.dumps(prof) + "\n")
@@ -432,8 +456,12 @@ def main():
     print(f"Wrote {len(corpus['records'])} records, {n_ids} identifier spans -> {args.out}")
     print("Self-test passed: every span slices out its own text.")
     if args.population > 0:
-        print(f"Wrote background population of {args.population} QI profiles "
+        src_note = "" if pop_source is None else f" from {pop_source_name}"
+        print(f"Wrote background population of {len(pop)} QI profiles{src_note} "
               f"-> {args.population_out}  (population_ref set)")
+        if len(pop) < args.population:
+            print(f"note: population source supplied only {len(pop)} of {args.population} "
+                  f"requested QI profiles.")
     if args.inference:
         print(f"Attached {len(corpus['records'])} inference vignettes "
               f"(diagnosis withheld) for Track 3.")
