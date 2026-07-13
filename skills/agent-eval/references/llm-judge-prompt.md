@@ -40,6 +40,13 @@ Grade the output against each criterion below on a 0.0-1.0 scale:
 }
 ```
 
+## Calibration log
+
+<!-- Update after each spot-check (see agent-eval step 5): hand-score 5-10 cases, compare to judge, note mean delta -->
+| Date | Cases checked | Mean delta vs human | Action taken |
+|---|---|---|---|
+| — | — | — | not yet calibrated |
+
 ## Known biases to guard against
 
 - **Position bias** (pairwise comparisons): the judge tends to favor whichever option is presented first. Run both orderings and average, or randomize order across the eval set.

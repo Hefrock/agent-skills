@@ -55,22 +55,45 @@ def summarize(results, threshold):
     passed = [r for r in results if r["score"] >= threshold]
     by_category = defaultdict(list)
     for r in results:
-        by_category[r.get("category", "uncategorized")].append(r["score"])
+        by_category[r.get("category", "uncategorized")].append(r)
 
-    return {
+    has_cost = any("cost_usd" in r for r in results)
+    has_latency = any("latency_ms" in r for r in results)
+
+    cat_stats = {}
+    for cat, cat_results in sorted(by_category.items()):
+        s = [r["score"] for r in cat_results]
+        stat = {
+            "count": len(s),
+            "mean_score": statistics.mean(s),
+            "pass_rate": sum(1 for x in s if x >= threshold) / len(s),
+        }
+        if has_cost:
+            costs = [r["cost_usd"] for r in cat_results if "cost_usd" in r]
+            if costs:
+                stat["mean_cost_usd"] = statistics.mean(costs)
+        if has_latency:
+            latencies = [r["latency_ms"] for r in cat_results if "latency_ms" in r]
+            if latencies:
+                stat["mean_latency_ms"] = statistics.mean(latencies)
+        cat_stats[cat] = stat
+
+    summary = {
         "total": len(results),
         "pass_count": len(passed),
         "pass_rate": len(passed) / len(results),
         "mean_score": statistics.mean(scores),
-        "by_category": {
-            cat: {
-                "count": len(s),
-                "mean_score": statistics.mean(s),
-                "pass_rate": sum(1 for x in s if x >= threshold) / len(s),
-            }
-            for cat, s in sorted(by_category.items())
-        },
+        "by_category": cat_stats,
     }
+    if has_cost:
+        all_costs = [r["cost_usd"] for r in results if "cost_usd" in r]
+        if all_costs:
+            summary["mean_cost_usd"] = statistics.mean(all_costs)
+    if has_latency:
+        all_latencies = [r["latency_ms"] for r in results if "latency_ms" in r]
+        if all_latencies:
+            summary["mean_latency_ms"] = statistics.mean(all_latencies)
+    return summary
 
 
 def lowest_scoring(results, n=3):
@@ -103,6 +126,10 @@ def print_report(summary, results, regressions, threshold):
     print(f"Cases: {n}")
     print(f"Pass rate (threshold {threshold}): {summary['pass_count']}/{n} ({summary['pass_rate'] * 100:.1f}%)")
     print(f"Mean score: {summary['mean_score']:.2f}")
+    if summary.get("mean_cost_usd") is not None:
+        print(f"Mean cost: ${summary['mean_cost_usd']:.4f}")
+    if summary.get("mean_latency_ms") is not None:
+        print(f"Mean latency: {summary['mean_latency_ms']:.0f}ms")
 
     if n < 20:
         print(f"⚠ Small sample (n={n}) — treat the pass rate as directional, not precise.")
@@ -110,7 +137,12 @@ def print_report(summary, results, regressions, threshold):
     if len(summary["by_category"]) > 1:
         print("\nBy category:")
         for cat, stats in summary["by_category"].items():
-            print(f"  {cat}: {stats['pass_rate'] * 100:.0f}% pass, mean {stats['mean_score']:.2f} (n={stats['count']})")
+            line = f"  {cat}: {stats['pass_rate'] * 100:.0f}% pass, mean {stats['mean_score']:.2f} (n={stats['count']})"
+            if "mean_cost_usd" in stats:
+                line += f", ${stats['mean_cost_usd']:.4f}/call"
+            if "mean_latency_ms" in stats:
+                line += f", {stats['mean_latency_ms']:.0f}ms"
+            print(line)
 
     lowest = lowest_scoring(results, n=min(3, n))
     print("\nLowest-scoring cases:")
