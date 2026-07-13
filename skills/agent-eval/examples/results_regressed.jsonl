@@ -1,0 +1,20 @@
+{"id": "acc_01", "score": 1.0, "category": "accuracy", "rationale": "All key ticket details captured", "cost_usd": 0.0031, "latency_ms": 880}
+{"id": "acc_02", "score": 0.9, "category": "accuracy", "rationale": "Captured all facts, tighter wording", "cost_usd": 0.0033, "latency_ms": 910}
+{"id": "acc_03", "score": 0.4, "category": "accuracy", "rationale": "REGRESSION: dropped the account ID and error code while compressing", "cost_usd": 0.0028, "latency_ms": 760}
+{"id": "acc_04", "score": 0.8, "category": "accuracy", "rationale": "Correct, dropped one non-critical detail", "cost_usd": 0.0029, "latency_ms": 800}
+{"id": "acc_05", "score": 0.9, "category": "accuracy", "rationale": "Faithful summary of the escalation", "cost_usd": 0.0030, "latency_ms": 830}
+{"id": "acc_06", "score": 0.3, "category": "accuracy", "rationale": "REGRESSION: reproduction steps collapsed to 'user hit an error', detail lost", "cost_usd": 0.0027, "latency_ms": 740}
+{"id": "acc_07", "score": 1.0, "category": "accuracy", "rationale": "Exact on dates, amounts, and product SKU", "cost_usd": 0.0032, "latency_ms": 870}
+{"id": "acc_08", "score": 0.5, "category": "accuracy", "rationale": "REGRESSION: timeline over-compressed, two events merged incorrectly", "cost_usd": 0.0028, "latency_ms": 780}
+{"id": "fmt_01", "score": 1.0, "category": "format", "rationale": "Valid summary + bullet action items", "cost_usd": 0.0026, "latency_ms": 700}
+{"id": "fmt_02", "score": 1.0, "category": "format", "rationale": "Tighter bullets, all within budget", "cost_usd": 0.0027, "latency_ms": 720}
+{"id": "fmt_03", "score": 1.0, "category": "format", "rationale": "Clean sections, within length budget", "cost_usd": 0.0026, "latency_ms": 710}
+{"id": "fmt_04", "score": 0.9, "category": "format", "rationale": "IMPROVED: now within the length cap, well structured", "cost_usd": 0.0030, "latency_ms": 820}
+{"id": "fmt_05", "score": 0.95, "category": "format", "rationale": "Well structured, header casing fixed", "cost_usd": 0.0027, "latency_ms": 730}
+{"id": "grnd_01", "score": 0.9, "category": "grounding", "rationale": "Every claim traceable to the ticket", "cost_usd": 0.0031, "latency_ms": 840}
+{"id": "grnd_02", "score": 1.0, "category": "grounding", "rationale": "No invented details", "cost_usd": 0.0030, "latency_ms": 810}
+{"id": "grnd_03", "score": 0.8, "category": "grounding", "rationale": "Grounded, one mild inference flagged", "cost_usd": 0.0029, "latency_ms": 800}
+{"id": "grnd_04", "score": 0.9, "category": "grounding", "rationale": "Faithful, no hallucinated fields", "cost_usd": 0.0031, "latency_ms": 830}
+{"id": "tool_01", "score": 1.0, "category": "tool_use", "rationale": "Correct lookup tool, right ticket ID", "cost_usd": 0.0034, "latency_ms": 940}
+{"id": "tool_02", "score": 0.9, "category": "tool_use", "rationale": "Right tool, slightly broad query", "cost_usd": 0.0035, "latency_ms": 960}
+{"id": "tool_03", "score": 0.6, "category": "tool_use", "rationale": "Called an extra unnecessary lookup first", "cost_usd": 0.0038, "latency_ms": 1020}

@@ -44,6 +44,17 @@ jobs:
       - name: agent-eval — score example results (smoke)
         run: python skills/agent-eval/scripts/score_eval.py skills/agent-eval/scripts/example_results.jsonl
 
+      - name: agent-eval — verify the regression example trips the gate
+        # Self-check: the worked example is designed to fail the gate. Confirm it
+        # still does (exit non-zero), so the example can't silently bit-rot.
+        run: |
+          if python skills/agent-eval/scripts/score_eval.py skills/agent-eval/examples/results_regressed.jsonl \
+               --baseline skills/agent-eval/examples/results_baseline.jsonl --fail-on-regression --fail-under 0.85; then
+            echo "ERROR: regression example did not trip the gate"; exit 1
+          else
+            echo "OK: gate correctly caught the regression (exit non-zero)"
+          fi
+
       - name: agent-redteam — score adversarial set with a CI gate
         # Demonstrates the DevSecOps pattern: the scorer exits non-zero if the
         # adversarial pass rate falls below the gate, failing the build.
