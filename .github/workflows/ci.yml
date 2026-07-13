@@ -41,5 +41,8 @@ jobs:
       - name: agent-eval — score example results (stdlib only, no install)
         run: python skills/agent-eval/scripts/score_eval.py skills/agent-eval/scripts/example_results.jsonl
 
+      - name: agent-redteam — score adversarial example set
+        run: python skills/agent-redteam/scripts/score_eval.py skills/agent-redteam/examples/adversarial_results.jsonl
+
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
