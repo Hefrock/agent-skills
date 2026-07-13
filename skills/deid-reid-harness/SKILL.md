@@ -15,6 +15,11 @@ description: >
 
 # De-id ⟷ Re-id Adversarial Eval Harness
 
+> 📊 **[See RESULTS.md](./RESULTS.md)** for a verified sample run — the
+> privacy-utility frontier, the cross-track headline (49/50 records vulnerable
+> despite a perfect Safe Harbor scrub), and every figure with a 95% CI — no need
+> to run anything.
+
 ## The core idea
 
 A de-identifier's real metric is **not its recall** — it is its **survival against the

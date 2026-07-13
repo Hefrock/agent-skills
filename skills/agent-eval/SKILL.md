@@ -50,7 +50,7 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    python scripts/score_eval.py results.jsonl --fail-under 0.85
    python scripts/score_eval.py results.jsonl --baseline eval_set_v2.jsonl --fail-on-regression
    ```
-   This is what makes an eval a gate rather than a report — the same run that scores your change also blocks it if it regressed.
+   This is what makes an eval a gate rather than a report — the same run that scores your change also blocks it if it regressed. See [`examples/`](./examples/) for a worked before/after where a change looks like a win on cost, latency, and format but the gate catches three silent accuracy regressions.
 
 7. **Be honest about sample size.** With under ~20 cases, a 2-3 case swing can look like a large percentage shift. Say so explicitly: "3/10 passed (30%) — too small a sample to call this a real regression yet" rather than presenting a precise-looking percentage as statistically solid.
 
