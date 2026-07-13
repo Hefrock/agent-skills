@@ -1,5 +1,7 @@
 # Agent Skills
 
+[![CI](https://github.com/Hefrock/agent-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Hefrock/agent-skills/actions/workflows/ci.yml)
+
 A personal collection of [Agent Skills](https://agentskills.io) — portable, self-contained capabilities that any compatible AI agent can discover and load on demand. Built on the open standard originally published by Anthropic, now adopted across Claude, Codex CLI, Gemini CLI, GitHub Copilot, Cursor, and 25+ other platforms.
 
 Each skill is a folder containing a `SKILL.md` file (instructions + metadata) and, where needed, supporting `scripts/`, `references/`, or `assets/`. Nothing here is Claude-specific unless explicitly noted — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the portability rules this repo follows.
@@ -37,6 +39,8 @@ Copy the skill folder into whatever directory that platform scans for skills —
 
 ```
 agent-skills/
+├── .github/
+│   └── workflows/ci.yml        # builds + tests the MCP server, runs the eval script
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code-only install metadata — optional, additive
 ├── skills/                     # flat — one folder per skill, no category nesting
@@ -48,6 +52,7 @@ agent-skills/
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
 │       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
+│       ├── test/               # end-to-end STDIO tests — `npm test`
 │       └── README.md           # setup and configuration guide
 ├── knowledge-os/
 │   ├── constitution.md         # 10 laws Claude follows when operating the wiki

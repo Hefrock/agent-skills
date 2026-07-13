@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  mcp-server:
+    name: obsidian-vault MCP (build + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp/obsidian-vault
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcp/obsidian-vault/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and test
+        run: npm test
+
+  agent-eval:
+    name: agent-eval scoring script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Score example results (stdlib only, no install)
+        run: python skills/agent-eval/scripts/score_eval.py skills/agent-eval/scripts/example_results.jsonl
