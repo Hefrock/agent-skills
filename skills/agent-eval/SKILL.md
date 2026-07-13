@@ -45,6 +45,13 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```
    It computes pass rate, mean score (overall and per-category), surfaces the lowest-scoring cases for review, and reports mean cost and latency per category when those fields are present. With `--baseline`, it flags regressions — cases that passed before and fail now.
 
+   **As a CI gate**, add `--fail-under` and/or `--fail-on-regression` so the script exits non-zero (failing the build) when quality drops:
+   ```bash
+   python scripts/score_eval.py results.jsonl --fail-under 0.85
+   python scripts/score_eval.py results.jsonl --baseline eval_set_v2.jsonl --fail-on-regression
+   ```
+   This is what makes an eval a gate rather than a report — the same run that scores your change also blocks it if it regressed.
+
 7. **Be honest about sample size.** With under ~20 cases, a 2-3 case swing can look like a large percentage shift. Say so explicitly: "3/10 passed (30%) — too small a sample to call this a real regression yet" rather than presenting a precise-looking percentage as statistically solid.
 
 8. **When re-evaluating after a change** (new prompt, new model, new tool definition), always run the *same* eval set as before and diff against the saved baseline. That's what catches regressions — a fresh set of cases each time doesn't.
