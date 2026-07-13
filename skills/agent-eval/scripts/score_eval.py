@@ -8,6 +8,10 @@ Usage:
     python score_eval.py results.jsonl --threshold 0.7
     python score_eval.py results.jsonl --json-out summary.json
 
+CI gate (exit non-zero on failure):
+    python score_eval.py results.jsonl --fail-under 0.8
+    python score_eval.py results.jsonl --baseline base.jsonl --fail-on-regression
+
 Input format (JSONL, one JSON object per line):
     {"id": "case_001", "score": 1.0, "category": "format", "rationale": "..."}
     {"id": "case_002", "score": 0.0, "category": "accuracy", "rationale": "..."}
@@ -116,6 +120,25 @@ def find_regressions(results, baseline_results, threshold):
     return regressions
 
 
+def check_gates(summary, regressions, fail_under, fail_on_regression):
+    """Return a list of gate-failure messages (empty list means all gates pass).
+
+    Used to turn a report into a CI pass/fail. Kept separate from print_report
+    so it can be unit-tested and so reporting never depends on gate config.
+    """
+    failures = []
+    if fail_under is not None:
+        if summary is None:
+            failures.append(f"--fail-under {fail_under}: no valid results to score")
+        elif summary["pass_rate"] < fail_under:
+            failures.append(
+                f"--fail-under {fail_under}: pass rate {summary['pass_rate']:.3f} is below the gate"
+            )
+    if fail_on_regression and regressions:
+        failures.append(f"--fail-on-regression: {len(regressions)} regression(s) vs baseline")
+    return failures
+
+
 def print_report(summary, results, regressions, threshold):
     if summary is None:
         print("No valid results found.")
@@ -164,6 +187,10 @@ def main():
     parser.add_argument("--baseline", help="Path to a previous JSONL results file, to flag regressions")
     parser.add_argument("--threshold", type=float, default=0.7, help="Score >= threshold counts as a pass (default 0.7)")
     parser.add_argument("--json-out", help="Optional path to write the summary as JSON")
+    parser.add_argument("--fail-under", type=float, default=None,
+                        help="Exit non-zero if the overall pass rate is below this value (CI gate)")
+    parser.add_argument("--fail-on-regression", action="store_true",
+                        help="Exit non-zero if any regression vs --baseline is found (CI gate)")
     args = parser.parse_args()
 
     results = load_results(args.results)
@@ -182,6 +209,13 @@ def main():
         with open(args.json_out, "w") as f:
             json.dump(output, f, indent=2)
         print(f"Summary written to {args.json_out}")
+
+    gate_failures = check_gates(summary, regressions, args.fail_under, args.fail_on_regression)
+    if gate_failures:
+        print("\nGATE FAILED:", file=sys.stderr)
+        for msg in gate_failures:
+            print(f"  - {msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
