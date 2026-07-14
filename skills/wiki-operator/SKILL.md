@@ -1,6 +1,6 @@
 ---
 name: wiki-operator
-description: Operates a Karpathy-style personal knowledge wiki by reading and writing an Obsidian vault directly via MCP — searching before creating, updating existing concept pages over adding new ones, merging duplicates, and keeping all notes linked. Use this skill for any vault operation: processing new learning into wiki notes, improving a concept page, finding connections between ideas, reviewing note quality, generating study prompts, or running maintenance. Triggers on "add this to my wiki," "update my notes on X," "what do I know about Y," "connect these ideas," "clean up my vault," and the commands /learn /update /connect /review /quiz /map /source /clean /health. Requires an Obsidian MCP server connected with read and write tool access.
+description: Operates a Karpathy-style personal knowledge wiki by reading and writing an Obsidian vault directly via MCP — searching before creating, updating existing concept pages over adding new ones, merging duplicates, and keeping all notes linked. Use this skill for any vault operation: processing new learning into wiki notes, improving a concept page, finding connections between ideas, reviewing note quality, generating study prompts, or running maintenance. Triggers on "add this to my wiki," "update my notes on X," "what do I know about Y," "connect these ideas," "clean up my vault," and the commands /learn /update /connect /ask /review /quiz /map /source /clean /health. Requires an Obsidian MCP server connected with read and write tool access.
 ---
 
 # Wiki Operator
@@ -79,6 +79,7 @@ Sources/
   Videos/
 Maps/               ← navigation/index pages   (type: map)
   _context.md       ← hot cache: compact wiki state, read first each session
+  _ask_log.md       ← append-only log of unanswered /ask queries (governor reads, never writes)
 Projects/           ← active project pages     (type: project)
 ```
 
@@ -106,6 +107,24 @@ Find and create links between ideas.
 2. Identify the relationship type: is-a, uses, contrasts-with, depends-on, extends, or instance-of.
 3. Add a link sentence to each page's `## Related` section, naming the relationship explicitly.
 4. Set `updated:` on both pages.
+
+### /ask [question]
+Answer a question by retrieving and grounding an answer in the vault — never from general knowledge alone, and never silently.
+1. Decompose the question into 1–3 search terms. A question spanning multiple concepts ("how does X relate to Y") gets one search per concept.
+2. `search_notes` each term, scoped to `Knowledge/` and `Sources/` first — the vetted material.
+3. `read_note` the top 3–5 matches.
+4. Optional one-hop expansion: `list_links` on the strongest match to pull in tightly connected notes that complete the answer.
+5. If the retrieved content answers the question, compose the answer from it alone:
+   - Every substantive claim carries an inline `[[link]]` to its source note.
+   - If the only relevant page is `status: draft` or `confidence: low`, say so — don't present it with more authority than the vault itself claims.
+   - If sources disagree, surface the disagreement rather than smoothing it over.
+   - If the answer draws on two clusters that aren't linked to each other yet, note it and offer to run `/connect`.
+6. If nothing vetted is found, check `Journal/Daily/` as a last resort — but flag any journal-sourced content explicitly as unprocessed, not yet promoted to `Knowledge/`.
+7. If still nothing relevant exists, or what's found doesn't actually answer the question:
+   - Say so plainly — do not reach for general knowledge to fill the gap.
+   - Append an entry to `Maps/_ask_log.md` (create from `assets/ask-log.md` if it doesn't exist yet). This logging always happens — no confirmation needed, same as any new-draft creation.
+   - Then ask whether the user wants a general-knowledge answer instead, clearly labeled as coming from outside the vault. Never blend the two without saying so.
+8. For partial answers, ground what the vault supports and log only the ungrounded portion.
 
 ### /review [page or area]
 Critique wiki quality without rewriting.
@@ -160,4 +179,5 @@ Audit structural integrity of the vault. Run before any major compile session.
 - After any write operation, confirm in one line what changed: "Updated `Knowledge/AI/transformers.md` — added attention-scaling section, linked to `positional-encoding`."
 - Never silently create a note. If you are about to create a new page, say so first.
 - Never silently merge or delete. Always confirm destructive changes before applying them.
+- Never blend a vault-grounded answer with general knowledge without saying so explicitly (see `/ask`).
 - If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.

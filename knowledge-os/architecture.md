@@ -36,7 +36,7 @@ How the wiki system fits together — the components, their responsibilities, an
 │  Journal/Daily/ ← daily capture                        │
 │  Sources/raw/  ← unprocessed input                      │
 │  Sources/      ← compiled source pages                  │
-│  Maps/         ← index pages + hot cache                │
+│  Maps/         ← index pages, hot cache, gap queue       │
 │  Projects/     ← active project notes                   │
 │  System/       ← constitution + templates (read-only)   │
 └─────────────────────────────────────────────────────────┘
@@ -67,6 +67,17 @@ Healthy, connected knowledge graph
 `Maps/_context.md` is a compact summary of the vault's current state — active areas, recently updated pages, open threads, vault stats, and the `last_synthesized` date. Every skill reads it at session start to orient without scanning the full vault.
 
 Update `_context.md` at the end of any session that makes significant changes. wiki-synthesizer does this automatically in Phase 3.
+
+## Governance artifacts — one writer per file
+
+Two more `Maps/` files exist purely to feed `wiki-governor`, and each has exactly one writer:
+
+| File | Writer | Reader | Purpose |
+|---|---|---|---|
+| `Maps/_ask_log.md` | `wiki-operator` `/ask` (append-only) | `wiki-governor` (read-only) | every question `/ask` couldn't ground in the vault |
+| `Maps/_gaps.md` | `wiki-governor` (regenerated each run) | the user, next learning session | `## Open questions` + `_ask_log.md`, ranked into a to-learn queue |
+
+No skill writes to a file it doesn't own. `/ask` never touches `_gaps.md`; `wiki-governor` never touches `_ask_log.md` — it only reads and compiles it. This is the same single-owner discipline the MCP server applies to writes (backup-before-overwrite, atomic rename).
 
 ## Note lifecycle
 
