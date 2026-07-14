@@ -45,6 +45,18 @@
       "homepage": "https://github.com/Hefrock/agent-skills"
     },
     {
+      "name": "repo-pincer",
+      "description": "Reverse-engineers a codebase by reconciling top-down claims (docs, README, API surface) against bottom-up reality (actual implementation) — classifies every claim as Confirmed, Drift, Aspirational, or Silent. Runs standalone; optionally compiles into an Obsidian vault via wiki-operator's /source.",
+      "author": { "name": "Hefrock" },
+      "category": "agent-design",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./repo-pincer"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
       "name": "wiki-operator",
       "description": "Operates a Karpathy-style personal knowledge wiki via Obsidian MCP — searches before writing, updates existing concept pages over creating duplicates, merges redundant notes, and maintains links. Requires Obsidian MCP connected.",
       "author": { "name": "Hefrock" },
