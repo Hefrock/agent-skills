@@ -16,6 +16,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
 | [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
+| [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian and synthesizer, then adds a constitution-compliance audit, a tracked health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
 
 ## Installing a skill
 
@@ -50,7 +51,8 @@ agent-skills/
 │   ├── deid-reid-harness/      # clinical de-id/re-id eval — scripts, refs, 31-test suite
 │   ├── wiki-operator/          # on-demand vault operations
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
-│   └── wiki-librarian/         # structural health audits
+│   ├── wiki-librarian/         # structural health audits
+│   └── wiki-governor/          # maintenance loop + constitution compliance + health score
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
 │       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete

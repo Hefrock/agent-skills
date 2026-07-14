@@ -4,6 +4,8 @@ status: mature
 confidence: high
 updated: YYYY-MM-DD
 last_synthesized: YYYY-MM-DD
+last_governed: YYYY-MM-DD
+health_score: 0
 ---
 
 # Wiki Context
@@ -33,3 +35,10 @@ Hot cache — read this at the start of every session to orient quickly. Updated
 - Stale:
 - Sources compiled:
 - Sources in raw/:
+
+## Health
+
+<!-- Written by wiki-governor each /govern run. Track the trend, not the absolute. -->
+- Score: 0/100 (Δ vs last run: —)
+- Connectedness:  · Maturity:  · Freshness:  · Provenance:  · Resolution:
+- Top knowledge gaps:

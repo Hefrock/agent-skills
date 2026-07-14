@@ -79,6 +79,18 @@
         "./wiki-librarian"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-governor",
+      "description": "Runs the wiki's self-governing maintenance loop — orchestrates wiki-librarian and wiki-synthesizer, then adds a constitution-compliance audit, a tracked health score, and a knowledge-gap queue. Run weekly to keep the vault accountable to its own rules. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-governor"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
     }
   ]
 }
