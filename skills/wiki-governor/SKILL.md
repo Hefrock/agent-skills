@@ -64,7 +64,7 @@ Record in `Maps/_context.md` under `## Health` with the date, so the trajectory 
 
 ### Phase 4 — Knowledge-gap queue
 
-Make the wiki notice what it does not know. Aggregate every `## Open questions` entry across the vault (plus any failed `/ask` queries the operator has logged) into `Maps/_gaps.md`, ranked by how many pages reference or depend on each gap. This is the vault's to-learn queue — the input that tells you where to point the next learning session.
+Make the wiki notice what it does not know. Aggregate every `## Open questions` entry across the vault plus every entry in `Maps/_ask_log.md` (written exclusively by `wiki-operator`'s `/ask` — governor reads it, never writes it) into `Maps/_gaps.md`, ranked by how many pages reference or depend on each gap. This is the vault's to-learn queue — the input that tells you where to point the next learning session.
 
 ### Phase 5 — Governance report + hot cache
 
