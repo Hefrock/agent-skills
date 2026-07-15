@@ -26,9 +26,17 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 /plugin marketplace add Hefrock/agent-skills
 /plugin install agent-eval@hefrock-agent-skills
 ```
+Install any other skill the same way — swap `agent-eval` for the plugin name from the table above (e.g. `/plugin install wiki-governor@hefrock-agent-skills`).
+
+**Updating after new skills are added to this repo:**
+```bash
+/plugin marketplace update hefrock-agent-skills
+```
+Run this before installing anything added since your last update — it refreshes the marketplace's list of *available* plugins. Already-installed plugins pick up content changes (new commands, edited `SKILL.md`) automatically; a plugin that's new to the marketplace still needs its own `/plugin install <name>@hefrock-agent-skills` afterward. If a fresh plugin still comes back "not found" right after `marketplace update`, restart the CLI session and retry.
 
 **Claude Code (manual, no plugin system):**
 ```bash
+git pull origin main   # if you already have the repo cloned
 cp -r skills/agent-eval ~/.claude/skills/
 ```
 
