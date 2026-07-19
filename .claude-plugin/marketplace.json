@@ -103,6 +103,18 @@
         "./wiki-governor"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-warehouse",
+      "description": "Ingests raw research documents (PDFs, ebooks, scans) into a separate private cold-storage GitHub repo, then writes a lean content-hash pointer note into the Obsidian vault — keeping originals and full extracted text out of the vault so it stays fast. Born-digital extraction with an OCR fallback for scans. Requires Obsidian MCP connected + the knowledge-warehouse repo cloned.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-warehouse"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
     }
   ]
 }
