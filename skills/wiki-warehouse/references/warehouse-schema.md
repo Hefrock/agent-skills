@@ -73,6 +73,12 @@ This is the vault→warehouse analogue of `wiki-librarian`'s broken-`[[wikilink]
 same "does the pointer still resolve?" question, across the repo boundary instead of
 within the vault.
 
+The audit runs in two halves. The **warehouse side** is the warehouse repo's
+`bin/audit.py` (`--json`): it re-hashes every stored original against its `doc_id`,
+verifies manifest paths exist, and reports corrupt/missing/orphan/drift — the checks that
+need filesystem access to the warehouse. The **vault side** is the table above, run via
+MCP inside the `/warehouse-audit` command, since only it can see the vault notes.
+
 ## Why a content hash, not a URL or path
 
 - **Reorganization-proof:** move or rename warehouse files freely; only the manifest paths
