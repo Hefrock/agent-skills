@@ -6,6 +6,13 @@ A personal collection of [Agent Skills](https://agentskills.io) — portable, se
 
 Each skill is a folder containing a `SKILL.md` file (instructions + metadata) and, where needed, supporting `scripts/`, `references/`, or `assets/`. Nothing here is Claude-specific unless explicitly noted — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the portability rules this repo follows.
 
+> [!IMPORTANT]
+> **Stalled-work tracking.** Tasks blocked on external human action — a DUA/DSA signature, an account sign-up, a records-release email, an IRB response — are tracked as GitHub issues, not left to memory. Open one with the **🚧 Blocked on human action** or **📅 Dated follow-up** issue template (top of "New Issue"); the title tag (`[blocked-human] ...` / `[followup: YYYY-MM-DD] ...`) is what a weekly automated digest scans for across every public repo here, pushed as a phone notification so nothing silently rots.
+>
+> Browse current items: [blocked](https://github.com/Hefrock/agent-skills/issues?q=is%3Aopen+is%3Aissue+%5Bblocked-human%5D+in%3Atitle) · [pending follow-ups](https://github.com/Hefrock/agent-skills/issues?q=is%3Aopen+is%3Aissue+%5Bfollowup%3A+in%3Atitle) *(GitHub's search UI tokenizes brackets loosely — these links are a convenience, not authoritative; the digest itself does an exact title-prefix match via the API)*.
+>
+> **Resolve:** close the issue. **Update:** edit it — the digest reads live state, nothing to sync. **Postpone:** change the `YYYY-MM-DD` in a follow-up's title; a `[blocked-human]` item has no date by design, so it keeps resurfacing until closed.
+
 ## Skills
 
 | Skill | Category | Description |
@@ -51,7 +58,8 @@ Copy the skill folder into whatever directory that platform scans for skills —
 ```
 agent-skills/
 ├── .github/
-│   └── workflows/ci.yml        # builds + tests the MCP server, runs the Python skill suites
+│   ├── workflows/ci.yml        # builds + tests the MCP server, runs the Python skill suites
+│   └── ISSUE_TEMPLATE/         # blocked-human / dated-followup templates for stalled-work tracking
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code-only install metadata — optional, additive
 ├── skills/                     # flat — one folder per skill, no category nesting
