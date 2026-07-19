@@ -96,19 +96,32 @@ Store a raw document in the warehouse and index it in the vault.
 
 ## /warehouse-audit
 
-Check that every vault pointer still resolves — the warehouse analogue of the librarian's
-broken-link check.
+Reconcile the two sides. This runs in two halves — the warehouse-side integrity check is
+a script; the vault-side pointer check uses MCP.
 
+**Half 1 — warehouse integrity (run the tool).** From the warehouse repo:
+```bash
+python bin/audit.py --json
+```
+`audit.py` re-hashes every stored original against its `doc_id` (catching silent swaps or
+bit-rot), confirms every manifest path resolves, and reports `corrupt`, `missing`,
+`orphan`, and `drift`. Surface any **CORRUPT** finding prominently — it means a stored
+original no longer matches its own hash, which is the one failure the whole content-hash
+design exists to detect. Do not "fix" corruption automatically; report it and let the
+user restore the file.
+
+**Half 2 — vault pointers (use MCP).** The script can't see the vault, so check the other
+direction here:
 1. Query the vault for all notes carrying a `doc_id` (`query_frontmatter`).
-2. Load the warehouse `manifest.json`.
+2. Load the warehouse `manifest.json` (or reuse the audit output).
 3. For each vault `doc_id`: confirm it exists in the manifest, and that the note's
    `warehouse_path` / `text_path` match the manifest's current paths (the manifest is the
    source of truth — if they drifted, the note is stale, not the manifest).
 4. Report three buckets: **dangling** (doc_id not in manifest — original may have been
    removed), **drifted** (paths in the note no longer match the manifest — offer to patch
    the note's frontmatter to the manifest's current paths), and **orphaned-in-warehouse**
-   (manifest docs with no vault note — offer to index them via a metadata `/ingest` from
-   the existing files).
+   (manifest docs with no vault note; `audit.py`'s `orphan` list also flags files on disk
+   that aren't even in the manifest — offer to index either via a metadata `/ingest`).
 5. Propose fixes; apply only with confirmation (drifted-path patches are low-risk;
    anything involving deletion is not).
 
