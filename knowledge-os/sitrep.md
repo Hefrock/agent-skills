@@ -9,11 +9,22 @@ _Last updated: 2026-07-20_
   `doc_id`-carrying notes, and Phase 3 folds its corrupt/missing/dangling/
   drifted counts into the health score as a sixth, conditional sub-metric
   (excluded and renormalized, not scored 0, when the warehouse isn't in use).
-- **Law 9 (provenance) promoted to `wiki-librarian`.** The provenance
+- **Provenance check promoted to `wiki-librarian`.** The provenance
   backlink check is now Check 6.4 in the librarian's routine schema audit,
   not a governor-only pass — caught on every `/audit`, not just weekly
   `/govern` runs. Governor's Phase 2 compliance table now cites it as a
-  librarian check like the other laws; Law 10 remains governor's own.
+  librarian check like the other laws.
+- **Constitution reworked for MECE.** Old Laws 1 (search before write) and 6
+  (update over create) covered the same "one canonical page" value at two
+  control points — merged into one law. Old Law 8 (backlinks mandatory)
+  literally duplicated Law 9's provenance wording inside a law that was also
+  trying to cover general connectivity — split cleanly: Law 7 is now pure
+  "no islands," Law 8 owns provenance outright. This freed a slot, refilled
+  by a genuinely missing law: **Law 10, "Distill, don't dump"** — the
+  vault/warehouse content boundary that `wiki-warehouse` previously had to
+  invent as its own principle, ungrounded in the constitution. Net count
+  unchanged at 10. All downstream law-number references (`wiki-librarian`,
+  `wiki-governor`) updated to match.
 
 Status snapshot and honest gap list for the wiki system (`wiki-operator`,
 `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse` +
@@ -53,6 +64,16 @@ behavior and nothing would catch it.
 the first health-score baseline in this file. Consider a small regression
 set (a fixture vault + expected `/health` findings) the way `agent-eval`
 does for other skills.
+
+### P2 — Law 10 (distill, don't dump) has no automated check
+Every other law maps to a concrete check somewhere in `wiki-librarian` or
+`wiki-governor`. Law 10 doesn't yet — "was full text dumped into a note
+instead of distilled" has no heuristic defined. Governor's compliance table
+correctly reports it as `unverified` rather than assuming a silent pass,
+but that's honesty about the gap, not a fix for it.
+*Fix:* design a heuristic (e.g., a body-length threshold on notes carrying
+`warehouse_repo`/`doc_id` frontmatter) and wire it into `wiki-librarian`'s
+schema-gap check, the same way provenance was.
 
 ### P2 — Vault versioning is unspecified
 `knowledge-warehouse` is git-backed by design; whether the Obsidian vault

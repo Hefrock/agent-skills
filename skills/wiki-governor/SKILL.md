@@ -35,17 +35,19 @@ Governor invokes these; it does not reimplement their checks.
 
 ### Phase 2 — Constitution compliance audit
 
-Hold the vault to `knowledge-os/constitution.md`. Map the librarian's and warehouse's findings to the laws they break — Law 10 is the only check governor makes itself:
+Hold the vault to `knowledge-os/constitution.md`. Map the librarian's and warehouse's findings to the laws they break — Law 9 is the only check governor makes itself, and Law 10 has no automated check yet (see note below):
 
 | Law | Compliance check | Source |
 |---|---|---|
 | 3 — Preserve uncertainty | `confidence: low` pages have an `## Open questions` section | librarian schema check |
-| 7 — Status reflects reality | `status: mature` pages link to ≥2 others | librarian schema check |
-| 8 — Backlinks mandatory | no island pages (zero inbound **and** outbound) | librarian orphan check |
-| 9 — Preserve provenance | every concept page carries a `Captured from [[journal]]` or `Source: [[…]]` backlink | librarian schema check |
-| 10 — One run, one log | today's journal has a synthesis/audit log entry | governor |
+| 6 — Status reflects reality | `status: mature` pages link to ≥2 others | librarian schema check |
+| 7 — No islands | zero inbound **and** outbound links | librarian orphan check |
+| 8 — Preserve provenance | every concept page carries a `Captured from [[journal]]` or `Source: [[…]]` backlink | librarian schema check |
+| 9 — One run, one log | today's journal has a synthesis/audit log entry | governor |
 
-Output a compliance table: law, pass/fail, and the specific pages violating it. Law 10 is governor's own distinctive check — it's about the governance run itself, so nothing else is positioned to verify it.
+Output a compliance table: law, pass/fail, and the specific pages violating it. Law 9 is governor's own distinctive check — it's about the governance run itself, so nothing else is positioned to verify it.
+
+**Law 10 (distill, don't dump) has no automated check yet.** Detecting "was full text dumped into a note" needs a heuristic (e.g., a body-length threshold on notes carrying warehouse frontmatter) that hasn't been designed or agreed on. Until it exists, list Law 10 in the compliance table as `unverified`, not `pass` — don't silently assume compliance for a law with no check behind it.
 
 ### Phase 3 — Health score
 
@@ -56,7 +58,7 @@ Compute six sub-metrics, then roll them into one transparent score. Five come fr
 | Connectedness | % of `Knowledge/` pages with ≥2 links | 0.20 |
 | Maturity | mature ÷ (mature + draft + stale) | 0.15 |
 | Freshness | % of pages updated within 90 days | 0.10 |
-| Provenance | % of concept pages with a provenance backlink (Law 9) | 0.20 |
+| Provenance | % of concept pages with a provenance backlink (Law 8) | 0.20 |
 | Resolution | 1 − (open questions ÷ total concept pages), floored at 0 | 0.15 |
 | Warehouse integrity | 1 − (corrupt + missing + dangling + 0.5×drifted) ÷ total warehouse-linked docs | 0.20 |
 

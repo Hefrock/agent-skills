@@ -61,7 +61,7 @@ Focus options: `links` (broken links only), `orphans`, `stale`, `duplicates`, `c
 1. Find notes missing any required frontmatter field (`type`, `status`, `confidence`, `updated`).
 2. Find notes with `confidence: low` that lack a `## Open questions` section.
 3. Find notes with `status: mature` that link to fewer than two other pages (shouldn't be mature yet).
-4. Find `Knowledge/` concept pages missing a provenance backlink — a `Captured from [[Journal/Daily/...]]` or `Source: [[Sources/.../...]]` line (constitution Law 9). Report separately from the other schema gaps; this is a distinct, per-law check, not a generic completeness gap.
+4. Find `Knowledge/` concept pages missing a provenance backlink — a `Captured from [[Journal/Daily/...]]` or `Source: [[Sources/.../...]]` line (constitution Law 8). Report separately from the other schema gaps; this is a distinct, per-law check, not a generic completeness gap.
 
 ### Fix pass
 
