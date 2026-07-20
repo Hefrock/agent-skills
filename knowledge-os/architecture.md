@@ -96,6 +96,7 @@ For a full wiki session, load skills in this order:
 1. `wiki-operator` — always required
 2. `wiki-synthesizer` — for batch compilation runs (handles preprocessing automatically)
 3. `wiki-librarian` — for maintenance passes
-4. `wiki-governor` — for the weekly governance loop; orchestrates 2 and 3, then audits compliance and scores health
+4. `wiki-warehouse` — only if the vault has any `doc_id`-carrying notes (cold storage in use)
+5. `wiki-governor` — for the weekly governance loop; orchestrates 2, 3, and conditionally 4, then audits compliance and scores health
 
 The MCP server must be connected before any skill is invoked.

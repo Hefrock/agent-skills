@@ -6,7 +6,7 @@ This repo follows the open [Agent Skills standard](https://agentskills.io) — e
 
 1. **Copy the template.**
    ```bash
-   cp -r template skills/your-skill-name
+   cp -r skill-template skills/your-skill-name
    ```
 2. **Write `SKILL.md`.**
    - `name` should match the folder name exactly.

@@ -141,6 +141,9 @@ direction here:
   Source note's ideas into `Knowledge/` concept pages.
 - **wiki-librarian** — its structural audit plus this skill's `/warehouse-audit` together
   cover both intra-vault links and vault→warehouse pointers.
+- **wiki-governor** — Phase 1 runs `/warehouse-audit` automatically whenever the vault has
+  any `doc_id`-carrying notes, and folds its corrupt/missing/dangling/drifted counts into
+  the health score as the Warehouse integrity sub-metric (Phase 3).
 
 ## Reference files
 

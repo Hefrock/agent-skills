@@ -2,6 +2,19 @@
 
 _Last updated: 2026-07-20_
 
+## Recently closed
+
+- **Warehouse ↔ governor integration.** `wiki-governor` Phase 1 now runs
+  `wiki-warehouse /warehouse-audit` automatically when the vault has any
+  `doc_id`-carrying notes, and Phase 3 folds its corrupt/missing/dangling/
+  drifted counts into the health score as a sixth, conditional sub-metric
+  (excluded and renormalized, not scored 0, when the warehouse isn't in use).
+- **Law 9 (provenance) promoted to `wiki-librarian`.** The provenance
+  backlink check is now Check 6.4 in the librarian's routine schema audit,
+  not a governor-only pass — caught on every `/audit`, not just weekly
+  `/govern` runs. Governor's Phase 2 compliance table now cites it as a
+  librarian check like the other laws; Law 10 remains governor's own.
+
 Status snapshot and honest gap list for the wiki system (`wiki-operator`,
 `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse` +
 `knowledge-warehouse`) and the stalled-work tracking layer built alongside it.
@@ -15,8 +28,8 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 |---|---|---|
 | `wiki-operator` | Shipped | `/learn /update /connect /ask /review /quiz /map /source /clean /health` |
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
-| `wiki-librarian` | Shipped | 6 structural checks, risk-tiered fix confirmation |
-| `wiki-governor` | Shipped | Orchestrates librarian + synthesizer; adds compliance audit, health score, gap queue |
+| `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
+| `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -41,23 +54,6 @@ the first health-score baseline in this file. Consider a small regression
 set (a fixture vault + expected `/health` findings) the way `agent-eval`
 does for other skills.
 
-### P1 — The wiki's own maintenance cadence has the problem the digest just solved
-`wiki-governor` says to *suggest* running `/govern` when `last_governed` is
-stale — never to run it, and nothing pings you. That's the identical
-failure mode the stalled-work digest was built to fix for GitHub issues,
-just not applied to the wiki itself.
-*Fix:* have `/govern` (or the existing weekly Routine) open a
-`[followup: YYYY-MM-DD]` issue when `last_governed` exceeds 7 days or the
-health score regresses — one mechanism covering both systems instead of two.
-
-### P2 — Warehouse and governor don't share findings
-`/warehouse-audit`'s dangling/drifted/orphaned results never reach the
-health score or `Maps/_gaps.md`. A document warehoused but never
-synthesized is the same failure shape as an orphan page, but only
-`wiki-librarian`'s orphan check feeds Phase 3 of `wiki-governor`.
-*Fix:* fold warehouse-audit's finding counts into the health score as a
-sixth sub-metric, or at minimum surface them in the governance report.
-
 ### P2 — Vault versioning is unspecified
 `knowledge-warehouse` is git-backed by design; whether the Obsidian vault
 itself is under git is never stated in `architecture.md`. Librarian merges
@@ -66,6 +62,15 @@ if the vault has no version history of its own.
 *Fix:* document (and if not already true, set up) git for the vault itself,
 even a private repo with no remote — cheap insurance for a system whose
 whole job is irreversible-in-place edits.
+
+### P3 — The wiki's own maintenance cadence has the problem the digest just solved
+`wiki-governor` says to *suggest* running `/govern` when `last_governed` is
+stale — never to run it, and nothing pings you. That's the identical
+failure mode the stalled-work digest was built to fix for GitHub issues.
+**Deprioritized by choice, not oversight:** this repo isn't expected to
+carry much stalled human-action work itself, so wiring the digest to its
+own governance cadence isn't worth the same investment here. Revisit if
+that changes, or if this pattern gets reused in a repo where it would.
 
 ### P3 — Command fragility is documented, not fixed
 Every wiki skill repeats the same disclaimer: `/learn`, `/synthesize`,
@@ -76,19 +81,11 @@ standing footgun baked into the design.
 top-level README rather than five repeated skill-level disclaimers, if it
 keeps tripping anyone up in practice.
 
-### P3 — Law 9 (provenance) is the newest and least enforced law
-Only `wiki-governor` Phase 2 checks it, and its own compliance table marks
-it "**(new)**" — it isn't one of `wiki-librarian`'s core schema checks
-alongside the other laws librarian already covers.
-*Fix:* promote the provenance check into `wiki-librarian`'s Check 6
-(schema gaps) so it's caught during routine audits, not just governance runs.
-
 ## Recommended order
 
 1. Run one real `/govern` cycle against the actual vault; record the
    baseline health score here.
-2. Wire the digest (or `/govern`) to self-report when governance lapses —
-   closes the P1 cadence gap using infrastructure that already exists.
-3. Decide vault git-versioning story and document it in `architecture.md`.
-4. Fold warehouse-audit findings into the health score.
-5. Move the Law 9 check into `wiki-librarian`.
+2. Decide vault git-versioning story and document it in `architecture.md`.
+3. Build the fixture-vault regression test (P1 mileage gap) — the biggest
+   remaining piece of work and the one that actually proves any of this
+   works rather than just reads well.
