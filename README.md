@@ -91,7 +91,7 @@ agent-skills/
 │   └── map.md
 ├── bin/
 │   └── setup-vault.sh          # one-command vault bootstrap (creates folders, copies templates + constitution)
-├── template/                   # starting point for a new skill
+├── skill-template/              # starting point for a new skill
 └── CONTRIBUTING.md             # how to add a skill, including portability rules
 ```
 

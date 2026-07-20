@@ -1,6 +1,6 @@
 ---
 name: wiki-governor
-description: Runs the wiki's self-governing maintenance loop and holds it accountable to its own constitution. Orchestrates wiki-librarian (structure) and wiki-synthesizer (compilation), then adds the three things neither does — a constitution-compliance audit, a tracked wiki health score, and a knowledge-gap queue. Use on a weekly cadence or when the vault hasn't been maintained in a while. Triggers on "govern my wiki," "maintain my wiki," "is my wiki healthy," "wiki health score," "check constitution compliance," "what am I missing in my vault," and the command /govern. Requires the obsidian-vault MCP server connected. Pairs with wiki-librarian and wiki-synthesizer, which it invokes rather than reimplements.
+description: Runs the wiki's self-governing maintenance loop and holds it accountable to its own constitution. Orchestrates wiki-librarian (structure), wiki-synthesizer (compilation), and wiki-warehouse (cold-storage integrity, if in use), then adds the things none of them do — a constitution-compliance audit, a tracked wiki health score, and a knowledge-gap queue. Use on a weekly cadence or when the vault hasn't been maintained in a while. Triggers on "govern my wiki," "maintain my wiki," "is my wiki healthy," "wiki health score," "check constitution compliance," "what am I missing in my vault," and the command /govern. Requires the obsidian-vault MCP server connected. Pairs with wiki-librarian, wiki-synthesizer, and wiki-warehouse, which it invokes rather than reimplements.
 ---
 
 # Wiki Governor
@@ -9,13 +9,13 @@ The skill that keeps the wiki not just maintained but *accountable*. It does not
 
 ## Prerequisites
 
-The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before running. Governor invokes `wiki-librarian` and `wiki-synthesizer`; load them alongside it.
+The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before running. Governor invokes `wiki-librarian` and `wiki-synthesizer` always, and `wiki-warehouse` if the vault has any warehouse-linked notes; load whichever apply alongside it.
 
 **Note on commands:** `/govern` is a natural-language trigger — write it in the chat window. It is NOT a Claude Code CLI slash command.
 
 ## Principles
 
-1. **Orchestrate, don't duplicate.** Governor calls `wiki-librarian /audit` and `wiki-synthesizer /synthesize` for structure and compilation. It only implements what neither does: compliance, health scoring, gap surfacing. If a check already lives in the librarian, cite it — don't re-scan.
+1. **Orchestrate, don't duplicate.** Governor calls `wiki-librarian /audit`, `wiki-synthesizer /synthesize`, and — when the warehouse is in use — `wiki-warehouse /warehouse-audit`. It only implements what none of them do: compliance, health scoring, gap surfacing. If a check already lives in another skill, cite it — don't re-scan.
 2. **Measure, don't game.** The health score is a mirror, never a target. Report sub-metrics honestly, including regressions. A score that is being optimized instead of earned is worse than no score — say so if you see it happening (Goodhart's law).
 3. **Report before acting.** Inherit the librarian's confirm-before-destructive discipline. Governor auto-applies only the low-risk fixes the librarian already classifies as safe.
 4. **Leave a trail.** Every run appends a governance report to today's journal and updates `Maps/_context.md`.
@@ -29,36 +29,40 @@ Scope options: `maintain` (Phases 1 only), `audit` (Phases 2–4, no fixes), or 
 
 1. Run `wiki-librarian /audit` — full structural audit. Auto-apply only the fixes the librarian classifies as low-risk; surface medium/high-risk fixes for confirmation.
 2. Run `wiki-synthesizer /synthesize` — compile any pending journal ideas and `Sources/raw/` files.
+3. Check whether any vault note carries a `doc_id` (a `wiki-warehouse` pointer). If so, run `wiki-warehouse /warehouse-audit` — both halves — and keep its corrupt/missing/dangling/drifted counts for Phase 3. If no `doc_id` notes exist, skip this step; the warehouse simply isn't in use for this vault, which is not itself a finding.
 
 Governor invokes these; it does not reimplement their checks.
 
 ### Phase 2 — Constitution compliance audit
 
-Hold the vault to `knowledge-os/constitution.md`. Map the librarian's findings to the laws they break, and add the one structural check the librarian does not make:
+Hold the vault to `knowledge-os/constitution.md`. Map the librarian's and warehouse's findings to the laws they break — Law 10 is the only check governor makes itself:
 
 | Law | Compliance check | Source |
 |---|---|---|
 | 3 — Preserve uncertainty | `confidence: low` pages have an `## Open questions` section | librarian schema check |
 | 7 — Status reflects reality | `status: mature` pages link to ≥2 others | librarian schema check |
 | 8 — Backlinks mandatory | no island pages (zero inbound **and** outbound) | librarian orphan check |
-| **9 — Preserve provenance** | **every concept page carries a `Captured from [[journal]]` or `Source: [[…]]` backlink** | **governor (new)** |
+| 9 — Preserve provenance | every concept page carries a `Captured from [[journal]]` or `Source: [[…]]` backlink | librarian schema check |
 | 10 — One run, one log | today's journal has a synthesis/audit log entry | governor |
 
-Output a compliance table: law, pass/fail, and the specific pages violating it. Provenance (Law 9) is the governor's distinctive pass — it is what makes the knowledge graph auditable, and nothing else checks it.
+Output a compliance table: law, pass/fail, and the specific pages violating it. Law 10 is governor's own distinctive check — it's about the governance run itself, so nothing else is positioned to verify it.
 
 ### Phase 3 — Health score
 
-Compute five sub-metrics, each a single MCP query over the vault, then roll them into one transparent score:
+Compute six sub-metrics, then roll them into one transparent score. Five come from a single MCP query over the vault; the sixth reuses the `wiki-warehouse /warehouse-audit` results gathered in Phase 1:
 
 | Sub-metric | Definition | Weight |
 |---|---|---|
-| Connectedness | % of `Knowledge/` pages with ≥2 links | 0.25 |
-| Maturity | mature ÷ (mature + draft + stale) | 0.20 |
-| Freshness | % of pages updated within 90 days | 0.15 |
-| Provenance | % of concept pages with a provenance backlink (Law 9) | 0.25 |
+| Connectedness | % of `Knowledge/` pages with ≥2 links | 0.20 |
+| Maturity | mature ÷ (mature + draft + stale) | 0.15 |
+| Freshness | % of pages updated within 90 days | 0.10 |
+| Provenance | % of concept pages with a provenance backlink (Law 9) | 0.20 |
 | Resolution | 1 − (open questions ÷ total concept pages), floored at 0 | 0.15 |
+| Warehouse integrity | 1 − (corrupt + missing + dangling + 0.5×drifted) ÷ total warehouse-linked docs | 0.20 |
 
-`health = Σ (submetric × weight)`, reported as a 0–100 score **and** its five components — never the headline alone. Show the delta versus the previous run. Weights are transparent and adjustable; the point is the trend, not the absolute number.
+`health = Σ (submetric × weight)`, reported as a 0–100 score **and** its components — never the headline alone. Show the delta versus the previous run. Weights are transparent and adjustable; the point is the trend, not the absolute number.
+
+**Warehouse integrity is conditional, not always-on.** "Warehouse-linked docs" are vault notes carrying a `doc_id` (from `wiki-warehouse`). If none exist, the warehouse isn't in use for this vault — drop the sub-metric entirely and renormalize the remaining five weights to sum to 1.0. Do not score it 0 (unfairly tanks the score for an unused feature) or 1 (falsely implies a clean bill of health). Corrupt/missing/dangling each count as a full penalty — the original or its pointer is actually broken. Drifted counts at half weight, since a drifted path is stale-but-fixable, not a break (see `wiki-warehouse`'s `references/warehouse-schema.md` for the corrupt/missing/dangling/drifted definitions).
 
 Record in `Maps/_context.md` under `## Health` with the date, so the trajectory is visible run over run.
 
@@ -73,9 +77,9 @@ Append to today's journal:
 ```markdown
 ## Governance run — YYYY-MM-DD
 
-- Maintained: [librarian fixes applied], [synthesizer pages compiled]
+- Maintained: [librarian fixes applied], [synthesizer pages compiled], [warehouse-audit result, or "warehouse: not in use"]
 - Compliance: [N laws passing / M total]; provenance gaps: [[page]], [[page]]
-- Health: [score]/100 ([+/-Δ] vs last run) — connectedness X, maturity Y, freshness Z, provenance P, resolution R
+- Health: [score]/100 ([+/-Δ] vs last run) — connectedness X, maturity Y, freshness Z, provenance P, resolution R, warehouse W (or "warehouse: n/a")
 - Top knowledge gaps: [gap], [gap], [gap]
 ```
 
