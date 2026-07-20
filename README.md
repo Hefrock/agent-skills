@@ -7,11 +7,9 @@ A personal collection of [Agent Skills](https://agentskills.io) — portable, se
 Each skill is a folder containing a `SKILL.md` file (instructions + metadata) and, where needed, supporting `scripts/`, `references/`, or `assets/`. Nothing here is Claude-specific unless explicitly noted — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the portability rules this repo follows.
 
 > [!IMPORTANT]
-> **Stalled-work tracking.** Tasks blocked on external human action — a DUA/DSA signature, an account sign-up, a records-release email, an IRB response — are tracked as GitHub issues, not left to memory. Open one with the **🚧 Blocked on human action** or **📅 Dated follow-up** issue template (top of "New Issue"); the title tag (`[blocked-human] ...` / `[followup: YYYY-MM-DD] ...`) is what a weekly automated digest scans for across every public repo here, pushed as a phone notification so nothing silently rots.
->
-> Browse current items: [blocked](https://github.com/Hefrock/agent-skills/issues?q=is%3Aopen+is%3Aissue+%5Bblocked-human%5D+in%3Atitle) · [pending follow-ups](https://github.com/Hefrock/agent-skills/issues?q=is%3Aopen+is%3Aissue+%5Bfollowup%3A+in%3Atitle) *(GitHub's search UI tokenizes brackets loosely — these links are a convenience, not authoritative; the digest itself does an exact title-prefix match via the API)*.
->
-> **Resolve:** close the issue. **Update:** edit it — the digest reads live state, nothing to sync. **Postpone:** change the `YYYY-MM-DD` in a follow-up's title; a `[blocked-human]` item has no date by design, so it keeps resurfacing until closed.
+> **Stalled-work tracking.** Tasks blocked on external human action (a DUA signature, a sign-up, a records request) are tracked as GitHub issues and surfaced weekly as a phone notification — see [`docs/stalled-work-tracking.md`](./docs/stalled-work-tracking.md) for how to open and resolve one.
+
+**Jump to:** [Skills](#skills) · [Installing](#installing-a-skill) · [Repo structure](#repo-structure) · [Wiki system](#wiki-system)
 
 ## Skills
 
@@ -56,6 +54,9 @@ Copy the skill folder into whatever directory that platform scans for skills —
 
 ## Repo structure
 
+<details>
+<summary>Expand directory tree</summary>
+
 ```
 agent-skills/
 ├── .github/
@@ -63,6 +64,8 @@ agent-skills/
 │   └── ISSUE_TEMPLATE/         # blocked-human / dated-followup templates for stalled-work tracking
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code-only install metadata — optional, additive
+├── docs/
+│   └── stalled-work-tracking.md # how the blocked-human / dated-followup convention works
 ├── skills/                     # flat — one folder per skill, no category nesting
 │   ├── agent-eval/             # rubric-based evals, LLM-as-judge, regression test sets
 │   ├── agent-redteam/          # adversarial case generation, pairs with agent-eval
@@ -92,6 +95,8 @@ agent-skills/
 └── CONTRIBUTING.md             # how to add a skill, including portability rules
 ```
 
+</details>
+
 ## Wiki system
 
 The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer.
@@ -102,6 +107,7 @@ The operating layer lives in this repo:
 |---|---|
 | `knowledge-os/constitution.md` | 10 non-negotiable rules Claude follows when operating the wiki |
 | `knowledge-os/architecture.md` | Component map, data flow, and note lifecycle reference |
+| `knowledge-os/sitrep.md` | Living status + gap analysis for the wiki system — what's shipped, what's untested, what's next |
 | `templates/` | Note templates (concept, journal, source, map) — copied into `System/templates/` in your vault by `setup-vault.sh` |
 
 Run `./bin/setup-vault.sh ~/path/to/vault` to bootstrap the vault structure, copy templates and the constitution into `System/`, and print the MCP config snippet.
