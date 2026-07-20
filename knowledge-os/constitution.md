@@ -4,8 +4,8 @@ Non-negotiable rules that govern how Claude operates this wiki. These apply in e
 
 ## Core laws
 
-### 1. Search before write
-Before creating any note, search `Knowledge/` for an existing page on the same concept. If one exists — even under a different name — update it. Never create a duplicate. One canonical page per concept, always.
+### 1. One canonical page per concept
+Before creating any note, search `Knowledge/` for an existing page on the same concept. If one exists — even under a different name — update it; never create a duplicate. If a duplicate slips through anyway (naming drift, parallel creation), merge on discovery rather than leaving both: preserve all details from both sources, drop nothing. Enriching an existing page is always preferable to forking a new one.
 
 ### 2. Distill, don't invent
 Only write claims that appear in the source material (journal entries, raw sources, the conversation). Never add context, examples, or conclusions that weren't in the input. If you're uncertain whether something was said vs. inferred, mark it `confidence: low` and add it to `## Open questions`.
@@ -19,24 +19,24 @@ Before creating, merging, or deleting any note, state what you're about to do an
 ### 5. The wiki is the source of truth — not the conversation
 Conversations are ephemeral. The vault is permanent. If the conversation and the wiki contradict each other, the wiki wins unless the user explicitly corrects it. Never hold "knowledge" in the conversation that isn't also in the vault.
 
-### 6. Update over create
-Enriching an existing page is always preferable to creating a new one. If a page covers 80% of what a new page would cover, merge — don't fork. Merges must preserve all details from both sources; nothing is dropped.
-
-### 7. Status reflects reality
+### 6. Status reflects reality
 - `status: draft` — created today or clearly incomplete
 - `status: mature` — stable, linked to ≥2 other pages, explanation is clear and complete
 - `status: stale` — not updated in 90+ days, no recent inbound links
 
 Never self-promote a page to `mature` if it lacks outbound links, an explanation, or was just created.
 
-### 8. Backlinks are mandatory
-Every concept page must link back to the journal entry or source that prompted it. Every source page must link to the concept pages it informed. A page with zero inbound AND zero outbound links is not connected to the wiki — it is an island. Islands are draft by definition.
+### 7. No islands
+A page with zero inbound AND zero outbound links is not connected to the wiki — it is an island. Islands are draft by definition, regardless of what their `status` field claims.
 
-### 9. Preserve provenance
-When promoting an idea from a journal entry, include a link: `Captured from [[Journal/Daily/YYYY-MM-DD]]`. When compiling a source, include: `Source: [[Sources/Papers/title]]`. This makes the knowledge graph auditable and traceable.
+### 8. Preserve provenance
+Every concept page links back to the journal entry or source that prompted it: `Captured from [[Journal/Daily/YYYY-MM-DD]]`. Every source page links to the concept pages it informed: `Source: [[Sources/Papers/title]]`. This makes the knowledge graph auditable and traceable — it is what turns "no islands" (Law 7) into "connected to something specific and checkable."
 
-### 10. One run, one log
+### 9. One run, one log
 After any synthesis or audit session, append a compact summary to today's journal. This creates a permanent record of what changed and why.
+
+### 10. Distill, don't dump
+Full text and original files live only in cold storage (the `knowledge-warehouse` repo, or wherever raw material is warehoused outside the vault) — never in a note. A note holds a summary, a few key excerpts, and a stable pointer back to the original (a `doc_id` or equivalent), not the whole document. If you're about to paste full source text into a note, stop; distill it instead.
 
 ## What this wiki is for
 
