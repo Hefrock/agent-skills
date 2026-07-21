@@ -7,7 +7,7 @@ A personal collection of [Agent Skills](https://agentskills.io) — portable, se
 Each skill is a folder containing a `SKILL.md` file (instructions + metadata) and, where needed, supporting `scripts/`, `references/`, or `assets/`. Nothing here is Claude-specific unless explicitly noted — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the portability rules this repo follows.
 
 > [!IMPORTANT]
-> **Stalled-work tracking.** Tasks blocked on external human action (a DUA signature, a sign-up, a records request) are tracked as GitHub issues and surfaced weekly as a phone notification — see [`docs/stalled-work-tracking.md`](./docs/stalled-work-tracking.md) for how to open and resolve one.
+> **Stalled-work tracking.** Tasks blocked on external human action (a DUA signature, a sign-up, a records request) are tracked as GitHub issues and surfaced weekly — see [`docs/stalled-work-tracking.md`](./docs/stalled-work-tracking.md) for how to open, resolve, and check on one.
 
 **Jump to:** [Skills](#skills) · [Installing](#installing-a-skill) · [Repo structure](#repo-structure) · [Wiki system](#wiki-system)
 
