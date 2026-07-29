@@ -101,6 +101,28 @@ agent-skills/
 
 The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer.
 
+**Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
+
+1. **Build it once:**
+   ```bash
+   cd mcp/obsidian-vault && npm install && npm run build
+   ```
+2. **Point it at your vault.** Either run `./bin/setup-vault.sh ~/path/to/vault` — it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints the config snippet below with your paths already filled in — or add this to `~/.claude.json` yourself:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault": {
+         "command": "node",
+         "args": ["/absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js"],
+         "env": { "OBSIDIAN_VAULT_PATH": "/absolute/path/to/your/vault" }
+       }
+     }
+   }
+   ```
+3. **Restart Claude Code and verify:** run `/mcp` — expect `obsidian-vault` connected with 10 tools. Full tool reference: [`mcp/obsidian-vault/README.md`](./mcp/obsidian-vault/README.md).
+
+This is a **per-device** setup step — the server is a local process, so a new machine needs its own build and its own `~/.claude.json` entry (with paths for *that* machine), even if it's pointed at the same synced vault.
+
 The operating layer lives in this repo:
 
 | Path | Purpose |
@@ -109,8 +131,6 @@ The operating layer lives in this repo:
 | `knowledge-os/architecture.md` | Component map, data flow, and note lifecycle reference |
 | `knowledge-os/sitrep.md` | Living status + gap analysis for the wiki system — what's shipped, what's untested, what's next |
 | `templates/` | Note templates (concept, journal, source, map) — copied into `System/templates/` in your vault by `setup-vault.sh` |
-
-Run `./bin/setup-vault.sh ~/path/to/vault` to bootstrap the vault structure, copy templates and the constitution into `System/`, and print the MCP config snippet.
 
 ## License
 
