@@ -83,7 +83,8 @@ agent-skills/
 │       └── README.md           # setup and configuration guide
 ├── knowledge-os/
 │   ├── constitution.md         # 10 laws Claude follows when operating the wiki
-│   └── architecture.md         # component map, data flow, note lifecycle
+│   ├── architecture.md         # component map, data flow, note lifecycle
+│   └── sitrep.md               # living status + gap analysis for the wiki system
 ├── templates/                  # note templates copied into vault by setup-vault.sh
 │   ├── concept.md
 │   ├── journal.md
@@ -101,6 +102,38 @@ agent-skills/
 
 The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer.
 
+**Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
+
+1. **Build it once:**
+   ```bash
+   cd mcp/obsidian-vault && npm install && npm run build
+   ```
+2. **Point it at your vault.** Three ways, easiest first:
+   - **Claude Code CLI (recommended):**
+     ```bash
+     claude mcp add obsidian-vault \
+       -s user \
+       -e OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
+       -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
+     ```
+     `-s user` registers it at the user level — available in every project, which is how this server is meant to run — and edits `~/.claude.json` for you. This avoids hand-editing that file directly, which can get weird in a GUI editor if a running Claude Code process has it open.
+   - **`setup-vault.sh`** — run `./bin/setup-vault.sh ~/path/to/vault`; it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints a config snippet with your paths filled in, for the manual route below.
+   - **Manual** — add this to `~/.claude.json` yourself:
+     ```json
+     {
+       "mcpServers": {
+         "obsidian-vault": {
+           "command": "node",
+           "args": ["/absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js"],
+           "env": { "OBSIDIAN_VAULT_PATH": "/absolute/path/to/your/vault" }
+         }
+       }
+     }
+     ```
+3. **Restart Claude Code and verify:** run `/mcp` — expect `obsidian-vault` connected with 10 tools. Full tool reference: [`mcp/obsidian-vault/README.md`](./mcp/obsidian-vault/README.md).
+
+This is a **per-device** setup step — the server is a local process, so a new machine needs its own build and its own `~/.claude.json` entry (with paths for *that* machine), even if it's pointed at the same synced vault.
+
 The operating layer lives in this repo:
 
 | Path | Purpose |
@@ -109,8 +142,6 @@ The operating layer lives in this repo:
 | `knowledge-os/architecture.md` | Component map, data flow, and note lifecycle reference |
 | `knowledge-os/sitrep.md` | Living status + gap analysis for the wiki system — what's shipped, what's untested, what's next |
 | `templates/` | Note templates (concept, journal, source, map) — copied into `System/templates/` in your vault by `setup-vault.sh` |
-
-Run `./bin/setup-vault.sh ~/path/to/vault` to bootstrap the vault structure, copy templates and the constitution into `System/`, and print the MCP config snippet.
 
 ## License
 
