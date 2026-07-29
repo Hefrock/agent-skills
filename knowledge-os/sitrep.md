@@ -1,9 +1,25 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-07-20_
+_Last updated: 2026-07-21_
 
 ## Recently closed
 
+- **Stalled-work digest rebuilt end-to-end (v1 → v3), plus a durable
+  dashboard.** The original curl-based design never actually worked — this
+  environment's egress proxy blocks raw `api.github.com`/`github.com` for
+  every session, confirmed by testing directly, not just inferred from one
+  failed run. Rebuilt on `mcp__Claude_Code_Remote__list_repos` (unrestricted
+  repo discovery) → `add_repo` → `mcp__github__list_issues` →
+  `PushNotification`, bound to a persistent session instead of a tool-less
+  fresh spawn per fire (fresh-spawn Routines get zero MCP tools, confirmed
+  twice). Verified live: 5 stalled items found correctly across 3 of 14
+  public repos. Added a seventh step that regenerates and republishes a
+  bookmarkable dashboard artifact to the same URL each Monday, since the
+  push notification is short and easy to miss if logged out or the tab
+  isn't open. The per-repo search links in `docs/stalled-work-tracking.md`
+  (stale — scoped to `agent-skills` alone, from before auto-discovery)
+  are now `user:Hefrock`-scoped and cover every repo the digest actually
+  scans; the dashboard link is documented alongside them.
 - **Warehouse ↔ governor integration.** `wiki-governor` Phase 1 now runs
   `wiki-warehouse /warehouse-audit` automatically when the vault has any
   `doc_id`-carrying notes, and Phase 3 folds its corrupt/missing/dangling/
@@ -44,7 +60,8 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
-| Stalled-work digest | Running | Weekly Routine, auto-discovers public repos, phone push |
+| Stalled-work digest (v3) | Running | Weekly Routine, self-bound session; `list_repos`→`add_repo`→`list_issues`→`PushNotification`; no raw curl (blocked by egress policy for every session) |
+| Stalled-work dashboard | Running | Artifact snapshot, republished to the same URL each run; readable without Claude mobile, a login, or the push having landed |
 
 Everything above exists and is merged. What follows is what's missing or
 untested.
@@ -92,6 +109,19 @@ failure mode the stalled-work digest was built to fix for GitHub issues.
 carry much stalled human-action work itself, so wiring the digest to its
 own governance cadence isn't worth the same investment here. Revisit if
 that changes, or if this pattern gets reused in a repo where it would.
+
+### P3 — Routine has two undocumented operational quirks
+Discovered empirically while rebuilding the digest: (1) `update_trigger`'s
+`prompt` field is rejected for this self-bound trigger
+(`prompt_update_disabled`) — any future prompt change means delete +
+recreate, which loses run history and mints a new trigger ID (currently
+`trig_01HhqctQZWgChSq32maTv2LN`). (2) If a firing errors out before
+reaching the `PushNotification` step, there's no automated signal that the
+week's check silently failed — only a human noticing the digest didn't
+arrive would catch it.
+*Fix:* neither has a clean fix given current platform constraints;
+documented here so it isn't rediscovered by trial and error next time the
+routine needs to change.
 
 ### P3 — Command fragility is documented, not fixed
 Every wiki skill repeats the same disclaimer: `/learn`, `/synthesize`,
