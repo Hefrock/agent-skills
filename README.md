@@ -107,18 +107,28 @@ The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-go
    ```bash
    cd mcp/obsidian-vault && npm install && npm run build
    ```
-2. **Point it at your vault.** Either run `./bin/setup-vault.sh ~/path/to/vault` — it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints the config snippet below with your paths already filled in — or add this to `~/.claude.json` yourself:
-   ```json
-   {
-     "mcpServers": {
-       "obsidian-vault": {
-         "command": "node",
-         "args": ["/absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js"],
-         "env": { "OBSIDIAN_VAULT_PATH": "/absolute/path/to/your/vault" }
+2. **Point it at your vault.** Three ways, easiest first:
+   - **Claude Code CLI (recommended):**
+     ```bash
+     claude mcp add obsidian-vault \
+       -s user \
+       -e OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
+       -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
+     ```
+     `-s user` registers it at the user level — available in every project, which is how this server is meant to run — and edits `~/.claude.json` for you. This avoids hand-editing that file directly, which can get weird in a GUI editor if a running Claude Code process has it open.
+   - **`setup-vault.sh`** — run `./bin/setup-vault.sh ~/path/to/vault`; it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints a config snippet with your paths filled in, for the manual route below.
+   - **Manual** — add this to `~/.claude.json` yourself:
+     ```json
+     {
+       "mcpServers": {
+         "obsidian-vault": {
+           "command": "node",
+           "args": ["/absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js"],
+           "env": { "OBSIDIAN_VAULT_PATH": "/absolute/path/to/your/vault" }
+         }
        }
      }
-   }
-   ```
+     ```
 3. **Restart Claude Code and verify:** run `/mcp` — expect `obsidian-vault` connected with 10 tools. Full tool reference: [`mcp/obsidian-vault/README.md`](./mcp/obsidian-vault/README.md).
 
 This is a **per-device** setup step — the server is a local process, so a new machine needs its own build and its own `~/.claude.json` entry (with paths for *that* machine), even if it's pointed at the same synced vault.

@@ -27,8 +27,16 @@ npm run build
 
 ## Configure (Claude Code)
 
-Add to `~/.claude.json`:
+**Recommended — via the CLI:**
+```bash
+claude mcp add obsidian-vault \
+  -s user \
+  -e OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
+  -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
+```
+`-s user` registers the server at the user level (available in every project) and writes to `~/.claude.json` for you. If `node` isn't found on `PATH` when Claude Code runs it, use `which node`'s output as the command instead of the bare `node`.
 
+**Manual** — add this to `~/.claude.json` yourself:
 ```json
 {
   "mcpServers": {
@@ -42,6 +50,7 @@ Add to `~/.claude.json`:
   }
 }
 ```
+Hand-editing this file directly can behave oddly in a GUI editor if a running Claude Code process has it open — the CLI method above avoids that entirely.
 
 Then verify inside Claude Code:
 ```
