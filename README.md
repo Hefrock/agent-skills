@@ -83,7 +83,8 @@ agent-skills/
 │       └── README.md           # setup and configuration guide
 ├── knowledge-os/
 │   ├── constitution.md         # 10 laws Claude follows when operating the wiki
-│   └── architecture.md         # component map, data flow, note lifecycle
+│   ├── architecture.md         # component map, data flow, note lifecycle
+│   └── sitrep.md               # living status + gap analysis for the wiki system
 ├── templates/                  # note templates copied into vault by setup-vault.sh
 │   ├── concept.md
 │   ├── journal.md
