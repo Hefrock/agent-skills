@@ -37,6 +37,12 @@ Focus options: `links` (broken links only), `orphans`, `stale`, `duplicates`, `c
 3. Flag notes with zero inbound links and fewer than two outbound links.
 4. Suggest which existing page should link to the orphan, based on topic overlap.
 
+Scoped to `Knowledge/` (plus `Sources/` and `Projects/` on a full audit) on
+purpose — system files are exempt from Law 7 per the constitution's "Scope of
+Laws 7 and 8": `Maps/_context.md`, `Maps/_ask_log.md`, `Maps/_gaps.md`, and
+`System/`. Having no inbound links is their correct state. Do not "fix" this
+check by widening it to the whole vault.
+
 ### Check 3 — Stale notes
 
 1. Query `status: stale` across all notes.

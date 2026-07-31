@@ -150,8 +150,15 @@ async function walkVault(dir: string = vaultRoot): Promise<string[]> {
   return files;
 }
 
+// Single source of truth for query tokenization. Both scoring and excerpt
+// selection must use this — an empty-string term makes `includes("")` match
+// every line, which silently returns the note's first line as the excerpt.
+function tokenize(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
 function scoreNote(query: string, notePath: string, body: string, frontmatter: Record<string, unknown>): number {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = tokenize(query);
   const title = path.basename(notePath, ".md").toLowerCase();
   const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.join(" ").toLowerCase() : "";
   const bodyLower = body.toLowerCase();
@@ -178,7 +185,7 @@ async function searchNotes(query: string, folder?: string, limit = 10): Promise<
     const { frontmatter, body } = await readNote(file);
     const score = scoreNote(query, file, body, frontmatter);
     if (score > 0) {
-      const terms = query.toLowerCase().split(/\s+/);
+      const terms = tokenize(query);
       const matchLine = body.split("\n").find((l) => terms.some((t) => l.toLowerCase().includes(t))) ?? body.split("\n")[0] ?? "";
       results.push({ path: file, score, excerpt: matchLine.trim().slice(0, 150), frontmatter });
     }

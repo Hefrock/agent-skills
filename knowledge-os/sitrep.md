@@ -1,9 +1,31 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-07-21_
+_Last updated: 2026-07-31_
 
 ## Recently closed
 
+- **Laws 7/8 scope fixed — the recurring `Maps/_context.md` false positive.**
+  Governance runs flagged the hot cache as an island/provenance violation on
+  consecutive days with nothing to fix. Root cause was a spec divergence, not
+  a check bug: `wiki-librarian`'s implementing checks were already correctly
+  scoped to `Knowledge/`, but the constitution's Laws 7 and 8 carried no scope
+  qualifier at all — and `wiki-governor` Phase 2 audits against the
+  constitution, so it applied the unscoped text vault-wide. That's why two
+  days of inspecting the librarian found nothing wrong. Fixed at the
+  authoritative source: the constitution now has a "Scope of Laws 7 and 8"
+  clause exempting system files (`Maps/_*.md`, `System/`), with the governor,
+  librarian, and `architecture.md` all citing it. Hand-authored `Maps/` pages
+  stay in scope.
+- **Search excerpt bug in the `obsidian-vault` MCP server.** Reported as an
+  "empty string vs. omitted param" trigger; the real mechanism was an empty
+  *term*, not an empty *param*. Query tokenization was duplicated across two
+  functions — `scoreNote` filtered empty terms, the excerpt selector 27 lines
+  later did not. A query with leading/trailing whitespace produced an empty
+  term, and `line.includes("")` is true for every line, so the excerpt
+  silently became the note's **first line** while scores stayed correct —
+  right notes, wrong excerpts, which is why it resisted diagnosis. Fixed by
+  extracting a single `tokenize()` helper both sites share, plus a regression
+  test verified to fail on the old code and pass on the new.
 - **Stalled-work digest rebuilt end-to-end (v1 → v3), plus a durable
   dashboard.** The original curl-based design never actually worked — this
   environment's egress proxy blocks raw `api.github.com`/`github.com` for

@@ -32,6 +32,24 @@ A page with zero inbound AND zero outbound links is not connected to the wiki �
 ### 8. Preserve provenance
 Every concept page links back to the journal entry or source that prompted it: `Captured from [[Journal/Daily/YYYY-MM-DD]]`. Every source page links to the concept pages it informed: `Source: [[Sources/Papers/title]]`. This makes the knowledge graph auditable and traceable — it is what turns "no islands" (Law 7) into "connected to something specific and checkable."
 
+### Scope of Laws 7 and 8 — system files are exempt
+
+Laws 7 and 8 govern the **knowledge graph**: `Knowledge/`, `Sources/`, and
+`Projects/` notes. They do **not** apply to system files — the machine-maintained
+artifacts under `Maps/` whose names begin with an underscore (`_context.md`,
+`_ask_log.md`, `_gaps.md`) and anything in `System/`.
+
+These are infrastructure, not knowledge. Each has exactly one writer, is
+regenerated mechanically, and is read by path rather than by `[[wikilink]]` — so
+"no inbound links" is their normal, correct state, and there is no journal entry
+or source that "prompted" a hot cache. Flagging them is a false positive: it
+costs attention every run and can never be resolved, because there is nothing
+wrong to fix.
+
+Audit tools must exclude these paths from island and provenance checks. Hand-
+authored `Maps/` pages (an area index like `Maps/AI.md`) are ordinary notes and
+remain in scope.
+
 ### 9. One run, one log
 After any synthesis or audit session, append a compact summary to today's journal. This creates a permanent record of what changed and why.
 
