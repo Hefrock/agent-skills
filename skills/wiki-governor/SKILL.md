@@ -47,7 +47,7 @@ Hold the vault to `knowledge-os/constitution.md`. Map the librarian's and wareho
 
 Output a compliance table: law, pass/fail, and the specific pages violating it. Law 9 is governor's own distinctive check — it's about the governance run itself, so nothing else is positioned to verify it.
 
-**Laws 7 and 8 exempt system files** — `Maps/_context.md`, `Maps/_ask_log.md`, `Maps/_gaps.md`, and `System/` (see the constitution's "Scope of Laws 7 and 8"). Never report these as island or provenance violations: they are machine-maintained, read by path rather than by wikilink, and have no prompting journal entry, so a flag against them can never be resolved. Take scope from the constitution, not from a law's headline sentence read in isolation.
+**Laws 6, 7, and 8 exempt system files** — `Maps/_context.md`, `Maps/_ask_log.md`, `Maps/_gaps.md`, and `System/` (see the constitution's "Scope of Laws 6, 7, and 8"). Never report these as island, provenance, or premature-mature violations: they are machine-maintained, read by path rather than by wikilink, have no prompting journal entry, and `status: mature` on one means "stable" rather than "well-connected" — so a flag against them can never be resolved. Take scope from the constitution, not from a law's headline sentence read in isolation.
 
 **Law 10 (distill, don't dump) has no automated check yet.** Detecting "was full text dumped into a note" needs a heuristic (e.g., a body-length threshold on notes carrying warehouse frontmatter) that hasn't been designed or agreed on. Until it exists, list Law 10 in the compliance table as `unverified`, not `pass` — don't silently assume compliance for a law with no check behind it.
 

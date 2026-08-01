@@ -73,7 +73,7 @@ agent-skills/
 │   ├── repo-pincer/            # codebase reverse-engineering — claims vs. reality reconciliation
 │   ├── wiki-operator/          # on-demand vault operations
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
-│   ├── wiki-librarian/         # structural health audits
+│   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 23-test regression suite
 │   ├── wiki-governor/          # maintenance loop + constitution compliance + health score
 │   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
 ├── mcp/
