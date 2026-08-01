@@ -4,18 +4,39 @@ _Last updated: 2026-07-31_
 
 ## Recently closed
 
-- **Laws 7/8 scope fixed — the recurring `Maps/_context.md` false positive.**
-  Governance runs flagged the hot cache as an island/provenance violation on
-  consecutive days with nothing to fix. Root cause was a spec divergence, not
-  a check bug: `wiki-librarian`'s implementing checks were already correctly
-  scoped to `Knowledge/`, but the constitution's Laws 7 and 8 carried no scope
-  qualifier at all — and `wiki-governor` Phase 2 audits against the
-  constitution, so it applied the unscoped text vault-wide. That's why two
-  days of inspecting the librarian found nothing wrong. Fixed at the
-  authoritative source: the constitution now has a "Scope of Laws 7 and 8"
-  clause exempting system files (`Maps/_*.md`, `System/`), with the governor,
-  librarian, and `architecture.md` all citing it. Hand-authored `Maps/` pages
-  stay in scope.
+- **First real operational mileage: `check_vault.py` + a fixture vault.**
+  Every wiki skill was pure prompt spec with zero automated verification —
+  the P1 gap below, standing since this file was created. Built a
+  deterministic reference checker (`skills/wiki-librarian/scripts/
+  check_vault.py`) implementing the mechanical subset of `wiki-librarian`'s
+  checks (broken links, orphans, stale notes, schema gaps including
+  provenance and premature-mature), plus a 17-note fixture vault and a
+  23-test regression suite wired into CI. Checks 4/5 (near-duplicates,
+  contradictions) are deliberately not implemented — they require semantic
+  judgment a script can't make, documented as such rather than faked.
+  Building the fixture immediately found a real bug: `premature_mature`
+  (Law 6, no scope guard at all) flagged every system file with
+  `status: mature` — the same false-positive class as the Laws 7/8 fix
+  below, just under a different law, and undiscovered until a script tried
+  to apply the rule literally. This doesn't close the P1 gap — the other
+  three wiki skills and Checks 4/5 are still unverified — but it closes it
+  for the one skill whose rules are mechanical enough to script, and it's
+  already paid for itself once.
+- **Laws 6, 7, and 8 scope fixed — the recurring `Maps/_context.md` false
+  positive, plus the related Law 6 instance found while building the test
+  above.** Governance runs flagged the hot cache as an island/provenance
+  violation on consecutive days with nothing to fix. Root cause was a spec
+  divergence, not a check bug: `wiki-librarian`'s implementing checks were
+  already correctly scoped to `Knowledge/`, but the constitution's Laws 7
+  and 8 carried no scope qualifier at all — and `wiki-governor` Phase 2
+  audits against the constitution, so it applied the unscoped text
+  vault-wide. That's why two days of inspecting the librarian found nothing
+  wrong. Fixed at the authoritative source: the constitution's "Scope of
+  Laws 6, 7, and 8" clause exempts system files (`Maps/_*.md`, `System/`)
+  from all three (Law 6 added after `check_vault.py` found it applied to
+  the same class of file), with the governor, librarian, and
+  `architecture.md` all citing it. Hand-authored `Maps/` pages stay in
+  scope for all three.
 - **Search excerpt bug in the `obsidian-vault` MCP server.** Reported as an
   "empty string vs. omitted param" trigger; the real mechanism was an empty
   *term*, not an empty *param*. Query tokenization was duplicated across two
@@ -90,19 +111,26 @@ untested.
 
 ## Gap analysis
 
-### P1 — No operational mileage
-Five skills, a 10-law constitution, and a health-score formula exist, but
-nothing in this repo shows the system has run against a real, lived-in
-vault. The health-score weights (`architecture.md` Phase 3), the "90 days =
-stale" threshold, and the 5-issue cap in `/review` are all untested
-guesses. Unlike `deid-reid-harness` and `knowledge-warehouse`, which both
-shipped with test suites, the wiki skills have **zero automated
-verification** — a prompt edit to `wiki-operator` could silently change
-behavior and nothing would catch it.
-*Fix:* run a real governance cycle against actual vault content and record
-the first health-score baseline in this file. Consider a small regression
-set (a fixture vault + expected `/health` findings) the way `agent-eval`
-does for other skills.
+### P1 — No operational mileage (partially closed)
+Five skills, a 10-law constitution, and a health-score formula exist, and
+until now nothing in this repo showed the system had run against a real
+vault, or had any automated verification at all — unlike `deid-reid-harness`
+and `knowledge-warehouse`, which both shipped with test suites.
+
+`check_vault.py` + its 23-test fixture-vault suite (see Recently closed)
+closes this for `wiki-librarian`'s mechanical checks (broken links, orphans,
+stale, schema gaps). **Still open:** `wiki-operator`, `wiki-synthesizer`, and
+`wiki-governor` have no automated verification at all; `wiki-librarian`'s
+Checks 4/5 (near-duplicates, contradictions) are semantic and out of a
+script's reach by design, not an oversight to fix later; the health-score
+weights (`architecture.md` Phase 3) and the "90 days = stale" threshold are
+still untested guesses; and no one has run a real governance cycle against
+an actual lived-in vault.
+*Fix:* extend `check_vault.py`'s pattern to `wiki-governor`'s health-score
+computation (it's arithmetic over the same mechanical facts, so it's
+scriptable the same way) and, separately, run one real `/govern` cycle
+against actual vault content to get the first baseline this file has ever
+had.
 
 ### P2 — Law 10 (distill, don't dump) has no automated check
 Every other law maps to a concrete check somewhere in `wiki-librarian` or
@@ -156,9 +184,9 @@ keeps tripping anyone up in practice.
 
 ## Recommended order
 
-1. Run one real `/govern` cycle against the actual vault; record the
+1. Extend `check_vault.py`'s pattern to `wiki-governor`'s health-score
+   computation — same mechanical-facts-in, arithmetic-out shape, so it's a
+   direct extension rather than new design work.
+2. Run one real `/govern` cycle against the actual vault; record the
    baseline health score here.
-2. Decide vault git-versioning story and document it in `architecture.md`.
-3. Build the fixture-vault regression test (P1 mileage gap) — the biggest
-   remaining piece of work and the one that actually proves any of this
-   works rather than just reads well.
+3. Decide vault git-versioning story and document it in `architecture.md`.

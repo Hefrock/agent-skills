@@ -62,3 +62,6 @@ jobs:
 
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
+
+      - name: wiki-librarian — check_vault.py regression suite (stdlib unittest)
+        run: python skills/wiki-librarian/scripts/test_check_vault.py
