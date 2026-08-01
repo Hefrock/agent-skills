@@ -79,6 +79,8 @@ Two more `Maps/` files exist purely to feed `wiki-governor`, and each has exactl
 
 No skill writes to a file it doesn't own. `/ask` never touches `_gaps.md`; `wiki-governor` never touches `_ask_log.md` — it only reads and compiles it. This is the same single-owner discipline the MCP server applies to writes (backup-before-overwrite, atomic rename).
 
+These two, plus the `Maps/_context.md` hot cache above, are **system files**: exempt from constitution Laws 7 (no islands) and 8 (provenance). They are read by path rather than by `[[wikilink]]`, so zero inbound links is correct rather than broken, and a mechanically regenerated file has no prompting journal entry to cite. See the constitution's "Scope of Laws 7 and 8". Hand-authored `Maps/` pages like `Maps/AI.md` are ordinary notes and stay in scope.
+
 ## Note lifecycle
 
 ```

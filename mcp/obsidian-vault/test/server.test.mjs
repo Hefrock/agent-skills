@@ -136,6 +136,30 @@ d = parse(r);
 check("ReDoS — special chars in query don't hang server", elapsed < 2000, `took ${elapsed}ms`);
 check("ReDoS — search returns valid result shape", Array.isArray(d.results));
 
+console.log("\n── Excerpt selection: whitespace in query ───────────────────────");
+
+// Regression: query tokenization used to be duplicated between scoring (which
+// filtered empty terms) and excerpt selection (which did not). Leading/trailing
+// whitespace produced an empty-string term, and `line.includes("")` is true for
+// every line — so the excerpt silently became the note's FIRST line regardless
+// of where the match actually was. Scores stayed correct, which made this hard
+// to spot: right notes, wrong excerpts.
+await fs.writeFile(
+  `${VAULT}/Knowledge/excerpt-fixture.md`,
+  "---\ntype: concept\n---\nFiller opening line with no match.\nThe zebrafish appears on the second line."
+);
+
+for (const [label, q] of [["exact", "zebrafish"], ["leading space", " zebrafish"], ["trailing space", "zebrafish "]]) {
+  r = await tool(20, "search_notes", { query: q });
+  d = parse(r);
+  const hit = d.results?.find((x) => x.path.includes("excerpt-fixture"));
+  check(
+    `excerpt — ${label} query returns the matching line, not line 1`,
+    hit !== undefined && hit.excerpt.includes("zebrafish"),
+    `got: ${JSON.stringify(hit?.excerpt)}`
+  );
+}
+
 console.log("\n── Multiple backups don't collide ───────────────────────────────");
 
 r = await tool(9, "write_note", { path: "Knowledge/collision-test.md", content: "v1", mode: "upsert" });
