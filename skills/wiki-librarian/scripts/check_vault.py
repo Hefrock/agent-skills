@@ -13,9 +13,11 @@ Implements, matching skills/wiki-librarian/SKILL.md exactly:
   - Check 1 — Broken links
   - Check 2 — Orphan pages       (Laws 6/7/8 system-file exemption applied)
   - Check 3 — Stale notes
-  - Check 6 — Schema gaps        (including the Law 8 provenance check and
-                                   the Law 6 premature-mature check, both
-                                   with the system-file exemption applied)
+  - Check 6 — Schema gaps        (including the Law 8 provenance check, the
+                                   Law 6 premature-mature check — both with
+                                   the system-file exemption applied — and
+                                   Law 10's distillation check, 6.5: the
+                                   first automated check Law 10 has ever had)
 
 Deliberately NOT implemented — both require semantic judgment a script
 cannot make, not just more code:
@@ -42,6 +44,17 @@ WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 PROVENANCE_RE = re.compile(r"Captured from \[\[|Source:\s*\[\[")
 OPEN_QUESTIONS_RE = re.compile(r"^##\s+open questions\b", re.IGNORECASE | re.MULTILINE)
 STALE_DAYS = 90
+
+# Law 10 (constitution.md): "distill, don't dump." No governance run has
+# ever measured a real Source note's summary+excerpts+connections length,
+# so this is a judgment call, not a validated number — worth revisiting
+# once real vault data exists. Reasoning: wiki-warehouse's own template is
+# "a paragraph summary, a few verbatim excerpts, a Connections section" —
+# realistically a few hundred to ~1500 characters even generously written.
+# An actual dumped paper/chapter runs tens of thousands of characters. 4000
+# sits well above plausible compliant notes and well below an accidental
+# dump, so it should have very few false positives in either direction.
+DISTILLATION_CHAR_LIMIT = 4000
 
 # Scope of Laws 6, 7, and 8 (constitution.md): system files are machine-
 # maintained, read by path rather than wikilink, and exempt from the
@@ -194,7 +207,8 @@ def check_stale(notes: dict, now: datetime):
 
 def check_schema_gaps(notes: dict):
     """Check 6 — missing fields, confidence:low without Open questions,
-    premature mature status, and (6.4) missing provenance backlink."""
+    premature mature status, (6.4) missing provenance backlink, and
+    (6.5) Law 10 distillation — full text dumped into a warehouse-linked note."""
     inbound_count = {relpath: 0 for relpath in notes}
     for relpath, note in notes.items():
         for target in note["links"]:
@@ -202,7 +216,8 @@ def check_schema_gaps(notes: dict):
             if resolved and resolved != relpath:
                 inbound_count[resolved] += 1
 
-    missing_fields, missing_open_questions, premature_mature, missing_provenance = [], [], [], []
+    missing_fields, missing_open_questions, premature_mature = [], [], []
+    missing_provenance, not_distilled = [], []
 
     for relpath, note in sorted(notes.items()):
         fm = note["frontmatter"]
@@ -224,11 +239,21 @@ def check_schema_gaps(notes: dict):
             if not PROVENANCE_RE.search(note["body"]):
                 missing_provenance.append({"note": relpath})
 
+        # Law 10 — distill, don't dump. "doc_id" is the warehouse join key
+        # (see wiki-warehouse/references/warehouse-schema.md); any note
+        # carrying it is a Source note that's SUPPOSED to hold only a
+        # summary + a few excerpts, never the full document.
+        if "doc_id" in fm:
+            body_chars = len(note["body"])
+            if body_chars > DISTILLATION_CHAR_LIMIT:
+                not_distilled.append({"note": relpath, "body_chars": body_chars})
+
     return {
         "missing_required_fields": missing_fields,
         "confidence_low_missing_open_questions": missing_open_questions,
         "premature_mature_status": premature_mature,
         "missing_provenance_backlink": missing_provenance,
+        "law10_not_distilled": not_distilled,
     }
 
 
@@ -283,6 +308,9 @@ def main():
     print(f"Missing provenance backlink: {len(gaps['missing_provenance_backlink'])}")
     for f in gaps["missing_provenance_backlink"]:
         print(f"  {f['note']}")
+    print(f"Law 10 — not distilled (body > {DISTILLATION_CHAR_LIMIT} chars): {len(gaps['law10_not_distilled'])}")
+    for f in gaps["law10_not_distilled"]:
+        print(f"  {f['note']} ({f['body_chars']} chars)")
 
     total_hard = (
         len(result["broken_links"]) + len(result["orphans"])

@@ -4,6 +4,18 @@ _Last updated: 2026-08-01_
 
 ## Recently closed
 
+- **Law 10 (distill, don't dump) has an automated check for the first
+  time.** Added Check 6.5 to `check_vault.py`: any note carrying a
+  `doc_id` (a `wiki-warehouse` pointer) with a body over ~4000 characters
+  is flagged. The threshold is a documented judgment call, not a
+  validated measurement — no real vault data has ever existed to measure
+  a compliant Source note's actual length against, so revisit it once
+  some does. This is explicitly a heuristic, not a semantic check: a
+  padded-out dump under the character limit would slip through, and
+  `wiki-governor`'s Phase 2 now says so rather than treating a `pass` as
+  certainty. Governor's compliance table no longer needs the `unverified`
+  carve-out this law was the last one to require — all 10 laws now map to
+  a concrete check.
 - **`health_score.py` — `wiki-governor`'s Phase 3 arithmetic, verified.**
   Extends `check_vault.py`'s pattern (see below) to the six health-score
   sub-metrics, reusing its vault-loading rather than re-parsing frontmatter
@@ -137,30 +149,22 @@ until now nothing in this repo showed the system had run against a real
 vault, or had any automated verification at all — unlike `deid-reid-harness`
 and `knowledge-warehouse`, which both shipped with test suites.
 
-`check_vault.py` (`wiki-librarian`, 23 tests) and `health_score.py`
-(`wiki-governor`'s Phase 3, 16 tests — see Recently closed) close this for
-both skills' mechanical logic. **Still open:** `wiki-operator` and
-`wiki-synthesizer` have no automated verification at all; `wiki-librarian`'s
-Checks 4/5 (near-duplicates, contradictions) are semantic and out of a
-script's reach by design, not an oversight to fix later; the health-score
-*weights themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never
-validated against a real vault) and the "90 days = stale" threshold are
-still untested guesses even though the *arithmetic* applying them is now
-verified; and no one has run a real governance cycle against an actual
-lived-in vault, so there's still no first baseline recorded here.
+`check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
+distillation check) and `health_score.py` (`wiki-governor`'s Phase 3, 16
+tests — see Recently closed) close this for both skills' mechanical
+logic. **Still open:** `wiki-operator` and `wiki-synthesizer` have no
+automated verification at all; `wiki-librarian`'s Checks 4/5
+(near-duplicates, contradictions) are semantic and out of a script's
+reach by design, not an oversight to fix later; the health-score *weights
+themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never validated
+against a real vault), the "90 days = stale" threshold, and Law 10's
+4000-character threshold are all still untested guesses even though the
+*arithmetic and matching logic* applying them is now verified; and no one
+has run a real governance cycle against an actual lived-in vault, so
+there's still no first baseline recorded here.
 *Fix:* run one real `/govern` cycle against actual vault content — the
 last piece, now that both skills it depends on have a tested reference
 implementation to check the run against.
-
-### P2 — Law 10 (distill, don't dump) has no automated check
-Every other law maps to a concrete check somewhere in `wiki-librarian` or
-`wiki-governor`. Law 10 doesn't yet — "was full text dumped into a note
-instead of distilled" has no heuristic defined. Governor's compliance table
-correctly reports it as `unverified` rather than assuming a silent pass,
-but that's honesty about the gap, not a fix for it.
-*Fix:* design a heuristic (e.g., a body-length threshold on notes carrying
-`warehouse_repo`/`doc_id` frontmatter) and wire it into `wiki-librarian`'s
-schema-gap check, the same way provenance was.
 
 ### P2 — Vault versioning is unspecified
 `knowledge-warehouse` is git-backed by design; whether the Obsidian vault
