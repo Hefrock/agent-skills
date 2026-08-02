@@ -53,14 +53,19 @@ class HealthScoreTests(unittest.TestCase):
         self.assertAlmostEqual(self.result["components"]["connectedness"], 9 / 11)
 
     def test_maturity_matches_hand_count(self):
-        # Knowledge/ (11) + Sources/ (1) = 12 scoped notes; 4 are mature
-        # (premature-mature, healthy-linked-a, healthy-linked-b, example-source).
-        self.assertAlmostEqual(self.result["components"]["maturity"], 4 / 12)
+        # Knowledge/ (11) + Sources/ (3: example-source, warehouse-distilled,
+        # warehouse-dumped) = 14 scoped notes; 4 are mature (premature-mature,
+        # healthy-linked-a, healthy-linked-b, example-source) - both warehouse
+        # notes are status: draft, so they don't move this count, only the
+        # denominator.
+        self.assertAlmostEqual(self.result["components"]["maturity"], 4 / 14)
 
     def test_freshness_matches_hand_count(self):
-        # Same 12 scoped notes; only stale-aged-out.md (updated 2025-01-01)
-        # is more than 90 days before the reference date.
-        self.assertAlmostEqual(self.result["components"]["freshness"], 11 / 12)
+        # Same 14 scoped notes; only stale-aged-out.md (updated 2025-01-01)
+        # is more than 90 days before the reference date - the two warehouse
+        # notes (updated 2026-07-14) are recent, so they add to both the
+        # fresh count and the total.
+        self.assertAlmostEqual(self.result["components"]["freshness"], 13 / 14)
 
     def test_provenance_matches_hand_count(self):
         # 11 Knowledge/ notes; no-provenance.md and premature-mature.md

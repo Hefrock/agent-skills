@@ -53,7 +53,7 @@ class CheckVaultTests(unittest.TestCase):
         cls.result = run(FIXTURE_VAULT, now=NOW)
 
     def test_scanned_all_fixture_notes(self):
-        self.assertEqual(self.result["notes_scanned"], 18)
+        self.assertEqual(self.result["notes_scanned"], 20)
 
     # ── Check 1 — broken links ────────────────────────────────────────────
 
@@ -118,6 +118,36 @@ class CheckVaultTests(unittest.TestCase):
     def test_missing_provenance_detected(self):
         notes = find_notes(self.result["schema_gaps"]["missing_provenance_backlink"])
         self.assertEqual(notes, {"Knowledge/no-provenance.md", "Knowledge/premature-mature.md"})
+
+    # ── Check 6.5 — Law 10 distillation ─────────────────────────────────────
+
+    def test_dumped_warehouse_note_detected(self):
+        gaps = self.result["schema_gaps"]["law10_not_distilled"]
+        by_note = {f["note"]: f["body_chars"] for f in gaps}
+        self.assertEqual(set(by_note), {"Sources/Papers/warehouse-dumped.md"})
+        self.assertGreater(by_note["Sources/Papers/warehouse-dumped.md"], 4000)
+
+    def test_distilled_warehouse_note_not_flagged(self):
+        notes = find_notes(self.result["schema_gaps"]["law10_not_distilled"])
+        self.assertNotIn("Sources/Papers/warehouse-distilled.md", notes)
+
+    def test_law10_check_ignores_long_notes_without_doc_id(self):
+        # A long body with no doc_id (i.e. not warehouse-linked) must never
+        # be flagged - Law 10 is about warehoused content specifically, not
+        # a general note-length rule. Synthetic, not the shared fixture:
+        # the fixture has no long non-warehouse note to exercise this with.
+        from check_vault import check_schema_gaps
+
+        long_body = "x " * 3000  # ~6000 chars, well over the threshold
+        notes = {
+            "Knowledge/long-but-not-warehoused.md": {
+                "frontmatter": {"type": "concept", "status": "draft", "confidence": "high", "updated": "2026-07-01"},
+                "body": long_body,
+                "links": [],
+            }
+        }
+        gaps = check_schema_gaps(notes)
+        self.assertEqual(gaps["law10_not_distilled"], [])
 
     # ── System-file exemption (Laws 6, 7, 8) — the actual regression lock ──
 
