@@ -171,6 +171,41 @@ const trashAfter = await fs.readdir(`${VAULT}/.trash`);
 const collisionBackups = trashAfter.filter(f => f.startsWith("collision-test_backup_"));
 check("Multiple backups — timestamps prevent collision", collisionBackups.length === 2, `found ${collisionBackups.length} backups`);
 
+console.log("\n── append_note: frontmatter guard on new-file creation ──────────");
+
+// #10 regression: append_note used to silently create a frontmatter-less
+// note if the path didn't exist yet, since it's a raw fs.appendFile with no
+// concept of the note schema. Hit a real vault three times on the first
+// journal append of a new day before this guard existed.
+
+r = await tool(12, "append_note", { path: "Journal/Daily/no-frontmatter.md", content: "Just a log line, no frontmatter." });
+d = parse(r);
+check(
+  "append_note — new file without frontmatter errors, doesn't create it",
+  r.result?.isError && d.error?.includes("frontmatter"),
+  `error: ${JSON.stringify(d.error)}`
+);
+const noFmExists = await fs.access(`${VAULT}/Journal/Daily/no-frontmatter.md`).then(() => true).catch(() => false);
+check("append_note — rejected file was not created on disk", noFmExists === false);
+
+r = await tool(13, "append_note", {
+  path: "Journal/Daily/2026-08-02.md",
+  content: "---\ntype: journal\nstatus: draft\nconfidence: high\nupdated: 2026-08-02\n---\n\n## Log\n\n- First entry.",
+});
+d = parse(r);
+check("append_note — new file WITH frontmatter succeeds", d.appended === true);
+const newJournal = await fs.readFile(`${VAULT}/Journal/Daily/2026-08-02.md`, "utf-8");
+check("append_note — new file's content matches what was given", newJournal.includes("First entry."));
+
+r = await tool(14, "append_note", { path: "Journal/Daily/2026-08-02.md", content: "- Second entry, no frontmatter needed this time." });
+d = parse(r);
+check("append_note — appending to an already-existing file never requires frontmatter", d.appended === true);
+const appendedJournal = await fs.readFile(`${VAULT}/Journal/Daily/2026-08-02.md`, "utf-8");
+check(
+  "append_note — second append preserved the first entry (no overwrite)",
+  appendedJournal.includes("First entry.") && appendedJournal.includes("Second entry")
+);
+
 // ── Results ───────────────────────────────────────────────────────────────────
 server.kill();
 await fs.rm(VAULT, { recursive: true, force: true });

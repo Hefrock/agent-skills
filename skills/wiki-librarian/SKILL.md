@@ -17,7 +17,7 @@ The `obsidian-vault` MCP server must be connected (same setup as wiki-operator).
 2. **Fix structure, not content.** The Librarian repairs links, merges duplicates, and updates metadata — it does not rewrite explanations. Use wiki-operator's `/update` for content improvements.
 3. **Prefer repair over deletion.** A broken link gets fixed or redirected. An orphan page gets linked or flagged — not deleted without confirmation.
 4. **Batch by risk.** Present low-risk fixes (update dates, fix obvious broken links) separately from high-risk fixes (merges, deletions) and confirm each batch independently.
-5. **Leave a trail.** Append an audit log to today's journal after every run.
+5. **Leave a trail.** Append an audit log to today's journal after every run. If today's journal doesn't exist yet, create it first with `write_note` from `assets/journal.md`, then append — `append_note` refuses to silently create a frontmatter-less file.
 
 ## /audit [focus]
 

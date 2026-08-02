@@ -9,7 +9,7 @@ MCP server for the wiki-operator skill. Provides 10 tools for reading, writing, 
 | `search_notes` | BM25-style full-text search with field boosts (title 5x, tags 3x, body 1x) |
 | `read_note` | Read full note content + parsed frontmatter |
 | `write_note` | Create or overwrite a note (creates parent folders) |
-| `append_note` | Append content to an existing note without overwriting it; creates the file if missing |
+| `append_note` | Append content to an existing note without overwriting it; creates the file if missing, provided `content` starts with a frontmatter block — errors otherwise rather than silently creating a malformed note |
 | `patch_section` | Replace content under a heading without touching the rest |
 | `patch_frontmatter` | Merge fields into a note's frontmatter without touching the body |
 | `query_frontmatter` | Find notes where a frontmatter field equals a value |

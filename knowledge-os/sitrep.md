@@ -1,8 +1,27 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-08-01_
+_Last updated: 2026-08-02_
 
 ## Recently closed
+
+- **`append_note` could silently create a frontmatter-less note — found
+  on a real vault, three occurrences.** `append_note`'s own file-creation
+  behavior (documented: "creates the file if it doesn't exist") has zero
+  concept of the note schema — it's a raw `fs.appendFile`. Any skill that
+  appends a run-log to "today's journal" (`wiki-operator`, `wiki-synthesizer`,
+  `wiki-librarian`, `wiki-governor` all do this) creates a schema-violating
+  note if that call happens to be the first append of a new day and the
+  appended content is just the run-log block, no frontmatter. Recurred
+  three times on the same live vault before being caught here; each prior
+  occurrence had been treated as "probably a one-off," which is exactly
+  the failure mode a governance system exists to catch faster than that.
+  Fixed at the mechanical layer, not just the prompt: `append_note` now
+  refuses to create a new file unless `content` starts with a frontmatter
+  block, erroring instead of silently writing a malformed note. All four
+  skills' "append to today's journal" steps updated to create the journal
+  from `assets/journal.md` first when it doesn't exist, matching the new
+  hard requirement. 6 new MCP server tests (23 total), verified to fail
+  without the guard and pass with it.
 
 - **Law 10 (distill, don't dump) has an automated check for the first
   time.** Added Check 6.5 to `check_vault.py`: any note carrying a

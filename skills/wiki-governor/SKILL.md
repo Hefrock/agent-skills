@@ -77,7 +77,7 @@ Make the wiki notice what it does not know. Aggregate every `## Open questions` 
 
 ### Phase 5 — Governance report + hot cache
 
-Append to today's journal:
+If today's journal doesn't exist yet, create it first with `write_note` from `assets/journal.md`, then append — `append_note` refuses to silently create a frontmatter-less file. Append to today's journal:
 
 ```markdown
 ## Governance run — YYYY-MM-DD
