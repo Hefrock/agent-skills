@@ -22,7 +22,34 @@ _Last updated: 2026-08-02_
   from `assets/journal.md` first when it doesn't exist, matching the new
   hard requirement. 6 new MCP server tests (23 total), verified to fail
   without the guard and pass with it.
-
+- **Plugin content updates were silently not reaching installed vaults —
+  `metadata.version` in `.claude-plugin/marketplace.json` had been frozen
+  at `0.3.0` since 2026-07-06, through every subsequent content PR
+  (including the Laws 6/7/8 fix, `check_vault.py`, `health_score.py`, and
+  Law 10's check). Claude Code gates content refresh on that version
+  number bumping — an unbumped version means `/plugin marketplace update`
+  serves the cached copy regardless of what changed on GitHub. Found
+  because a real `/govern` run against a live vault (see below) still hit
+  the exact Law 7 `Maps/_context.md` false positive that PR #40 fixed two
+  days earlier — the fix was live on `main` but had never reached that
+  install. The README's "already-installed plugins pick up content changes
+  automatically" claim was simply wrong for how this repo ships versions;
+  corrected, and `CONTRIBUTING.md` now says to bump the version on every
+  content-affecting PR, not just new-skill additions. Bumped to `0.4.0`
+  now — but every fix between 0.3.0 and this one may not have reached any
+  install that hasn't explicitly reinstalled since. Worth explicitly
+  re-verifying the Laws 6/7/8, Law 10, and `append_note` fixes actually
+  take effect once an install picks up 0.4.0.
+- **First real `/govern` baseline, with a confound.** 65/100 (connectedness
+  and provenance strong; maturity and resolution flagged by the run itself
+  as the two weak levers — resolution hit its 0% floor because 4 new,
+  more-specific questions replaced 2 resolved ones, exactly the
+  "floored, not capped" behavior `health_score.py`'s tests lock in). Real,
+  useful signal — but this run almost certainly predates the version-bump
+  fix above, so its Law 7 pass/fail and possibly its health components
+  were computed against a stale skill copy, not the current `main`. Treat
+  this number as informative, not as the recorded baseline the
+  Recommended-order item asked for; re-run once 0.4.0 is confirmed live.
 - **Law 10 (distill, don't dump) has an automated check for the first
   time.** Added Check 6.5 to `check_vault.py`: any note carrying a
   `doc_id` (a `wiki-warehouse` pointer) with a body over ~4000 characters
@@ -227,7 +254,8 @@ keeps tripping anyone up in practice.
 
 ## Recommended order
 
-1. Run one real `/govern` cycle against the actual vault; record the
-   baseline health score here — the arithmetic is verified now, so this
-   run finally means something rather than being an unverified number.
+1. Confirm the installed vault has actually picked up `0.4.0` (reinstall /
+   `/plugin update` if needed), then re-run `/govern` once and record that
+   as the real baseline — the 65/100 run above doesn't confidently reflect
+   current `main`.
 2. Decide vault git-versioning story and document it in `architecture.md`.
