@@ -19,6 +19,18 @@ This repo follows the open [Agent Skills standard](https://agentskills.io) — e
 5. **Add a row to the table in `README.md`.**
 6. **Test it** by pointing Claude Code or claude.ai at the folder and confirming it triggers on the example prompts you wrote.
 
+## Editing an existing skill's content
+
+Bump `metadata.version` in `.claude-plugin/marketplace.json` whenever a PR
+changes content inside an already-installed skill (`SKILL.md`, a `scripts/`
+or `references/` file, `knowledge-os/constitution.md`, etc.) — not just when
+adding a new skill. Claude Code gates content refresh on that version number:
+an edit that ships without a bump sits invisibly on GitHub while every
+existing install keeps serving the old cached copy, `/plugin marketplace
+update` included. This repo shipped a real governance-scope fix (Laws 6/7/8)
+that sat live on `main` for two days without reaching an installed vault,
+purely because this step was skipped — see `knowledge-os/sitrep.md`.
+
 ## Keep it portable
 
 - Don't assume Claude Code-only mechanics in the instructions unless the skill is genuinely Claude-specific. The plain `SKILL.md` + `scripts/`/`references/`/`assets/` structure works unmodified across every platform that supports the standard (Codex, Gemini CLI, Cursor, GitHub Copilot, and others).

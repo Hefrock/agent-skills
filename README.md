@@ -34,11 +34,13 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 ```
 Install any other skill the same way — swap `agent-eval` for the plugin name from the table above (e.g. `/plugin install wiki-governor@hefrock-agent-skills`).
 
-**Updating after new skills are added to this repo:**
+**Updating after new skills — or content changes to skills you already have — land in this repo:**
 ```bash
 /plugin marketplace update hefrock-agent-skills
 ```
-Run this before installing anything added since your last update — it refreshes the marketplace's list of *available* plugins. Already-installed plugins pick up content changes (new commands, edited `SKILL.md`) automatically; a plugin that's new to the marketplace still needs its own `/plugin install <name>@hefrock-agent-skills` afterward. If a fresh plugin still comes back "not found" right after `marketplace update`, restart the CLI session and retry.
+This refreshes the marketplace's manifest, including the shared `metadata.version` in `.claude-plugin/marketplace.json` — **content edits to an already-installed skill (an edited `SKILL.md`, a fixed bug) only reach you once that version number has been bumped.** It isn't automatic just because the file changed on GitHub; an unbumped version means Claude Code keeps serving the cached copy, even after `marketplace update`. If a run's behavior doesn't match what a skill's `SKILL.md` currently says on GitHub, check whether the version was actually bumped for that change before assuming the fix didn't work — the content and the served copy can silently disagree.
+
+A plugin that's new to the marketplace still needs its own `/plugin install <name>@hefrock-agent-skills` afterward. If a fresh plugin still comes back "not found" right after `marketplace update`, restart the CLI session and retry.
 
 **Claude Code (manual, no plugin system):**
 ```bash
