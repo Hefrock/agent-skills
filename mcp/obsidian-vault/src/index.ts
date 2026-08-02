@@ -221,6 +221,26 @@ async function writeNoteContents(notePath: string, content: string, mode: string
 // #1 — dedicated append tool so callers never accidentally clobber existing files
 async function appendNoteContents(notePath: string, content: string): Promise<object> {
   const full = await vaultPathForWrite(notePath);
+  const exists = await fs.access(full).then(() => true).catch(() => false);
+
+  // #10 - append_note creates the file if it doesn't exist, but has no
+  // concept of frontmatter of its own: a raw fs.appendFile on a missing
+  // path just writes `content` verbatim. Every note needs type/status/
+  // confidence/updated frontmatter (see the vault's note schema) - if the
+  // caller is creating a brand-new file here without a frontmatter block,
+  // that's a malformed note being created silently. Refuse it instead:
+  // the caller should use write_note with a template for the first write,
+  // then append_note for entries after that. (Found from a real vault
+  // hitting this three times on the first append of a new day's journal
+  // file before the guard existed.)
+  if (!exists && !content.startsWith("---\n")) {
+    throw new Error(
+      `append_note cannot create "${notePath}": it doesn't exist yet, and the content given has no ` +
+      `frontmatter block (doesn't start with "---\\n"). Every note needs type/status/confidence/updated ` +
+      `frontmatter. Use write_note with a template to create it first, then append_note for later entries.`
+    );
+  }
+
   await fs.mkdir(path.dirname(full), { recursive: true });
   // Ensure content starts on a new line
   const existing = await fs.readFile(full, "utf-8").catch(() => "");
@@ -377,7 +397,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "append_note",
-      description: "Append content to an existing note without overwriting it. Creates the file if it doesn't exist. Use this for journal entries and running logs.",
+      description: "Append content to an existing note without overwriting it. Creates the file if it doesn't exist, PROVIDED content starts with a frontmatter block (\"---\\n...\\n---\\n\") - if the file is new and content has no frontmatter, this errors rather than silently creating a malformed note. For a genuinely new note, use write_note with a template first, then append_note for later entries. Use this for journal entries and running logs.",
       inputSchema: {
         type: "object",
         properties: {

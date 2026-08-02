@@ -93,7 +93,7 @@ Rewrite `Maps/_context.md`:
 
 ### Phase 4 — Run log
 
-Append to today's journal:
+If today's journal (`Journal/Daily/YYYY-MM-DD.md`) doesn't exist yet, create it first with `write_note` from `assets/journal.md`, then append — `append_note` refuses to silently create a frontmatter-less file. Append to today's journal:
 
 ```markdown
 ## Synthesis run — YYYY-MM-DD

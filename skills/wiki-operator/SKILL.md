@@ -90,7 +90,7 @@ Process new information into the wiki.
 1. Search the vault for existing pages on the topic.
 2. If a concept page exists: retrieve it, update the explanation, add new context, add any missing links.
 3. If no page exists: create one using `assets/concept.md`, set `status: draft`.
-4. Append a brief entry to today's journal (`Journal/Daily/YYYY-MM-DD.md`) noting what was learned and linking to the updated concept page(s). Create the journal page from `assets/journal.md` if it doesn't exist yet.
+4. Append a brief entry to today's journal (`Journal/Daily/YYYY-MM-DD.md`) noting what was learned and linking to the updated concept page(s). **If the journal page doesn't exist yet, create it first** with `write_note` from `assets/journal.md` (so it starts with proper frontmatter), *then* `append_note` the entry — `append_note` refuses to silently create a frontmatter-less file, by design.
 5. Update the relevant map page in `Maps/` if the concept is new to that area.
 
 ### /update [page or concept]

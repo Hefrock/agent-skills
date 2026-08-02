@@ -4,6 +4,24 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **`append_note` could silently create a frontmatter-less note — found
+  on a real vault, three occurrences.** `append_note`'s own file-creation
+  behavior (documented: "creates the file if it doesn't exist") has zero
+  concept of the note schema — it's a raw `fs.appendFile`. Any skill that
+  appends a run-log to "today's journal" (`wiki-operator`, `wiki-synthesizer`,
+  `wiki-librarian`, `wiki-governor` all do this) creates a schema-violating
+  note if that call happens to be the first append of a new day and the
+  appended content is just the run-log block, no frontmatter. Recurred
+  three times on the same live vault before being caught here; each prior
+  occurrence had been treated as "probably a one-off," which is exactly
+  the failure mode a governance system exists to catch faster than that.
+  Fixed at the mechanical layer, not just the prompt: `append_note` now
+  refuses to create a new file unless `content` starts with a frontmatter
+  block, erroring instead of silently writing a malformed note. All four
+  skills' "append to today's journal" steps updated to create the journal
+  from `assets/journal.md` first when it doesn't exist, matching the new
+  hard requirement. 6 new MCP server tests (23 total), verified to fail
+  without the guard and pass with it.
 - **Plugin content updates were silently not reaching installed vaults —
   `metadata.version` in `.claude-plugin/marketplace.json` had been frozen
   at `0.3.0` since 2026-07-06, through every subsequent content PR
@@ -20,8 +38,8 @@ _Last updated: 2026-08-02_
   content-affecting PR, not just new-skill additions. Bumped to `0.4.0`
   now — but every fix between 0.3.0 and this one may not have reached any
   install that hasn't explicitly reinstalled since. Worth explicitly
-  re-verifying the Laws 6/7/8 and Law 10 fixes actually take effect once
-  an install picks up 0.4.0.
+  re-verifying the Laws 6/7/8, Law 10, and `append_note` fixes actually
+  take effect once an install picks up 0.4.0.
 - **First real `/govern` baseline, with a confound.** 65/100 (connectedness
   and provenance strong; maturity and resolution flagged by the run itself
   as the two weak levers — resolution hit its 0% floor because 4 new,
@@ -32,7 +50,6 @@ _Last updated: 2026-08-02_
   were computed against a stale skill copy, not the current `main`. Treat
   this number as informative, not as the recorded baseline the
   Recommended-order item asked for; re-run once 0.4.0 is confirmed live.
-
 - **Law 10 (distill, don't dump) has an automated check for the first
   time.** Added Check 6.5 to `check_vault.py`: any note carrying a
   `doc_id` (a `wiki-warehouse` pointer) with a body over ~4000 characters
