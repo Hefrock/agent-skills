@@ -1,9 +1,29 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-07-31_
+_Last updated: 2026-08-01_
 
 ## Recently closed
 
+- **`health_score.py` — `wiki-governor`'s Phase 3 arithmetic, verified.**
+  Extends `check_vault.py`'s pattern (see below) to the six health-score
+  sub-metrics, reusing its vault-loading rather than re-parsing frontmatter
+  a second time — this project has hit real bugs twice in one session from
+  the same logic existing in two places that drifted apart (the MCP
+  server's query tokenization; the Laws 6/7/8 scope text living in four
+  files). 16 tests, each component value hand-computed against the fixture
+  vault independently of the code before running it, not reverse-derived
+  from the output. Includes the conditional warehouse-integrity exclusion/
+  renormalization and the corrupt/missing/dangling-vs-drifted penalty
+  weighting. Several scoping calls in the SKILL.md prose were genuinely
+  ambiguous (does "Maturity"/"Freshness" apply vault-wide or just to the
+  knowledge-graph domain? is "open questions" a count of entries or a
+  presence check?) and got a documented interpretation rather than a
+  silent guess — flagged in-code and worth tightening in the SKILL.md
+  itself at some point. Also confirmed, by deliberately removing it, that
+  the Laws 6/7/8 system-file exemption is currently redundant everywhere
+  in `health_score.py` too, for the identical structural reason
+  `check_vault.py` already documented — kept as the same defense-in-depth,
+  not claimed as tested coverage it doesn't have.
 - **First real operational mileage: `check_vault.py` + a fixture vault.**
   Every wiki skill was pure prompt spec with zero automated verification —
   the P1 gap below, standing since this file was created. Built a
@@ -117,20 +137,20 @@ until now nothing in this repo showed the system had run against a real
 vault, or had any automated verification at all — unlike `deid-reid-harness`
 and `knowledge-warehouse`, which both shipped with test suites.
 
-`check_vault.py` + its 23-test fixture-vault suite (see Recently closed)
-closes this for `wiki-librarian`'s mechanical checks (broken links, orphans,
-stale, schema gaps). **Still open:** `wiki-operator`, `wiki-synthesizer`, and
-`wiki-governor` have no automated verification at all; `wiki-librarian`'s
+`check_vault.py` (`wiki-librarian`, 23 tests) and `health_score.py`
+(`wiki-governor`'s Phase 3, 16 tests — see Recently closed) close this for
+both skills' mechanical logic. **Still open:** `wiki-operator` and
+`wiki-synthesizer` have no automated verification at all; `wiki-librarian`'s
 Checks 4/5 (near-duplicates, contradictions) are semantic and out of a
 script's reach by design, not an oversight to fix later; the health-score
-weights (`architecture.md` Phase 3) and the "90 days = stale" threshold are
-still untested guesses; and no one has run a real governance cycle against
-an actual lived-in vault.
-*Fix:* extend `check_vault.py`'s pattern to `wiki-governor`'s health-score
-computation (it's arithmetic over the same mechanical facts, so it's
-scriptable the same way) and, separately, run one real `/govern` cycle
-against actual vault content to get the first baseline this file has ever
-had.
+*weights themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never
+validated against a real vault) and the "90 days = stale" threshold are
+still untested guesses even though the *arithmetic* applying them is now
+verified; and no one has run a real governance cycle against an actual
+lived-in vault, so there's still no first baseline recorded here.
+*Fix:* run one real `/govern` cycle against actual vault content — the
+last piece, now that both skills it depends on have a tested reference
+implementation to check the run against.
 
 ### P2 — Law 10 (distill, don't dump) has no automated check
 Every other law maps to a concrete check somewhere in `wiki-librarian` or
@@ -184,9 +204,7 @@ keeps tripping anyone up in practice.
 
 ## Recommended order
 
-1. Extend `check_vault.py`'s pattern to `wiki-governor`'s health-score
-   computation — same mechanical-facts-in, arithmetic-out shape, so it's a
-   direct extension rather than new design work.
-2. Run one real `/govern` cycle against the actual vault; record the
-   baseline health score here.
-3. Decide vault git-versioning story and document it in `architecture.md`.
+1. Run one real `/govern` cycle against the actual vault; record the
+   baseline health score here — the arithmetic is verified now, so this
+   run finally means something rather than being an unverified number.
+2. Decide vault git-versioning story and document it in `architecture.md`.

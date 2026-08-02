@@ -53,7 +53,7 @@ class CheckVaultTests(unittest.TestCase):
         cls.result = run(FIXTURE_VAULT, now=NOW)
 
     def test_scanned_all_fixture_notes(self):
-        self.assertEqual(self.result["notes_scanned"], 17)
+        self.assertEqual(self.result["notes_scanned"], 18)
 
     # ── Check 1 — broken links ────────────────────────────────────────────
 

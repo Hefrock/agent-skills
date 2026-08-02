@@ -65,3 +65,6 @@ jobs:
 
       - name: wiki-librarian — check_vault.py regression suite (stdlib unittest)
         run: python skills/wiki-librarian/scripts/test_check_vault.py
+
+      - name: wiki-governor — health_score.py regression suite (stdlib unittest)
+        run: python skills/wiki-governor/scripts/test_health_score.py

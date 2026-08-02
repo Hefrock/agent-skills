@@ -74,7 +74,7 @@ agent-skills/
 │   ├── wiki-operator/          # on-demand vault operations
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 23-test regression suite
-│   ├── wiki-governor/          # maintenance loop + constitution compliance + health score
+│   ├── wiki-governor/          # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
 │   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
