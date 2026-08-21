@@ -206,6 +206,66 @@ check(
   appendedJournal.includes("First entry.") && appendedJournal.includes("Second entry")
 );
 
+console.log("\n── Vault-wide scans tolerate one malformed file ─────────────────");
+
+// #11 regression: gray-matter throws when a file's frontmatter fence is
+// malformed (e.g. `--- type: project` glued onto the opening line, which
+// gray-matter misreads as a request for an unregistered custom parser
+// engine). That used to abort search_notes/list_notes/query_frontmatter/
+// list_links entirely — one bad file took down results for the whole vault,
+// no matter how unrelated the query was to that file.
+await fs.writeFile(
+  `${VAULT}/Knowledge/malformed.md`,
+  "--- type: project\nstatus: draft\ncreated: {{date}} ---\n\n# Malformed\n"
+);
+
+r = await tool(15, "list_notes", {});
+d = parse(r);
+check(
+  "list_notes — doesn't error out when one file has malformed frontmatter",
+  !r.result?.isError,
+  `error: ${JSON.stringify(d.error)}`
+);
+check(
+  "list_notes — good notes still returned despite the bad one",
+  d.notes?.some((n) => n.path === "Knowledge/existing.md")
+);
+check(
+  "list_notes — malformed file reported in `skipped`, not silently dropped",
+  d.skipped?.some((s) => s.path === "Knowledge/malformed.md" && s.error?.includes("engine")),
+  `skipped: ${JSON.stringify(d.skipped)}`
+);
+
+r = await tool(16, "search_notes", { query: "existing" });
+d = parse(r);
+check(
+  "search_notes — doesn't error out when one file has malformed frontmatter",
+  !r.result?.isError && Array.isArray(d.results),
+  `error: ${JSON.stringify(d.error)}`
+);
+check(
+  "search_notes — matching note still found despite the unrelated bad file",
+  d.results?.some((res) => res.path === "Knowledge/existing.md")
+);
+
+r = await tool(17, "query_frontmatter", { field: "type", value: "concept" });
+d = parse(r);
+check(
+  "query_frontmatter — doesn't error out when one file has malformed frontmatter",
+  !r.result?.isError && Array.isArray(d.matches),
+  `error: ${JSON.stringify(d.error)}`
+);
+
+r = await tool(18, "list_links", { path: "Knowledge/existing.md" });
+d = parse(r);
+check(
+  "list_links — doesn't error out when one file has malformed frontmatter",
+  !r.result?.isError,
+  `error: ${JSON.stringify(d.error)}`
+);
+
+await fs.unlink(`${VAULT}/Knowledge/malformed.md`);
+
 // ── Results ───────────────────────────────────────────────────────────────────
 server.kill();
 await fs.rm(VAULT, { recursive: true, force: true });

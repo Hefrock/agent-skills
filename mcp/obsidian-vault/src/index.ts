@@ -121,6 +121,29 @@ async function readNote(notePath: string): Promise<{ frontmatter: Record<string,
   return { frontmatter: data, body: content, raw };
 }
 
+// #11 — vault-wide scans (search/list/query) tolerate malformed per-file
+// frontmatter instead of aborting entirely. One file with broken YAML fencing
+// (e.g. `--- type: project` glued onto the opening line, which gray-matter
+// misreads as a request for an unregistered custom parser engine) used to
+// throw and take down search_notes/list_notes/query_frontmatter/list_links
+// for the whole vault, no matter how unrelated the query was. Callers that
+// read a single known path still get a normal thrown error — this helper is
+// only for loops over `walkVault()` results, where one bad file shouldn't
+// hide every other result.
+async function tryReadNote(
+  notePath: string
+): Promise<
+  | { ok: true; frontmatter: Record<string, unknown>; body: string; raw: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const note = await readNote(notePath);
+    return { ok: true, ...note };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // #3 — atomic write: temp file in same dir → rename
 async function atomicWrite(fullPath: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
@@ -181,8 +204,11 @@ function extractWikilinks(content: string): string[] {
 async function searchNotes(query: string, folder?: string, limit = 10): Promise<object> {
   const allFiles = await walkVault(folder ? vaultPath(folder) : undefined);
   const results: { path: string; score: number; excerpt: string; frontmatter: Record<string, unknown> }[] = [];
+  const skipped: { path: string; error: string }[] = [];
   for (const file of allFiles) {
-    const { frontmatter, body } = await readNote(file);
+    const note = await tryReadNote(file);
+    if (!note.ok) { skipped.push({ path: file, error: note.error }); continue; }
+    const { frontmatter, body } = note;
     const score = scoreNote(query, file, body, frontmatter);
     if (score > 0) {
       const terms = tokenize(query);
@@ -191,7 +217,7 @@ async function searchNotes(query: string, folder?: string, limit = 10): Promise<
     }
   }
   results.sort((a, b) => b.score - a.score);
-  return { results: results.slice(0, limit), total: results.length };
+  return { results: results.slice(0, limit), total: results.length, ...(skipped.length > 0 ? { skipped } : {}) };
 }
 
 async function writeNoteContents(notePath: string, content: string, mode: string = "upsert"): Promise<object> {
@@ -308,11 +334,13 @@ async function patchFrontmatter(notePath: string, updates: Record<string, unknow
 async function queryFrontmatter(field: string, value: string, folder?: string): Promise<object> {
   const allFiles = await walkVault(folder ? vaultPath(folder) : undefined);
   const matches: { path: string; frontmatter: Record<string, unknown> }[] = [];
+  const skipped: { path: string; error: string }[] = [];
   for (const file of allFiles) {
-    const { frontmatter } = await readNote(file);
-    if (String(frontmatter[field]) === value) matches.push({ path: file, frontmatter });
+    const note = await tryReadNote(file);
+    if (!note.ok) { skipped.push({ path: file, error: note.error }); continue; }
+    if (String(note.frontmatter[field]) === value) matches.push({ path: file, frontmatter: note.frontmatter });
   }
-  return { matches, total: matches.length };
+  return { matches, total: matches.length, ...(skipped.length > 0 ? { skipped } : {}) };
 }
 
 async function listLinks(notePath: string): Promise<object> {
@@ -321,20 +349,28 @@ async function listLinks(notePath: string): Promise<object> {
   const allFiles = await walkVault();
   const noteName = path.basename(notePath, ".md");
   const inbound: string[] = [];
+  const skipped: { path: string; error: string }[] = [];
   for (const file of allFiles) {
     if (file === notePath) continue;
-    const { body: otherBody } = await readNote(file);
-    if (extractWikilinks(otherBody).some((l) => l.toLowerCase() === noteName.toLowerCase())) {
+    const other = await tryReadNote(file);
+    if (!other.ok) { skipped.push({ path: file, error: other.error }); continue; }
+    if (extractWikilinks(other.body).some((l) => l.toLowerCase() === noteName.toLowerCase())) {
       inbound.push(file);
     }
   }
-  return { path: notePath, outbound, inbound };
+  return { path: notePath, outbound, inbound, ...(skipped.length > 0 ? { skipped } : {}) };
 }
 
 async function listNotes(folder?: string): Promise<object> {
   const files = await walkVault(folder ? vaultPath(folder) : undefined);
-  const notes = await Promise.all(files.map(async (file) => ({ path: file, frontmatter: (await readNote(file)).frontmatter })));
-  return { notes, total: notes.length };
+  const notes: { path: string; frontmatter: Record<string, unknown> }[] = [];
+  const skipped: { path: string; error: string }[] = [];
+  for (const file of files) {
+    const note = await tryReadNote(file);
+    if (!note.ok) { skipped.push({ path: file, error: note.error }); continue; }
+    notes.push({ path: file, frontmatter: note.frontmatter });
+  }
+  return { notes, total: notes.length, ...(skipped.length > 0 ? { skipped } : {}) };
 }
 
 // #2 — move to .trash/ instead of permanent unlink
@@ -360,7 +396,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "search_notes",
-      description: "Full-text search across vault notes. Returns scored results with excerpts.",
+      description: "Full-text search across vault notes. Returns scored results with excerpts. Files with unreadable frontmatter are skipped (not fatal) and listed in a `skipped` array when present.",
       inputSchema: {
         type: "object",
         properties: {
@@ -434,7 +470,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "query_frontmatter",
-      description: "Find all notes where a frontmatter field equals a given value (e.g. status=stale, type=concept).",
+      description: "Find all notes where a frontmatter field equals a given value (e.g. status=stale, type=concept). Files with unreadable frontmatter are skipped (not fatal) and listed in a `skipped` array when present.",
       inputSchema: {
         type: "object",
         properties: {
@@ -447,7 +483,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_links",
-      description: "Get all outbound wikilinks from a note and all inbound backlinks pointing to it.",
+      description: "Get all outbound wikilinks from a note and all inbound backlinks pointing to it. Vault files with unreadable frontmatter are skipped (not fatal) while scanning for backlinks, and listed in a `skipped` array when present.",
       inputSchema: {
         type: "object",
         properties: {
@@ -458,7 +494,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_notes",
-      description: "List all notes in the vault or a subfolder with their frontmatter.",
+      description: "List all notes in the vault or a subfolder with their frontmatter. Files with unreadable frontmatter are skipped (not fatal) and listed in a `skipped` array when present.",
       inputSchema: {
         type: "object",
         properties: {
