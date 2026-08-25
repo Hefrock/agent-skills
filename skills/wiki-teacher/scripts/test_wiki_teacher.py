@@ -22,7 +22,7 @@ import unittest
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wiki_teacher import compute_checkin, spans_multiple_compartments, _parse_interval
+from wiki_teacher import compute_checkin, spans_multiple_compartments, portfolio_breadth, _parse_interval
 
 NOW = datetime(2026, 7, 20, tzinfo=timezone.utc)
 
@@ -227,6 +227,62 @@ class ComputeCheckinTests(unittest.TestCase):
         notes = {"Projects/a.md": project(updated="2026-07-01")}  # 19 days, flaggable
         result = compute_checkin(notes, NOW, explicit_request=True)
         self.assertEqual(result, {"status": "needs_bootstrap", "projects": ["Projects/a.md"]})
+
+
+class PortfolioBreadthTests(unittest.TestCase):
+    def test_empty_vault(self):
+        self.assertEqual(
+            portfolio_breadth({}, NOW),
+            {"active_count": 0, "days_since_last_completion": None, "never_completed": True},
+        )
+
+    def test_active_count_excludes_paused_and_complete(self):
+        notes = {
+            "Projects/active.md": project(status="draft", updated="2026-07-01"),
+            "Projects/paused.md": project(status="paused", updated="2026-07-01"),
+            "Projects/complete.md": project(status="complete", updated="2026-07-01"),
+        }
+        result = portfolio_breadth(notes, NOW)
+        self.assertEqual(result["active_count"], 1)
+
+    def test_never_completed_when_no_complete_projects_exist(self):
+        notes = {"Projects/active.md": project(status="draft", updated="2026-07-01")}
+        result = portfolio_breadth(notes, NOW)
+        self.assertTrue(result["never_completed"])
+        self.assertIsNone(result["days_since_last_completion"])
+
+    def test_days_since_last_completion(self):
+        notes = {"Projects/done.md": project(status="complete", updated="2026-07-10")}  # 10 days ago
+        result = portfolio_breadth(notes, NOW)
+        self.assertFalse(result["never_completed"])
+        self.assertEqual(result["days_since_last_completion"], 10)
+
+    def test_picks_most_recent_completion_among_several(self):
+        notes = {
+            "Projects/older.md": project(status="complete", updated="2026-07-10"),  # 10 days ago
+            "Projects/newer.md": project(status="complete", updated="2026-07-15"),  # 5 days ago
+        }
+        result = portfolio_breadth(notes, NOW)
+        self.assertEqual(result["days_since_last_completion"], 5)
+
+    def test_complete_project_missing_updated_is_skipped_not_crashed(self):
+        notes = {
+            "Projects/broken.md": {
+                "frontmatter": {"type": "project", "status": "complete"},
+                "body": "",
+                "links": [],
+            }
+        }
+        result = portfolio_breadth(notes, NOW)
+        self.assertTrue(result["never_completed"])
+
+    def test_non_project_and_non_complete_notes_never_count_as_completions(self):
+        notes = {
+            "Knowledge/done-sounding.md": concept(status="complete", updated="2026-07-01"),
+            "Projects/draft.md": project(status="draft", updated="2026-07-01"),
+        }
+        result = portfolio_breadth(notes, NOW)
+        self.assertTrue(result["never_completed"])
 
 
 class SpansMultipleCompartmentsTests(unittest.TestCase):

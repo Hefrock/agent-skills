@@ -106,7 +106,7 @@
     },
     {
       "name": "wiki-teacher",
-      "description": "Turns the wiki into an accountability and growth-mindset system for several concurrent projects — /checkin (portfolio-aware accountability, a forcing function, batch-elicits priority for all overdue projects at once, answers 'what should I work on' even when nothing's overdue), /teach (project-scoped teaching, extends wiki-operator's /quiz), and /reflect (user-initiated, portfolio-wide throughline-spotting across active projects, with a structural compartment-privacy check). Stateless — priority/checkin_interval/status/compartment live in each project note's own frontmatter. Requires Obsidian MCP connected.",
+      "description": "Turns the wiki into an accountability and growth-mindset system for several concurrent projects — /checkin (portfolio-aware accountability, a forcing function, batch-elicits priority for all overdue projects at once, answers 'what should I work on' even when nothing's overdue, reports portfolio breadth), /teach (project-scoped teaching, extends wiki-operator's /quiz), and /reflect (user-initiated, portfolio-wide throughline-spotting across active projects — including breadth patterns like nothing reaching complete in a while — with a structural compartment-privacy check). Stateless — priority/checkin_interval/status/compartment live in each project note's own frontmatter. Requires Obsidian MCP connected.",
       "author": { "name": "Hefrock" },
       "category": "knowledge-management",
       "source": "./skills",

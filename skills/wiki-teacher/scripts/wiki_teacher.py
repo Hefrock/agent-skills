@@ -8,9 +8,9 @@ prompt-driven skill, not code, so this is an oracle to check a real
 closes wiki-teacher's share of the gap those two scripts already closed
 for wiki-librarian and wiki-governor — see knowledge-os/sitrep.md, P1.
 
-Two pieces are implemented, both chosen because they're genuinely
-mechanical (a script can get them exactly right) rather than judgment
-calls (a script can't):
+Three pieces are implemented, each chosen because it's genuinely
+mechanical (a script can get it exactly right) rather than a judgment
+call (a script can't):
 
   - compute_checkin() — /checkin's narrowing algorithm: which flaggable
     project(s) to surface, which need a `priority` elicited first (all of
@@ -30,6 +30,12 @@ calls (a script can't):
     observation is actually worth surfacing, and how to phrase it — stays
     a judgment call for the model; this only answers the yes/no structural
     question a script can answer reliably.
+
+  - portfolio_breadth() — how many projects are active, and how long
+    since any project was last marked complete. Facts only, no threshold:
+    /reflect judges whether a pattern here is worth surfacing (growth-
+    mindset framing, same as its other throughlines); /checkin reports
+    only the bare count, passively, no framing at all.
 
 Deliberately NOT implemented — genuine semantic judgment a script can't
 make: identifying an actual throughline or specialization across a
@@ -91,6 +97,50 @@ def _active_projects(notes: dict):
             continue
         out.append({"path": relpath, "priority": fm.get("priority"), "updated_dt": updated_dt})
     return out
+
+
+def portfolio_breadth(notes: dict, now: datetime) -> dict:
+    """Structural facts about portfolio breadth: how many projects are
+    active right now, and how long since any project was last marked
+    complete. Deliberately just facts, no threshold and no verdict - "5
+    active projects" isn't inherently too many, and inventing a magic
+    number here would be exactly the kind of fabricated-not-elicited
+    signal this skill avoids everywhere else (see PRIORITY_RANK's own
+    "never default it" rule). /reflect decides whether a pattern here is
+    worth surfacing, in the same growth-mindset framing as any other
+    throughline it looks for; /checkin only ever reports the count
+    passively, no framing at all.
+
+    Assumes `updated:` reflects the date of the most recent edit to a
+    note, including a status change to complete - the same assumption
+    wiki-operator's /update step ("set updated: to today's date") already
+    relies on for every other date-based signal in this codebase.
+    """
+    active_count = len(_active_projects(notes))
+
+    complete_dates = []
+    for note in notes.values():
+        fm = note["frontmatter"]
+        if fm.get("type") != "project" or fm.get("status") != "complete":
+            continue
+        updated = fm.get("updated")
+        if not updated:
+            continue
+        try:
+            complete_dates.append(datetime.strptime(updated, "%Y-%m-%d").replace(tzinfo=timezone.utc))
+        except ValueError:
+            continue
+
+    if complete_dates:
+        days_since_last_completion = (now - max(complete_dates)).days
+    else:
+        days_since_last_completion = None
+
+    return {
+        "active_count": active_count,
+        "days_since_last_completion": days_since_last_completion,
+        "never_completed": not complete_dates,
+    }
 
 
 def _flaggable_projects(notes: dict, now: datetime):
@@ -200,6 +250,7 @@ def run(vault_root: str, now: datetime = None, explicit_request: bool = False) -
     notes = load_vault(vault_root)
     return {
         "checkin": compute_checkin(notes, now, explicit_request=explicit_request),
+        "breadth": portfolio_breadth(notes, now),
         "notes_scanned": len(notes),
     }
 
@@ -232,6 +283,11 @@ def main():
         print(f"Surfaced: {checkin['top']}")
         if checkin["remainder"]:
             print(f"{checkin['remainder']} other project(s) also overdue.")
+
+    breadth = result["breadth"]
+    since = breadth["days_since_last_completion"]
+    since_str = "never" if breadth["never_completed"] else f"{since}d ago"
+    print(f"Active: {breadth['active_count']}, last completion: {since_str}")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,18 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **Portfolio breadth — the WIP-awareness idea flagged (not built) in the
+  previous round, now closed.** `portfolio_breadth()` in `wiki_teacher.py`
+  computes two facts: how many projects are active, and days since any
+  project was last marked `complete` (`None`/`never_completed: True` if
+  none ever have been). Deliberately facts only, no threshold — inventing
+  a "too many active projects" magic number would be exactly the kind of
+  fabricated-not-elicited signal `priority` already exists to avoid.
+  Split by design between the two commands: `/checkin` reports only the
+  bare count, passively, no framing at all (step 10) — `/reflect` gets
+  the actual judgment (step 4), since "nothing's reached `complete` in
+  6 weeks" is structurally identical to the other throughlines it already
+  looks for. 7 new tests (35 total in `test_wiki_teacher.py`).
 - **`/checkin` closed the gap between its own promised trigger and what it
   actually answered, plus a slow-bootstrap problem neither validation
   pass had caught.** A second review, framed explicitly around "several
@@ -258,7 +270,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
-| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm and `/reflect`'s compartment-span check verified (`wiki_teacher.py`, 28 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
+| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm, `/reflect`'s compartment-span check, and portfolio breadth (active count, days since last completion) verified (`wiki_teacher.py`, 35 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -279,7 +291,8 @@ and `knowledge-warehouse`, which both shipped with test suites.
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
 distillation check), `health_score.py` (`wiki-governor`'s Phase 3, 16
 tests — see Recently closed), and `wiki_teacher.py` (`/checkin`'s
-narrowing algorithm and `/reflect`'s compartment-span check, 28 tests —
+narrowing algorithm, `/reflect`'s compartment-span check, and portfolio
+breadth, 35 tests —
 see Recently closed) close this for all three skills' mechanical logic.
 **Still open:** `wiki-operator` and `wiki-synthesizer` have no automated
 verification at all; `wiki-teacher`'s own judgment calls — what to
