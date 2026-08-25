@@ -4,13 +4,44 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **`/checkin` closed the gap between its own promised trigger and what it
+  actually answered, plus a slow-bootstrap problem neither validation
+  pass had caught.** A second review, framed explicitly around "several
+  concomitant projects, stay active and productive," found two real
+  issues in the design both prior passes (dry-run, privacy review) had
+  missed because neither was stress-testing for a multi-project reality:
+  (1) `wiki-teacher`'s own description had listed "what should I be
+  working on" as a trigger phrase since the first build, but `/checkin`'s
+  algorithm only ever answered "what have I neglected" — asking it with
+  nothing overdue got silence, the same documented-promise-no-algorithm
+  gap that justified building `/ask` earlier. Fixed with a new
+  `explicit_request` path in `compute_checkin()`: when invoked directly
+  (not the silent session-start check) and nothing's flaggable, it ranks
+  all active projects by declared `priority` and suggests the top one
+  (`"suggested"`), or says plainly there's no signal to go on if none
+  have a priority declared yet (`"no_signal"`) — never silently, and
+  never forcing a bootstrap pass for a question with no urgency behind
+  it. (2) The bootstrap flow asked about one priority-less flaggable
+  project per day, throttled — with several concurrent projects, that
+  could be a week before there's enough signal to narrow anything.
+  `needs_bootstrap` now returns every priority-less flaggable project in
+  one batch, and `/checkin`'s SKILL.md describes proceeding straight to
+  narrowing in the same run once they're all answered, rather than
+  requiring a second invocation. Also connected `/checkin` to `/teach`:
+  whenever a project is surfaced, offer `/teach` on it as a next step —
+  accountability that names a project but leaves the user cold-starting
+  on it wasn't actually helping anyone stay productive. 7 new tests
+  (28 total in `test_wiki_teacher.py`). A portfolio-health/WIP-awareness
+  idea (is the active project count itself unsustainable — nothing ever
+  reaching `complete`) came up in the same review and was deliberately
+  not built this round — a real next-round candidate, not a gap.
 - **`wiki-teacher`'s two riskiest pieces of unverified logic, scripted.**
   A post-ship critique flagged `wiki-teacher` as the least-tested skill in
   the system — real, novel logic (`/checkin`'s narrowing algorithm) with
   zero automated verification, shipped right next to two skills that had
   just proven, three separate times, that prompt-only mechanical logic
   hides real bugs until a script and fixture exist to catch them. Same
-  fix applied here: `skills/wiki-teacher/scripts/wiki_teacher.py` (21
+  fix applied here: `skills/wiki-teacher/scripts/wiki_teacher.py` (28
   tests, `test_wiki_teacher.py`) implements `compute_checkin()` — the
   priority sort, the 15% tie-margin, the bootstrap-precedence rule, the
   cap-at-2 — and `spans_multiple_compartments()`, which turns `/reflect`'s
@@ -227,7 +258,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
-| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm and `/reflect`'s compartment-span check verified (`wiki_teacher.py`, 21 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
+| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm and `/reflect`'s compartment-span check verified (`wiki_teacher.py`, 28 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -248,7 +279,7 @@ and `knowledge-warehouse`, which both shipped with test suites.
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
 distillation check), `health_score.py` (`wiki-governor`'s Phase 3, 16
 tests — see Recently closed), and `wiki_teacher.py` (`/checkin`'s
-narrowing algorithm and `/reflect`'s compartment-span check, 21 tests —
+narrowing algorithm and `/reflect`'s compartment-span check, 28 tests —
 see Recently closed) close this for all three skills' mechanical logic.
 **Still open:** `wiki-operator` and `wiki-synthesizer` have no automated
 verification at all; `wiki-teacher`'s own judgment calls — what to

@@ -13,8 +13,10 @@ mechanical (a script can get them exactly right) rather than judgment
 calls (a script can't):
 
   - compute_checkin() — /checkin's narrowing algorithm: which flaggable
-    project(s) to surface, or whether a missing `priority` needs to be
-    elicited first. This is the highest-risk unverified logic in the
+    project(s) to surface, which need a `priority` elicited first (all of
+    them, in one batch — see below), and, when explicitly asked "what
+    should I work on" with nothing overdue, which active project to
+    suggest anyway. This is the highest-risk unverified logic in the
     original build — a priority sort with a percentage tie-margin and a
     bootstrap precedence rule, executed from prose alone with zero
     automated check before this file existed.
@@ -68,12 +70,11 @@ def _parse_interval(raw) -> int:
     return value if value > 0 else DEFAULT_CHECKIN_INTERVAL
 
 
-def _flaggable_projects(notes: dict, now: datetime):
-    """Active (not paused/complete) type: project notes overdue for
-    check-in, each annotated with its overdue ratio. Notes with a missing
-    or unparseable `updated:` are skipped, not treated as infinitely
-    overdue - the same defensive posture check_vault.py's stale check
-    already takes."""
+def _active_projects(notes: dict):
+    """Every type: project note that isn't paused/complete, with a parsed
+    `updated:` date. Base pool for both the flaggable (overdue) view and
+    the "nothing's overdue, suggest anyway" view - the two differ only in
+    whether the checkin_interval gate is applied."""
     out = []
     for relpath, note in notes.items():
         fm = note["frontmatter"]
@@ -88,54 +89,96 @@ def _flaggable_projects(notes: dict, now: datetime):
             updated_dt = datetime.strptime(updated, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except ValueError:
             continue
-        interval = _parse_interval(fm.get("checkin_interval"))
-        days_since = (now - updated_dt).days
-        if days_since < interval:
-            continue
-        out.append({
-            "path": relpath,
-            "priority": fm.get("priority"),
-            "ratio": days_since / interval,
-        })
+        out.append({"path": relpath, "priority": fm.get("priority"), "updated_dt": updated_dt})
     return out
 
 
-def compute_checkin(notes: dict, now: datetime, tie_margin: float = TIE_MARGIN) -> dict:
+def _flaggable_projects(notes: dict, now: datetime):
+    """Active projects overdue for check-in, each annotated with its
+    overdue ratio. Notes with a missing or unparseable `updated:` are
+    skipped, not treated as infinitely overdue - the same defensive
+    posture check_vault.py's stale check already takes."""
+    out = []
+    for p in _active_projects(notes):
+        fm = notes[p["path"]]["frontmatter"]
+        interval = _parse_interval(fm.get("checkin_interval"))
+        days_since = (now - p["updated_dt"]).days
+        if days_since < interval:
+            continue
+        out.append({**p, "ratio": days_since / interval})
+    return out
+
+
+def compute_checkin(notes: dict, now: datetime, tie_margin: float = TIE_MARGIN, explicit_request: bool = False) -> dict:
     """Returns exactly one of:
       {"status": "nothing_flaggable"}
-      {"status": "needs_bootstrap", "project": relpath}
+        Silent case - nothing overdue, request wasn't explicit (e.g. the
+        session-start auto-check). Caller should say nothing.
+      {"status": "needs_bootstrap", "projects": [relpath, ...]}
+        One or more flaggable projects have no valid `priority` - ALL of
+        them, batched, not just the first. Staleness alone can't rank
+        importance, so this missing field IS the check-in; asking about
+        them one per day would make the system nearly useless for anyone
+        with several concurrent projects, so every project needing the
+        signal is surfaced together in one pass.
       {"status": "surfaced", "top": [relpath, ...], "remainder": N}
+        Priorities are known; this is the narrowed 1-2 to act on now.
+      {"status": "suggested", "project": relpath}
+        explicit_request=True, nothing is overdue, but at least one active
+        project has a declared priority - answers "what should I work on"
+        even when accountability alone has nothing to flag. Never returned
+        for a silent/auto check - a proactive suggestion is only useful
+        when actually asked for.
+      {"status": "no_signal"}
+        explicit_request=True, nothing overdue, and no active project has
+        a declared priority either - genuinely nothing to recommend from
+        declared signal. The honest answer is to say so and offer to set
+        priorities, not to guess.
 
-    A flaggable project with no valid `priority` always wins over
-    narrowing - that missing field IS the check-in (wiki-teacher/SKILL.md
-    /checkin step 3). Tie-broken by path when more than one qualifies,
-    an arbitrary rule used only to pick which to ask about first.
+    Bootstrap for an overdue project always wins over narrowing - staleness
+    makes the missing signal time-sensitive. A "what should I work on" pull
+    with nothing overdue does NOT force a portfolio-wide bootstrap pass -
+    there's no urgency driving it, so priority-less active projects are
+    just skipped for that suggestion rather than triggering an ask.
     """
     flaggable = _flaggable_projects(notes, now)
-    if not flaggable:
+
+    if flaggable:
+        missing_priority = sorted(
+            (p for p in flaggable if p["priority"] not in PRIORITY_RANK),
+            key=lambda p: p["path"],
+        )
+        if missing_priority:
+            return {"status": "needs_bootstrap", "projects": [p["path"] for p in missing_priority]}
+
+        ranked = sorted(flaggable, key=lambda p: (-PRIORITY_RANK[p["priority"]], -p["ratio"]))
+        top = [ranked[0]]
+        if len(ranked) > 1:
+            first, second = ranked[0], ranked[1]
+            same_tier = first["priority"] == second["priority"]
+            within_margin = (first["ratio"] - second["ratio"]) / first["ratio"] <= tie_margin
+            if same_tier and within_margin:
+                top.append(second)
+
+        return {
+            "status": "surfaced",
+            "top": [p["path"] for p in top],
+            "remainder": len(flaggable) - len(top),
+        }
+
+    if not explicit_request:
         return {"status": "nothing_flaggable"}
 
-    missing_priority = sorted(
-        (p for p in flaggable if p["priority"] not in PRIORITY_RANK),
-        key=lambda p: p["path"],
-    )
-    if missing_priority:
-        return {"status": "needs_bootstrap", "project": missing_priority[0]["path"]}
+    prioritized = [p for p in _active_projects(notes) if p["priority"] in PRIORITY_RANK]
+    if not prioritized:
+        return {"status": "no_signal"}
 
-    ranked = sorted(flaggable, key=lambda p: (-PRIORITY_RANK[p["priority"]], -p["ratio"]))
-    top = [ranked[0]]
-    if len(ranked) > 1:
-        first, second = ranked[0], ranked[1]
-        same_tier = first["priority"] == second["priority"]
-        within_margin = (first["ratio"] - second["ratio"]) / first["ratio"] <= tie_margin
-        if same_tier and within_margin:
-            top.append(second)
-
-    return {
-        "status": "surfaced",
-        "top": [p["path"] for p in top],
-        "remainder": len(flaggable) - len(top),
-    }
+    top_rank = max(PRIORITY_RANK[p["priority"]] for p in prioritized)
+    top_tier = [p for p in prioritized if PRIORITY_RANK[p["priority"]] == top_rank]
+    # Among equally-prioritized active projects, suggest whichever has sat
+    # untouched longest - not overdue, but the most natural next pick.
+    top_tier.sort(key=lambda p: p["updated_dt"])
+    return {"status": "suggested", "project": top_tier[0]["path"]}
 
 
 def spans_multiple_compartments(project_paths, notes: dict) -> bool:
@@ -152,11 +195,11 @@ def spans_multiple_compartments(project_paths, notes: dict) -> bool:
     return len(set(declared)) > 1
 
 
-def run(vault_root: str, now: datetime = None) -> dict:
+def run(vault_root: str, now: datetime = None, explicit_request: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     notes = load_vault(vault_root)
     return {
-        "checkin": compute_checkin(notes, now),
+        "checkin": compute_checkin(notes, now, explicit_request=explicit_request),
         "notes_scanned": len(notes),
     }
 
@@ -168,9 +211,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("vault", help="Path to the vault root")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--explicit", action="store_true", help='Simulate an explicit "what should I work on" pull')
     args = parser.parse_args()
 
-    result = run(args.vault)
+    result = run(args.vault, explicit_request=args.explicit)
     if args.json:
         print(json.dumps(result, indent=2))
         return
@@ -178,8 +222,12 @@ def main():
     checkin = result["checkin"]
     if checkin["status"] == "nothing_flaggable":
         print("Nothing flaggable - no projects overdue for check-in.")
+    elif checkin["status"] == "no_signal":
+        print("Nothing overdue and no active project has a declared priority.")
     elif checkin["status"] == "needs_bootstrap":
-        print(f"Needs priority: {checkin['project']}")
+        print(f"Needs priority ({len(checkin['projects'])}): {checkin['projects']}")
+    elif checkin["status"] == "suggested":
+        print(f"Suggested (nothing overdue): {checkin['project']}")
     else:
         print(f"Surfaced: {checkin['top']}")
         if checkin["remainder"]:

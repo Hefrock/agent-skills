@@ -23,7 +23,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
 | [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian, synthesizer, and warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
-| [`wiki-teacher`](./skills/wiki-teacher) | Knowledge Management | Accountability and growth-mindset system — `/checkin` (portfolio-aware project accountability, a forcing function), `/teach` (project-scoped teaching, extends `/quiz`), `/reflect` (user-initiated, portfolio-wide throughline-spotting, backed by a structural compartment-privacy check). Stateless — priority/checkin_interval/status/compartment live in each project's own frontmatter. `scripts/wiki_teacher.py`, 21-test regression suite. Requires Obsidian MCP connected. |
+| [`wiki-teacher`](./skills/wiki-teacher) | Knowledge Management | Accountability and growth-mindset system for several concurrent projects — `/checkin` (portfolio-aware accountability, a forcing function, batch-elicits priority for all overdue projects at once, and answers "what should I work on" even when nothing's overdue), `/teach` (project-scoped teaching, extends `/quiz`), `/reflect` (user-initiated, portfolio-wide throughline-spotting, backed by a structural compartment-privacy check). Stateless — priority/checkin_interval/status/compartment live in each project's own frontmatter. `scripts/wiki_teacher.py`, 28-test regression suite. Requires Obsidian MCP connected. |
 | [`wiki-warehouse`](./skills/wiki-warehouse) | Knowledge Management | Cold storage for raw documents — ingests PDFs/ebooks/scans into a separate private GitHub repo (`intake.py`: hash → extract text, OCR fallback for scans → manifest), then writes a lean content-hash pointer note into the vault. Keeps originals and full text out of the vault. `/ingest`, `/warehouse-audit`. Requires Obsidian MCP + the warehouse repo cloned. |
 
 ## Installing a skill
@@ -78,7 +78,7 @@ agent-skills/
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 26-test regression suite
 │   ├── wiki-governor/          # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
-│   ├── wiki-teacher/           # /checkin /teach /reflect — scripts/wiki_teacher.py, 21-test regression suite
+│   ├── wiki-teacher/           # /checkin /teach /reflect — scripts/wiki_teacher.py, 28-test regression suite
 │   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator

@@ -62,32 +62,43 @@ class ComputeCheckinTests(unittest.TestCase):
         self.assertEqual(compute_checkin(notes, NOW), {"status": "nothing_flaggable"})
 
     # ── Bootstrap precedence ─────────────────────────────────────────────────
+    # Batched, not one-per-day: with several concurrent projects, asking
+    # about missing priority one at a time could take a week+ before the
+    # system has enough signal to be useful. Every flaggable project
+    # missing priority is surfaced together, in one pass.
 
     def test_needs_bootstrap_when_priority_missing(self):
         # updated 2026-07-01 = 19 days before NOW, >= default interval of 14.
         notes = {"Projects/a.md": project(updated="2026-07-01")}
-        self.assertEqual(compute_checkin(notes, NOW), {"status": "needs_bootstrap", "project": "Projects/a.md"})
+        self.assertEqual(compute_checkin(notes, NOW), {"status": "needs_bootstrap", "projects": ["Projects/a.md"]})
 
-    def test_needs_bootstrap_picks_path_sorted_first_when_multiple_missing(self):
+    def test_needs_bootstrap_batches_all_missing_priority_projects_sorted_by_path(self):
         notes = {
             "Projects/b.md": project(updated="2026-07-01"),
             "Projects/a.md": project(updated="2026-07-01"),
+            "Projects/c.md": project(updated="2026-07-01"),
         }
         result = compute_checkin(notes, NOW)
-        self.assertEqual(result, {"status": "needs_bootstrap", "project": "Projects/a.md"})
+        self.assertEqual(
+            result,
+            {"status": "needs_bootstrap", "projects": ["Projects/a.md", "Projects/b.md", "Projects/c.md"]},
+        )
 
     def test_invalid_priority_value_treated_as_missing(self):
         notes = {"Projects/a.md": project(priority="urgent", updated="2026-07-01")}
-        self.assertEqual(compute_checkin(notes, NOW), {"status": "needs_bootstrap", "project": "Projects/a.md"})
+        self.assertEqual(compute_checkin(notes, NOW), {"status": "needs_bootstrap", "projects": ["Projects/a.md"]})
 
     def test_missing_priority_wins_over_narrowing_even_with_others_prioritized(self):
+        # Only the priority-less flaggable project appears in the batch -
+        # the one that already has a priority isn't missing anything, so
+        # it's not part of the bootstrap ask, even though it's also flaggable.
         notes = {
             "Projects/no-priority.md": project(updated="2026-07-01"),
             "Projects/has-priority.md": project(priority="high", updated="2026-06-01"),
         }
         result = compute_checkin(notes, NOW)
         self.assertEqual(result["status"], "needs_bootstrap")
-        self.assertEqual(result["project"], "Projects/no-priority.md")
+        self.assertEqual(result["projects"], ["Projects/no-priority.md"])
 
     # ── Narrowing: single project ───────────────────────────────────────────
 
@@ -161,6 +172,61 @@ class ComputeCheckinTests(unittest.TestCase):
         notes = {"Projects/a.md": project(priority="high", updated="2026-07-01")}
         result = compute_checkin(notes, NOW)
         self.assertEqual(result["status"], "surfaced")
+
+    # ── explicit_request: "what should I work on" when nothing's overdue ────
+    # Closes the gap between wiki-teacher's own description (which lists
+    # "what should I be working on" as a trigger phrase) and what /checkin's
+    # algorithm actually answered - accountability-only, silent whenever
+    # nothing happened to be overdue.
+
+    def test_suggested_never_returned_without_explicit_request(self):
+        # Proves the silent default (e.g. session-start auto-check) really
+        # is silent, even when a suggestion would be available.
+        notes = {"Projects/a.md": project(priority="high", updated="2026-07-18")}  # 2 days, not flaggable
+        self.assertEqual(compute_checkin(notes, NOW), {"status": "nothing_flaggable"})
+        self.assertEqual(compute_checkin(notes, NOW, explicit_request=False), {"status": "nothing_flaggable"})
+
+    def test_suggested_when_explicit_and_nothing_flaggable(self):
+        notes = {
+            "Projects/medium.md": project(priority="medium", updated="2026-07-18"),
+            "Projects/high.md": project(priority="high", updated="2026-07-19"),
+        }
+        result = compute_checkin(notes, NOW, explicit_request=True)
+        self.assertEqual(result, {"status": "suggested", "project": "Projects/high.md"})
+
+    def test_suggested_picks_longest_untouched_among_top_tier(self):
+        notes = {
+            "Projects/touched-recently.md": project(priority="high", updated="2026-07-18"),
+            "Projects/touched-longer-ago.md": project(priority="high", updated="2026-07-10"),
+        }
+        result = compute_checkin(notes, NOW, explicit_request=True)
+        self.assertEqual(result, {"status": "suggested", "project": "Projects/touched-longer-ago.md"})
+
+    def test_suggested_excludes_paused_and_complete(self):
+        notes = {
+            "Projects/paused-high.md": project(status="paused", priority="high", updated="2020-01-01"),
+            "Projects/active-low.md": project(status="draft", priority="low", updated="2026-07-18"),
+        }
+        result = compute_checkin(notes, NOW, explicit_request=True)
+        self.assertEqual(result, {"status": "suggested", "project": "Projects/active-low.md"})
+
+    def test_no_signal_when_explicit_nothing_flaggable_and_no_priorities(self):
+        notes = {"Projects/a.md": project(updated="2026-07-18")}  # recent, no priority
+        result = compute_checkin(notes, NOW, explicit_request=True)
+        self.assertEqual(result, {"status": "no_signal"})
+
+    def test_no_signal_ignores_invalid_priority_values(self):
+        notes = {"Projects/a.md": project(priority="urgent", updated="2026-07-18")}
+        result = compute_checkin(notes, NOW, explicit_request=True)
+        self.assertEqual(result, {"status": "no_signal"})
+
+    def test_explicit_request_does_not_override_flaggable_bootstrap(self):
+        # A flaggable project missing priority still wins even when the
+        # request was explicit - staleness makes the missing signal
+        # time-sensitive regardless of how the check-in was triggered.
+        notes = {"Projects/a.md": project(updated="2026-07-01")}  # 19 days, flaggable
+        result = compute_checkin(notes, NOW, explicit_request=True)
+        self.assertEqual(result, {"status": "needs_bootstrap", "projects": ["Projects/a.md"]})
 
 
 class SpansMultipleCompartmentsTests(unittest.TestCase):
