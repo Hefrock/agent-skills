@@ -4,6 +4,28 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **`wiki-teacher`'s two riskiest pieces of unverified logic, scripted.**
+  A post-ship critique flagged `wiki-teacher` as the least-tested skill in
+  the system — real, novel logic (`/checkin`'s narrowing algorithm) with
+  zero automated verification, shipped right next to two skills that had
+  just proven, three separate times, that prompt-only mechanical logic
+  hides real bugs until a script and fixture exist to catch them. Same
+  fix applied here: `skills/wiki-teacher/scripts/wiki_teacher.py` (21
+  tests, `test_wiki_teacher.py`) implements `compute_checkin()` — the
+  priority sort, the 15% tie-margin, the bootstrap-precedence rule, the
+  cap-at-2 — and `spans_multiple_compartments()`, which turns `/reflect`'s
+  privacy safeguard from pure model inference into a structural check
+  against a new `compartment` field (added to `wiki-operator`'s project
+  schema in the same pass). Undeclared or invalid compartments are never
+  assumed safe — treated the same as "might cross a boundary." Unlike
+  `check_vault.py`/`health_score.py`, this file doesn't touch the shared
+  fixture vault at all: every scenario (the tie-margin boundary, the cap,
+  bootstrap-wins-over-narrowing) is a synthetic-dict unit test, chosen
+  deliberately to avoid rippling into those two files' hand-counted totals
+  again the way the paused/complete fixture notes already did once.
+  `/teach`'s question generation and `/reflect`'s actual throughline-finding
+  remain unscripted, correctly — both are semantic judgment calls, not
+  mechanical rules a script could get exactly right.
 - **`wiki-teacher` shipped — project accountability, teaching, and mentoring.**
   Third skill built from a design that already went through two real
   validation passes (a dry-run against the live `Projects/` folder, a
@@ -205,7 +227,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
-| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless, no automated verification yet (prompt-only, like operator/synthesizer — see P1) |
+| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm and `/reflect`'s compartment-span check verified (`wiki_teacher.py`, 21 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -224,14 +246,15 @@ vault, or had any automated verification at all — unlike `deid-reid-harness`
 and `knowledge-warehouse`, which both shipped with test suites.
 
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
-distillation check) and `health_score.py` (`wiki-governor`'s Phase 3, 16
-tests — see Recently closed) close this for both skills' mechanical
-logic. **Still open:** `wiki-operator`, `wiki-synthesizer`, and now
-`wiki-teacher` have no automated verification at all (`/checkin`'s
-narrowing algorithm — priority sort, the 15% tie-margin, the bootstrap
-elicitation — is exactly the kind of mechanical logic `check_vault.py`
-proved worth scripting for the librarian, and is the natural next
-candidate); `wiki-librarian`'s Checks 4/5
+distillation check), `health_score.py` (`wiki-governor`'s Phase 3, 16
+tests — see Recently closed), and `wiki_teacher.py` (`/checkin`'s
+narrowing algorithm and `/reflect`'s compartment-span check, 21 tests —
+see Recently closed) close this for all three skills' mechanical logic.
+**Still open:** `wiki-operator` and `wiki-synthesizer` have no automated
+verification at all; `wiki-teacher`'s own judgment calls — what to
+actually teach, which throughline is worth surfacing — are semantic by
+design and out of a script's reach for the same reason `wiki-librarian`'s
+Checks 4/5
 (near-duplicates, contradictions) are semantic and out of a script's
 reach by design, not an oversight to fix later; the health-score *weights
 themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never validated

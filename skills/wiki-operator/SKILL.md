@@ -67,10 +67,12 @@ updated: YYYY-MM-DD
 status: paused | complete    # extends the base status vocabulary above
 priority: high | medium | low    # optional — elicited on first /checkin, not guessed
 checkin_interval: <days>         # optional, defaults to 14 if absent
+compartment: public-professional | personal | sensitive-research    # optional — see below
 ```
 - `status: paused` / `status: complete` — an intentional off-ramp. Either excludes the project from `wiki-teacher`'s `/checkin` and from `wiki-librarian`'s staleness check; neither counts toward or against `wiki-governor`'s maturity sub-metric.
 - `priority` is deliberately never defaulted — guessing would just reintroduce the ranking problem it exists to solve. `/checkin` asks for it the first time it's needed and writes the answer back.
 - `checkin_interval` defaults silently to 14 days — safe to assume since it only ever under-triggers, never over-triggers a check-in.
+- `compartment` gives `wiki-teacher`'s `/reflect` a structural signal for its privacy safeguard — whether a throughline it's about to surface crosses identity compartments — instead of relying on the model to infer that from content alone every time. Left undeclared, a project is treated as **unknown**, which `/reflect` must treat conservatively (assume it *might* cross a compartment boundary, never assume it doesn't). Declaring it is optional; the field only exists to make an already-required safety check verifiable rather than purely inferred.
 
 ## Vault structure
 
