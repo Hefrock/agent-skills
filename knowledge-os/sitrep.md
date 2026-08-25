@@ -4,6 +4,33 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **`wiki-teacher` shipped — project accountability, teaching, and mentoring.**
+  Third skill built from a design that already went through two real
+  validation passes (a dry-run against the live `Projects/` folder, a
+  privacy threat-model review) before any code landed — see the concept
+  page for the full design history. Three stateless commands: `/checkin`
+  (portfolio-aware, a forcing function auto-suggested at session start,
+  narrows N flaggable projects to 1–2 via a declared `priority` +
+  `checkin_interval` signal rather than staleness alone, which the dry-run
+  proved insufficient — 5 flagged projects landed within 2% of each other
+  on any staleness-derived score), `/teach` (project-scoped, extends
+  `/quiz`), `/reflect` (user-initiated only, portfolio-wide throughline
+  spotting — deliberately never accumulates its own history, to avoid
+  recreating the "self-generated productivity log" the privacy review
+  flagged as sensitive to an employer/civil-discovery adversary; durable
+  insights route through `/update`/`/learn` instead). New frontmatter for
+  `type: project` (`priority`, `checkin_interval`, `status: paused|complete`)
+  landed in `wiki-operator`'s canonical schema, not teacher-local, since
+  it's a note-level concern other skills need to see. `check_vault.py`'s
+  stale check and `health_score.py`'s maturity sub-metric both updated
+  in lockstep so `paused`/`complete` projects are a real off-ramp
+  everywhere, not just in `wiki-teacher`'s own view — 2 new fixture notes,
+  4 new tests, existing hand-counts recomputed and reverified (freshness
+  has no status exemption, matching how `mature` isn't exempted from it
+  either — the off-ramp is stale-flagging and maturity-scoring only).
+  `.claude-plugin/marketplace.json` version bumped alongside this, per
+  the version-pinning fix below — content that ships without a bump is
+  invisible to every existing install.
 - **`append_note` could silently create a frontmatter-less note — found
   on a real vault, three occurrences.** `append_note`'s own file-creation
   behavior (documented: "creates the file if it doesn't exist") has zero
@@ -178,6 +205,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
+| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless, no automated verification yet (prompt-only, like operator/synthesizer — see P1) |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -198,8 +226,12 @@ and `knowledge-warehouse`, which both shipped with test suites.
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
 distillation check) and `health_score.py` (`wiki-governor`'s Phase 3, 16
 tests — see Recently closed) close this for both skills' mechanical
-logic. **Still open:** `wiki-operator` and `wiki-synthesizer` have no
-automated verification at all; `wiki-librarian`'s Checks 4/5
+logic. **Still open:** `wiki-operator`, `wiki-synthesizer`, and now
+`wiki-teacher` have no automated verification at all (`/checkin`'s
+narrowing algorithm — priority sort, the 15% tie-margin, the bootstrap
+elicitation — is exactly the kind of mechanical logic `check_vault.py`
+proved worth scripting for the librarian, and is the natural next
+candidate); `wiki-librarian`'s Checks 4/5
 (near-duplicates, contradictions) are semantic and out of a script's
 reach by design, not an oversight to fix later; the health-score *weights
 themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never validated

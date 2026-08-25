@@ -22,7 +22,8 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/ask`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
 | [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
-| [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian and synthesizer, then adds a constitution-compliance audit, a tracked health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
+| [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian, synthesizer, and warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
+| [`wiki-teacher`](./skills/wiki-teacher) | Knowledge Management | Accountability and growth-mindset system — `/checkin` (portfolio-aware project accountability, a forcing function), `/teach` (project-scoped teaching, extends `/quiz`), `/reflect` (user-initiated, portfolio-wide throughline-spotting). Stateless — priority/checkin_interval/status live in each project's own frontmatter. Requires Obsidian MCP connected. |
 | [`wiki-warehouse`](./skills/wiki-warehouse) | Knowledge Management | Cold storage for raw documents — ingests PDFs/ebooks/scans into a separate private GitHub repo (`intake.py`: hash → extract text, OCR fallback for scans → manifest), then writes a lean content-hash pointer note into the vault. Keeps originals and full text out of the vault. `/ingest`, `/warehouse-audit`. Requires Obsidian MCP + the warehouse repo cloned. |
 
 ## Installing a skill
@@ -77,6 +78,7 @@ agent-skills/
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 26-test regression suite
 │   ├── wiki-governor/          # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
+│   ├── wiki-teacher/           # /checkin /teach /reflect — project accountability + teaching + mentoring
 │   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
 ├── mcp/
 │   └── obsidian-vault/         # MCP server required by wiki-operator
@@ -102,7 +104,7 @@ agent-skills/
 
 ## Wiki system
 
-The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer.
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-teacher`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer. `wiki-teacher` adds accountability and teaching on top of the project portfolio — orthogonal to the other five, which are about the knowledge graph itself.
 
 **Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
 

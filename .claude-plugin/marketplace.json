@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, and knowledge management.",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "plugins": [
     {
@@ -94,13 +94,25 @@
     },
     {
       "name": "wiki-governor",
-      "description": "Runs the wiki's self-governing maintenance loop — orchestrates wiki-librarian and wiki-synthesizer, then adds a constitution-compliance audit, a tracked health score, and a knowledge-gap queue. Run weekly to keep the vault accountable to its own rules. Requires Obsidian MCP connected.",
+      "description": "Runs the wiki's self-governing maintenance loop — orchestrates wiki-librarian, wiki-synthesizer, and wiki-warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Run weekly to keep the vault accountable to its own rules. Requires Obsidian MCP connected.",
       "author": { "name": "Hefrock" },
       "category": "knowledge-management",
       "source": "./skills",
       "strict": false,
       "skills": [
         "./wiki-governor"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-teacher",
+      "description": "Turns the wiki into an accountability and growth-mindset system — /checkin (portfolio-aware project accountability, a forcing function), /teach (project-scoped teaching, extends wiki-operator's /quiz), and /reflect (user-initiated, portfolio-wide throughline-spotting across active projects). Stateless — priority/checkin_interval/status live in each project note's own frontmatter. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-teacher"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },

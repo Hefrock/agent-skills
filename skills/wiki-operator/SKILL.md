@@ -62,6 +62,16 @@ updated: YYYY-MM-DD
 - `status: stale` — hasn't been updated and has no incoming links. Flag, don't delete.
 - `confidence` is about accuracy, not polish. Any `low` page must have an `## Open Questions` section.
 
+**`type: project` additionally supports** (added for `wiki-teacher`):
+```yaml
+status: paused | complete    # extends the base status vocabulary above
+priority: high | medium | low    # optional — elicited on first /checkin, not guessed
+checkin_interval: <days>         # optional, defaults to 14 if absent
+```
+- `status: paused` / `status: complete` — an intentional off-ramp. Either excludes the project from `wiki-teacher`'s `/checkin` and from `wiki-librarian`'s staleness check; neither counts toward or against `wiki-governor`'s maturity sub-metric.
+- `priority` is deliberately never defaulted — guessing would just reintroduce the ranking problem it exists to solve. `/checkin` asks for it the first time it's needed and writes the answer back.
+- `checkin_interval` defaults silently to 14 days — safe to assume since it only ever under-triggers, never over-triggers a check-in.
+
 ## Vault structure
 
 ```

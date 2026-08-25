@@ -59,7 +59,7 @@ Compute six sub-metrics, then roll them into one transparent score. Five come fr
 | Sub-metric | Definition | Weight |
 |---|---|---|
 | Connectedness | % of `Knowledge/` pages with ≥2 links | 0.20 |
-| Maturity | mature ÷ (mature + draft + stale) | 0.15 |
+| Maturity | mature ÷ (mature + draft + stale) — `paused`/`complete` projects excluded entirely, not counted against it | 0.15 |
 | Freshness | % of pages updated within 90 days | 0.10 |
 | Provenance | % of concept pages with a provenance backlink (Law 8) | 0.20 |
 | Resolution | 1 − (open questions ÷ total concept pages), floored at 0 | 0.15 |

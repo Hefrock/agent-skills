@@ -53,7 +53,7 @@ class CheckVaultTests(unittest.TestCase):
         cls.result = run(FIXTURE_VAULT, now=NOW)
 
     def test_scanned_all_fixture_notes(self):
-        self.assertEqual(self.result["notes_scanned"], 20)
+        self.assertEqual(self.result["notes_scanned"], 22)
 
     # ── Check 1 — broken links ────────────────────────────────────────────
 
@@ -82,6 +82,11 @@ class CheckVaultTests(unittest.TestCase):
         self.assertNotIn("Knowledge/healthy-linked-a.md", orphan_notes)
         self.assertNotIn("Knowledge/healthy-linked-b.md", orphan_notes)
         self.assertNotIn("Sources/Papers/example-source.md", orphan_notes)
+        # Projects/ is in the orphan check's scope too — the two new paused/
+        # complete fixtures each carry 2 outbound links specifically so
+        # they don't trip this check as a side effect of testing staleness.
+        self.assertNotIn("Projects/paused-old.md", orphan_notes)
+        self.assertNotIn("Projects/complete-old.md", orphan_notes)
 
     # ── Check 3 — stale ───────────────────────────────────────────────────
 
@@ -96,7 +101,18 @@ class CheckVaultTests(unittest.TestCase):
     def test_exactly_two_stale_notes(self):
         # Pins the count so a scope-widening mistake elsewhere (e.g. stale
         # firing on a mature or recently-updated page) is caught immediately.
+        # Also the direct regression test for the paused/complete off-ramp:
+        # both new fixture notes are older than STALE_DAYS, so if the
+        # exemption regressed, this count would silently become 4.
         self.assertEqual(len(self.result["stale"]), 2)
+
+    def test_paused_project_not_flagged_stale(self):
+        notes = find_notes(self.result["stale"])
+        self.assertNotIn("Projects/paused-old.md", notes)
+
+    def test_complete_project_not_flagged_stale(self):
+        notes = find_notes(self.result["stale"])
+        self.assertNotIn("Projects/complete-old.md", notes)
 
     # ── Check 6 — schema gaps ─────────────────────────────────────────────
 

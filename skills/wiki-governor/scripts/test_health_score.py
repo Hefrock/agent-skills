@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from health_score import (
     compute_health_score,
     warehouse_integrity,
+    maturity,
     _count_open_question_entries,
     _scoped,
 )
@@ -57,15 +58,41 @@ class HealthScoreTests(unittest.TestCase):
         # warehouse-dumped) = 14 scoped notes; 4 are mature (premature-mature,
         # healthy-linked-a, healthy-linked-b, example-source) - both warehouse
         # notes are status: draft, so they don't move this count, only the
-        # denominator.
+        # denominator. The two Projects/ fixtures (status: paused/complete)
+        # are excluded from `countable` entirely, so they change neither
+        # side of this ratio - see test_maturity_excludes_paused_and_complete.
         self.assertAlmostEqual(self.result["components"]["maturity"], 4 / 14)
 
+    def test_maturity_excludes_paused_and_complete(self):
+        # Direct, isolated test of the exclusion - test_maturity_matches_
+        # hand_count only proves it indirectly (the ratio staying 4/14
+        # despite two more Projects/ notes existing in the fixture). A
+        # synthetic notes dict of ONLY paused/complete notes should return
+        # None (empty countable), not a fourth bucket or a ZeroDivisionError.
+        synthetic = {
+            "Projects/a.md": {"frontmatter": {"status": "paused"}, "body": "", "links": []},
+            "Projects/b.md": {"frontmatter": {"status": "complete"}, "body": "", "links": []},
+        }
+        self.assertIsNone(maturity(synthetic))
+
+    def test_maturity_mixed_paused_complete_and_mature_ignores_the_first_two(self):
+        synthetic = {
+            "Projects/a.md": {"frontmatter": {"status": "paused"}, "body": "", "links": []},
+            "Projects/b.md": {"frontmatter": {"status": "complete"}, "body": "", "links": []},
+            "Projects/c.md": {"frontmatter": {"status": "mature"}, "body": "", "links": []},
+        }
+        # Only c.md is countable -> 1/1, not 1/3.
+        self.assertAlmostEqual(maturity(synthetic), 1.0)
+
     def test_freshness_matches_hand_count(self):
-        # Same 14 scoped notes; only stale-aged-out.md (updated 2025-01-01)
-        # is more than 90 days before the reference date - the two warehouse
-        # notes (updated 2026-07-14) are recent, so they add to both the
-        # fresh count and the total.
-        self.assertAlmostEqual(self.result["components"]["freshness"], 13 / 14)
+        # 16 scoped notes (14 + the two Projects/ fixtures added for the
+        # paused/complete staleness exemption). Not-fresh: stale-aged-out.md
+        # and both new Projects/ notes (all updated 2025-01-01) - 3 of 16.
+        # freshness has no status exemption at all, matching how a mature
+        # page isn't exempted either (see health_score.py's maturity()
+        # docstring) - paused/complete only opt out of the maturity ratio
+        # and the librarian's stale-flagging, not this metric.
+        self.assertAlmostEqual(self.result["components"]["freshness"], 13 / 16)
 
     def test_provenance_matches_hand_count(self):
         # 11 Knowledge/ notes; no-provenance.md and premature-mature.md
