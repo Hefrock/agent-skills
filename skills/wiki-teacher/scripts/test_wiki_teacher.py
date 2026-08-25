@@ -22,17 +22,25 @@ import unittest
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wiki_teacher import compute_checkin, spans_multiple_compartments, portfolio_breadth, _parse_interval
+from wiki_teacher import (
+    compute_checkin,
+    spans_multiple_compartments,
+    portfolio_breadth,
+    projects_missing_compartment,
+    _parse_interval,
+)
 
 NOW = datetime(2026, 7, 20, tzinfo=timezone.utc)
 
 
-def project(status="draft", priority=None, checkin_interval=None, updated="2026-07-01"):
+def project(status="draft", priority=None, checkin_interval=None, updated="2026-07-01", compartment=None):
     fm = {"type": "project", "status": status, "updated": updated}
     if priority is not None:
         fm["priority"] = priority
     if checkin_interval is not None:
         fm["checkin_interval"] = checkin_interval
+    if compartment is not None:
+        fm["compartment"] = compartment
     return {"frontmatter": fm, "body": "", "links": []}
 
 
@@ -283,6 +291,45 @@ class PortfolioBreadthTests(unittest.TestCase):
         }
         result = portfolio_breadth(notes, NOW)
         self.assertTrue(result["never_completed"])
+
+
+class ProjectsMissingCompartmentTests(unittest.TestCase):
+    def test_empty_vault(self):
+        self.assertEqual(projects_missing_compartment({}), [])
+
+    def test_declared_valid_compartment_not_included(self):
+        notes = {"Projects/a.md": project(compartment="personal")}
+        self.assertEqual(projects_missing_compartment(notes), [])
+
+    def test_undeclared_compartment_included(self):
+        notes = {"Projects/a.md": project()}
+        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md"])
+
+    def test_invalid_compartment_value_included(self):
+        notes = {"Projects/a.md": project(compartment="secret")}
+        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md"])
+
+    def test_paused_and_complete_excluded_even_if_missing_compartment(self):
+        notes = {
+            "Projects/paused.md": project(status="paused"),
+            "Projects/complete.md": project(status="complete"),
+        }
+        self.assertEqual(projects_missing_compartment(notes), [])
+
+    def test_not_gated_on_flaggability_unlike_priority_bootstrap(self):
+        # Recently updated (not overdue) but still missing compartment -
+        # this is the whole point: compartment isn't time-sensitive, so
+        # it's surfaced regardless of whether the project is flaggable.
+        notes = {"Projects/a.md": project(priority="high", updated="2026-07-19")}
+        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md"])
+
+    def test_multiple_missing_sorted_by_path(self):
+        notes = {
+            "Projects/b.md": project(),
+            "Projects/a.md": project(),
+            "Projects/c.md": project(compartment="personal"),  # declared, excluded
+        }
+        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md", "Projects/b.md"])
 
 
 class SpansMultipleCompartmentsTests(unittest.TestCase):

@@ -8,7 +8,7 @@ prompt-driven skill, not code, so this is an oracle to check a real
 closes wiki-teacher's share of the gap those two scripts already closed
 for wiki-librarian and wiki-governor — see knowledge-os/sitrep.md, P1.
 
-Three pieces are implemented, each chosen because it's genuinely
+Four pieces are implemented, each chosen because it's genuinely
 mechanical (a script can get it exactly right) rather than a judgment
 call (a script can't):
 
@@ -36,6 +36,15 @@ call (a script can't):
     /reflect judges whether a pattern here is worth surfacing (growth-
     mindset framing, same as its other throughlines); /checkin reports
     only the bare count, passively, no framing at all.
+
+  - projects_missing_compartment() — which active projects have no valid
+    `compartment` declared, closing the friction the `compartment` field
+    itself introduced: nothing else ever prompts for it, so without this,
+    spans_multiple_compartments() could stay conservative-and-noisy
+    indefinitely. Unlike compute_checkin()'s priority bootstrap, this is
+    NOT gated on flaggability - compartment isn't time-sensitive, so
+    /checkin offers it as an optional add-on whenever it's already
+    running, rather than forcing it as its own trigger.
 
 Deliberately NOT implemented — genuine semantic judgment a script can't
 make: identifying an actual throughline or specialization across a
@@ -245,12 +254,38 @@ def spans_multiple_compartments(project_paths, notes: dict) -> bool:
     return len(set(declared)) > 1
 
 
+def projects_missing_compartment(notes: dict) -> list:
+    """Active (not paused/complete) projects with no valid, declared
+    `compartment`, sorted by path.
+
+    Deliberately NOT gated on flaggability or on whether `priority` is
+    already known, unlike compute_checkin()'s bootstrap - compartment
+    isn't time-sensitive the way priority is. Nothing breaks if it stays
+    undeclared a while longer; spans_multiple_compartments() just stays
+    conservative in the meantime. So this is meant to be offered whenever
+    /checkin is already running (an optional add-on to whatever bootstrap
+    or narrowing is already happening), not forced as its own trigger the
+    way a flaggable project's missing priority is.
+    """
+    out = []
+    for relpath, note in notes.items():
+        fm = note["frontmatter"]
+        if fm.get("type") != "project":
+            continue
+        if fm.get("status") in OFF_RAMP_STATUSES:
+            continue
+        if fm.get("compartment") not in VALID_COMPARTMENTS:
+            out.append(relpath)
+    return sorted(out)
+
+
 def run(vault_root: str, now: datetime = None, explicit_request: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     notes = load_vault(vault_root)
     return {
         "checkin": compute_checkin(notes, now, explicit_request=explicit_request),
         "breadth": portfolio_breadth(notes, now),
+        "missing_compartment": projects_missing_compartment(notes),
         "notes_scanned": len(notes),
     }
 
@@ -288,6 +323,9 @@ def main():
     since = breadth["days_since_last_completion"]
     since_str = "never" if breadth["never_completed"] else f"{since}d ago"
     print(f"Active: {breadth['active_count']}, last completion: {since_str}")
+
+    if result["missing_compartment"]:
+        print(f"Missing compartment ({len(result['missing_compartment'])}): {result['missing_compartment']}")
 
 
 if __name__ == "__main__":

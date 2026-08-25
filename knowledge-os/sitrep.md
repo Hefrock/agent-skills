@@ -4,6 +4,59 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **Third `wiki-teacher` round — worked through the ranked gap list from
+  the previous review's report, in order.** Three of five items were
+  buildable now; the other two got a deliberate, different disposition
+  each rather than being forced into code:
+  1. **Compartment declaration friction, closed.** The `compartment`
+     field (added two rounds ago) had no on-ramp — nothing ever prompted
+     for it, so `/reflect`'s privacy check could stay conservative-and-
+     noisy indefinitely. `projects_missing_compartment()` (7 new tests)
+     finds active projects missing it, and `/checkin` now offers — never
+     forces — batching it into whatever bootstrap or narrowing is already
+     happening (step 11). Deliberately NOT gated on flaggability the way
+     `priority` is: compartment isn't time-sensitive, so it's a standing
+     offer, not its own forcing function.
+  2. **`/teach`'s thin-project fallback, closed.** A project with fewer
+     than 2 linked concepts — exactly the new-project case most likely to
+     prompt "teach me about this" — no longer gets a quiz manufactured
+     from sparse material; `/teach` says so and offers `/learn`ing
+     foundational concepts first, or grounding questions in the project's
+     own Goal/Status/Open-questions sections instead.
+  3. **`/teach`'s wrong-answer signal, closed.** Used to evaporate at the
+     end of the conversation. A recurring miss (not a single slip) can
+     now be offered into the project's `## Open questions` via `/update`
+     — the connective tissue that lets `/reflect` later notice it as a
+     persistent skill gap, the same kind of fix that connected `/checkin`
+     to `/teach` two rounds ago.
+  4. **Session-start suggestion collision, closed.** `wiki-governor`'s
+     `/govern` suggestion and `wiki-teacher`'s `/checkin` suggestion could
+     both fire independently at session start with nothing sequencing
+     them. Both SKILL.mds now say to combine into one message if both are
+     pending, rather than presenting two separate nags.
+  5. **A real validation pass on `/teach`/`/reflect` (partial), and
+     cross-project dependency modeling — different dispositions, neither
+     a plain build.** A real dry-run needs a live vault this remote
+     session has no access to; a prose-level walkthrough was done instead
+     and it wasn't a clean pass — found three real gaps, all fixed: (a)
+     `/teach`'s recurring-gap step was ambiguous about what "session"
+     meant and had no actual mechanism to detect recurrence across
+     separate `/teach` runs, since nothing persists conversation history
+     — resolved by making explicit what was already implicit, that
+     `## Open questions` (already read every run) *is* the recurrence
+     signal; (b) `/reflect` noticed unlinked-but-related projects but
+     never offered `/connect` on them, unlike `/ask`, which already does
+     this for concept clusters; (c) `/reflect [scope]`'s own signature
+     promised project/area narrowing that no numbered step ever
+     operationalized — same documented-not-implemented pattern caught
+     twice before in this skill. A prose walkthrough finding three real
+     issues is itself evidence a live dry-run would find more; this
+     doesn't close the gap, it just makes it smaller. Dependency
+     modeling ("Project A is blocked on Project B") is a genuinely bigger
+     feature that would change `/checkin`'s narrowing itself (a blocked
+     project shouldn't win priority over an unblocked one) — named here
+     as a future direction, not attempted speculatively.
+  `test_wiki_teacher.py`: 35 → 42 tests. All 137 repo-wide tests pass.
 - **Portfolio breadth — the WIP-awareness idea flagged (not built) in the
   previous round, now closed.** `portfolio_breadth()` in `wiki_teacher.py`
   computes two facts: how many projects are active, and days since any
@@ -270,7 +323,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
-| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm, `/reflect`'s compartment-span check, and portfolio breadth (active count, days since last completion) verified (`wiki_teacher.py`, 35 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
+| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm, `/reflect`'s compartment-span check, portfolio breadth, and missing-compartment detection verified (`wiki_teacher.py`, 42 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -291,8 +344,8 @@ and `knowledge-warehouse`, which both shipped with test suites.
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
 distillation check), `health_score.py` (`wiki-governor`'s Phase 3, 16
 tests — see Recently closed), and `wiki_teacher.py` (`/checkin`'s
-narrowing algorithm, `/reflect`'s compartment-span check, and portfolio
-breadth, 35 tests —
+narrowing algorithm, `/reflect`'s compartment-span check, portfolio
+breadth, and missing-compartment detection, 42 tests —
 see Recently closed) close this for all three skills' mechanical logic.
 **Still open:** `wiki-operator` and `wiki-synthesizer` have no automated
 verification at all; `wiki-teacher`'s own judgment calls — what to
