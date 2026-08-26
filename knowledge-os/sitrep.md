@@ -4,6 +4,58 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **`wiki-teacher` pared back to `/checkin` only, after a review called
+  the prior two rounds reckless — a fair call, worth recording plainly.**
+  The pattern across the two rounds directly above this entry: self-
+  generate a list of gaps, self-approve it, self-fix it, and when the fix
+  itself turned up *more* self-found gaps, fix those too and roll forward
+  into the same commit rather than stopping to report. Every test written
+  for `/teach`, `/reflect`, `compartment`, and the `wiki-governor`
+  session-start coordination note was authored by the same process that
+  authored the code under test — a closed loop that can catch
+  implementation bugs but nothing about whether the behavior is actually
+  useful, matches real vault content, or is executable correctly by a
+  model from an increasingly long prose spec in a live session. None of
+  it had ever touched real usage. The original `/checkin` design got this
+  right and said so explicitly ("closed for further design... blocked on
+  real usage, not on more thinking"); that discipline was honored once,
+  for the first closure, and not since.
+  - **Reverted:** `/teach` (both its original 5 steps and the round-3/4
+    additions — thin-project fallback, wrong-answer routing), `/reflect`
+    in full (portfolio-breadth consumption, `/connect` offer, scope
+    handling, the compartment-span privacy check), the `compartment`
+    field itself (added to `wiki-operator`'s schema, now removed —
+    nothing consumes it once `/reflect` is gone), `projects_missing_
+    compartment()` and `spans_multiple_compartments()` (removed from
+    `wiki_teacher.py`, 12 tests removed), and the `wiki-governor`
+    session-start coordination note (self-generated, never validated,
+    same category as everything else here).
+  - **Kept:** `/checkin` in full — the batch bootstrap, the narrowing
+    algorithm, the `explicit_request`/"what should I work on" fallback,
+    and `portfolio_breadth()`'s `/checkin`-facing passive report (the
+    active count is independently useful without a `/reflect` judgment
+    layer to consume it). These are the pieces with real grounding: a
+    dry-run against a live vault in the original design, a verifiable bug
+    (the skill's own description promised a trigger its algorithm didn't
+    deliver), and an explicit user requirement (several concomitant
+    projects, stay productive).
+  - **Added, not just subtracted:** the validation gap this whole episode
+    was actually about. Every `/checkin` test before this round called
+    `compute_checkin()`/`portfolio_breadth()` directly with hand-built
+    dicts — never through `run()`, never against a real `.md` file, never
+    exercising `load_vault()`/`parse_frontmatter()` the way
+    `check_vault.py` and `health_score.py` both already do. A new
+    dedicated fixture vault (`skills/wiki-teacher/scripts/fixtures/
+    vault/`, separate from wiki-librarian's shared one, so nothing
+    ripples into its hand-counted totals) plus a `RunIntegrationTests`
+    class closes that gap — 5 real files on disk, exercising bootstrap,
+    the flaggability gate, the paused off-ramp, and breadth counting all
+    through the real parsing path.
+  - `test_wiki_teacher.py`: 42 → 37 tests (net: −12 removed, +7 real
+    integration tests added). `Maps/_context.md`'s `last_reflected` field
+    removed from the hot-cache template — nothing writes it anymore.
+    `/teach` and `/reflect` come back once `/checkin` has real mileage and
+    an actual felt need surfaces, not a self-generated one.
 - **Third `wiki-teacher` round — worked through the ranked gap list from
   the previous review's report, in order.** Three of five items were
   buildable now; the other two got a deliberate, different disposition
@@ -323,7 +375,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
-| `wiki-teacher` | Shipped | `/checkin /teach /reflect` — stateless; `/checkin`'s narrowing algorithm, `/reflect`'s compartment-span check, portfolio breadth, and missing-compartment detection verified (`wiki_teacher.py`, 42 tests); `/teach`'s question generation and `/reflect`'s throughline-finding remain judgment calls, unscripted by design |
+| `wiki-teacher` | Shipped, deliberately narrow | `/checkin` only — stateless; narrowing algorithm and portfolio breadth verified against both synthetic cases and real parsed files (`wiki_teacher.py`, 37 tests). `/teach` and `/reflect` were built, self-critiqued, and reverted in the same round — see Recently closed — pending real `/checkin` usage before they come back |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -344,14 +396,12 @@ and `knowledge-warehouse`, which both shipped with test suites.
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
 distillation check), `health_score.py` (`wiki-governor`'s Phase 3, 16
 tests — see Recently closed), and `wiki_teacher.py` (`/checkin`'s
-narrowing algorithm, `/reflect`'s compartment-span check, portfolio
-breadth, and missing-compartment detection, 42 tests —
-see Recently closed) close this for all three skills' mechanical logic.
-**Still open:** `wiki-operator` and `wiki-synthesizer` have no automated
-verification at all; `wiki-teacher`'s own judgment calls — what to
-actually teach, which throughline is worth surfacing — are semantic by
-design and out of a script's reach for the same reason `wiki-librarian`'s
-Checks 4/5
+narrowing algorithm and portfolio breadth, 37 tests — including, as of
+this round, real-file integration tests against a dedicated fixture
+vault, not just synthetic-dict unit tests — see Recently closed) close
+this for all three skills' mechanical logic. **Still open:**
+`wiki-operator` and `wiki-synthesizer` have no automated verification at
+all; `wiki-librarian`'s Checks 4/5
 (near-duplicates, contradictions) are semantic and out of a script's
 reach by design, not an oversight to fix later; the health-score *weights
 themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never validated

@@ -94,8 +94,6 @@ Then update `Maps/_context.md`: set `last_governed`, write the `## Health` block
 
 At session start, read `Maps/_context.md`. If `last_governed` is more than 7 days ago, suggest running `/govern` — do not run it unprompted. (An optional `SessionStart` hook can automate the reminder; configure it via the `update-config` skill rather than hard-coding it here.)
 
-**If `wiki-teacher` also has a pending suggestion this session** (`/checkin` overdue, per its own `last_checkin` check), combine both into a single message rather than two separate prompts — see `wiki-teacher/SKILL.md`'s matching note.
-
 ## Output discipline
 
 - Never inflate the health score. A regression is the most useful thing a run can report — lead with it.

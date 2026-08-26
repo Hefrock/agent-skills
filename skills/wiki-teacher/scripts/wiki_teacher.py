@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Deterministic reference implementation of wiki-teacher's mechanical logic.
+"""Deterministic reference implementation of /checkin's mechanical logic.
 
 Same rationale as skills/wiki-librarian/scripts/check_vault.py and
 skills/wiki-governor/scripts/health_score.py: wiki-teacher is a
 prompt-driven skill, not code, so this is an oracle to check a real
-/checkin or /reflect run against, not a replacement for either. This
-closes wiki-teacher's share of the gap those two scripts already closed
-for wiki-librarian and wiki-governor — see knowledge-os/sitrep.md, P1.
+/checkin run against, not a replacement for it. This closes wiki-teacher's
+share of the gap those two scripts already closed for wiki-librarian and
+wiki-governor — see knowledge-os/sitrep.md, P1.
 
-Four pieces are implemented, each chosen because it's genuinely
-mechanical (a script can get it exactly right) rather than a judgment
-call (a script can't):
+Two pieces are implemented, each chosen because it's genuinely mechanical
+(a script can get it exactly right) rather than a judgment call (a script
+can't):
 
   - compute_checkin() — /checkin's narrowing algorithm: which flaggable
     project(s) to surface, which need a `priority` elicited first (all of
@@ -21,36 +21,18 @@ call (a script can't):
     bootstrap precedence rule, executed from prose alone with zero
     automated check before this file existed.
 
-  - spans_multiple_compartments() — the mechanical half of /reflect's
-    privacy safeguard: whether a set of projects declares more than one
-    distinct `compartment` value (see wiki-operator/SKILL.md's note
-    schema). Deliberately conservative: an undeclared or invalid
-    compartment is never assumed safe, it's treated the same as "might
-    cross a boundary." What to DO with that signal — whether a specific
-    observation is actually worth surfacing, and how to phrase it — stays
-    a judgment call for the model; this only answers the yes/no structural
-    question a script can answer reliably.
-
   - portfolio_breadth() — how many projects are active, and how long
-    since any project was last marked complete. Facts only, no threshold:
-    /reflect judges whether a pattern here is worth surfacing (growth-
-    mindset framing, same as its other throughlines); /checkin reports
-    only the bare count, passively, no framing at all.
+    since any project was last marked complete. Facts only, no threshold
+    or verdict — /checkin reports the bare count, passively.
 
-  - projects_missing_compartment() — which active projects have no valid
-    `compartment` declared, closing the friction the `compartment` field
-    itself introduced: nothing else ever prompts for it, so without this,
-    spans_multiple_compartments() could stay conservative-and-noisy
-    indefinitely. Unlike compute_checkin()'s priority bootstrap, this is
-    NOT gated on flaggability - compartment isn't time-sensitive, so
-    /checkin offers it as an optional add-on whenever it's already
-    running, rather than forcing it as its own trigger.
-
-Deliberately NOT implemented — genuine semantic judgment a script can't
-make: identifying an actual throughline or specialization across a
-portfolio (the substance of /reflect), and generating teaching questions
-(the substance of /teach). Neither is mechanical in the way the two
-functions above are.
+Currently scoped to /checkin only. wiki-teacher's original three-command
+design also included /teach and /reflect; both were reverted out of this
+skill after a review found the entire second half of the skill — /teach
+in full, and most of /reflect's behavior — had been built speculatively,
+self-critiqued, and self-fixed in a closed loop with zero real usage
+behind any of it. See knowledge-os/sitrep.md for the full history. They
+come back once /checkin has real mileage and an actual felt need
+surfaces, not a self-generated one.
 
 stdlib only, matching this repo's other reference tooling. Imports
 load_vault from wiki-librarian's check_vault.py rather than
@@ -69,7 +51,6 @@ DEFAULT_CHECKIN_INTERVAL = 14
 TIE_MARGIN = 0.15
 OFF_RAMP_STATUSES = ("paused", "complete")
 PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
-VALID_COMPARTMENTS = {"public-professional", "personal", "sensitive-research"}
 
 
 def _parse_interval(raw) -> int:
@@ -115,10 +96,8 @@ def portfolio_breadth(notes: dict, now: datetime) -> dict:
     active projects" isn't inherently too many, and inventing a magic
     number here would be exactly the kind of fabricated-not-elicited
     signal this skill avoids everywhere else (see PRIORITY_RANK's own
-    "never default it" rule). /reflect decides whether a pattern here is
-    worth surfacing, in the same growth-mindset framing as any other
-    throughline it looks for; /checkin only ever reports the count
-    passively, no framing at all.
+    "never default it" rule). /checkin reports the count passively, no
+    framing at all.
 
     Assumes `updated:` reflects the date of the most recent edit to a
     note, including a status change to complete - the same assumption
@@ -240,52 +219,12 @@ def compute_checkin(notes: dict, now: datetime, tie_margin: float = TIE_MARGIN, 
     return {"status": "suggested", "project": top_tier[0]["path"]}
 
 
-def spans_multiple_compartments(project_paths, notes: dict) -> bool:
-    """True if the given projects declare 2+ distinct `compartment` values,
-    OR if any project's compartment is undeclared/invalid - unknown is
-    never assumed safe. False only when every project declares the exact
-    same single valid compartment."""
-    declared = []
-    for path in project_paths:
-        compartment = notes.get(path, {}).get("frontmatter", {}).get("compartment")
-        if compartment not in VALID_COMPARTMENTS:
-            return True
-        declared.append(compartment)
-    return len(set(declared)) > 1
-
-
-def projects_missing_compartment(notes: dict) -> list:
-    """Active (not paused/complete) projects with no valid, declared
-    `compartment`, sorted by path.
-
-    Deliberately NOT gated on flaggability or on whether `priority` is
-    already known, unlike compute_checkin()'s bootstrap - compartment
-    isn't time-sensitive the way priority is. Nothing breaks if it stays
-    undeclared a while longer; spans_multiple_compartments() just stays
-    conservative in the meantime. So this is meant to be offered whenever
-    /checkin is already running (an optional add-on to whatever bootstrap
-    or narrowing is already happening), not forced as its own trigger the
-    way a flaggable project's missing priority is.
-    """
-    out = []
-    for relpath, note in notes.items():
-        fm = note["frontmatter"]
-        if fm.get("type") != "project":
-            continue
-        if fm.get("status") in OFF_RAMP_STATUSES:
-            continue
-        if fm.get("compartment") not in VALID_COMPARTMENTS:
-            out.append(relpath)
-    return sorted(out)
-
-
 def run(vault_root: str, now: datetime = None, explicit_request: bool = False) -> dict:
     now = now or datetime.now(timezone.utc)
     notes = load_vault(vault_root)
     return {
         "checkin": compute_checkin(notes, now, explicit_request=explicit_request),
         "breadth": portfolio_breadth(notes, now),
-        "missing_compartment": projects_missing_compartment(notes),
         "notes_scanned": len(notes),
     }
 
@@ -323,9 +262,6 @@ def main():
     since = breadth["days_since_last_completion"]
     since_str = "never" if breadth["never_completed"] else f"{since}d ago"
     print(f"Active: {breadth['active_count']}, last completion: {since_str}")
-
-    if result["missing_compartment"]:
-        print(f"Missing compartment ({len(result['missing_compartment'])}): {result['missing_compartment']}")
 
 
 if __name__ == "__main__":

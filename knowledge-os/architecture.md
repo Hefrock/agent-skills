@@ -15,7 +15,7 @@ How the wiki system fits together — the components, their responsibilities, an
 │    wiki-synthesizer    ← journal preprocessing + wiki   │
 │    wiki-librarian      ← structural audits              │
 │    wiki-governor       ← maintenance loop + compliance  │
-│    wiki-teacher        ← project accountability/teaching│
+│    wiki-teacher        ← project accountability (/checkin)│
 └───────────────────┬─────────────────────────────────────┘
                     │ MCP (STDIO)
                     ▼
@@ -65,7 +65,7 @@ Healthy, connected knowledge graph
 
 ## The hot cache
 
-`Maps/_context.md` is a compact summary of the vault's current state — active areas, recently updated pages, open threads, vault stats, and cadence dates (`last_synthesized`, `last_governed`, `last_checkin`, `last_reflected`). Every skill reads it at session start to orient without scanning the full vault. `last_checkin`/`last_reflected` are `wiki-teacher`'s: the former throttles `/checkin`'s session-start suggestion to once/day, the latter is a bare date only — `/reflect` deliberately never accumulates a history of what it observed, to avoid recreating the "self-generated productivity log" a privacy review flagged as sensitive.
+`Maps/_context.md` is a compact summary of the vault's current state — active areas, recently updated pages, open threads, vault stats, and cadence dates (`last_synthesized`, `last_governed`, `last_checkin`). Every skill reads it at session start to orient without scanning the full vault. `last_checkin` is `wiki-teacher`'s: it throttles `/checkin`'s session-start suggestion to once/day.
 
 Update `_context.md` at the end of any session that makes significant changes. wiki-synthesizer does this automatically in Phase 3.
 

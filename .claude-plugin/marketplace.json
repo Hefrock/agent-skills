@@ -106,7 +106,7 @@
     },
     {
       "name": "wiki-teacher",
-      "description": "Turns the wiki into an accountability and growth-mindset system for several concurrent projects — /checkin (portfolio-aware accountability, a forcing function, batch-elicits priority and compartment for all projects that need them, answers 'what should I work on' even when nothing's overdue, reports portfolio breadth), /teach (project-scoped teaching, extends wiki-operator's /quiz, with a thin-project fallback and recurring-gap capture into Open questions), and /reflect (user-initiated, portfolio-wide throughline-spotting across active projects — including breadth patterns like nothing reaching complete in a while — with a structural compartment-privacy check). Stateless — priority/checkin_interval/status/compartment live in each project note's own frontmatter. Requires Obsidian MCP connected.",
+      "description": "Portfolio-aware project accountability for several concurrent projects — /checkin, a forcing function auto-suggested at session start. Surfaces 1-2 projects that genuinely need attention (never a dump), batch-elicits priority for all overdue projects at once, answers 'what should I work on' even when nothing's overdue, and reports portfolio breadth. Stateless — priority/checkin_interval/status live in each project note's own frontmatter. Deliberately narrow for now: /teach and /reflect were part of the original design but are held back until /checkin has real usage behind it. Requires Obsidian MCP connected.",
       "author": { "name": "Hefrock" },
       "category": "knowledge-management",
       "source": "./skills",

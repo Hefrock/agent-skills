@@ -1,34 +1,32 @@
 ---
 name: wiki-teacher
-description: Turns the wiki into an accountability and growth-mindset system, not just a reference. Three stateless commands — /checkin (portfolio-aware project accountability, a forcing function auto-suggested at session start), /teach (project-scoped teaching, extends wiki-operator's /quiz), and /reflect (user-initiated, portfolio-wide throughline-spotting across active projects — the mentoring layer, an emergent property of seeing the whole portfolio rather than a tone constraint). State lives declaratively in each project note's own frontmatter (priority, checkin_interval, status) — no separate tracking mechanism. Triggers on "check in on my projects," "what should I be working on," "teach me about this project," "quiz me on X project," "help me reflect," "am I developing a specialization," and the commands /checkin /teach /reflect. Requires the obsidian-vault MCP server connected. Separate skill from wiki-operator by design — trigger clarity and a genuine category shift, since none of wiki-operator's principles govern tone, pacing, or accountability.
+description: Portfolio-aware project accountability for several concurrent projects — /checkin, a forcing function auto-suggested at session start. Surfaces 1–2 projects that genuinely need attention (never a dump of everything overdue), batch-elicits priority when it's needed instead of asking one per day, and answers "what should I work on" even when nothing's overdue. State lives declaratively in each project note's own frontmatter (priority, checkin_interval, status) — no separate tracking mechanism. Triggers on "check in on my projects," "what should I be working on," and the command /checkin. Requires the obsidian-vault MCP server connected. Deliberately narrow for now — see the note below.
 ---
 
 # Wiki Teacher
 
-Accountability, teaching, and mentoring for the project portfolio — not a passive reference. Combines two distinct activities (`/checkin` for accountability, `/teach` for teaching) under a growth-mindset tone constraint, plus `/reflect`, whose mentoring value turns out to be an emergent property of seeing the whole portfolio at once, not a third activity bolted on.
+Portfolio-aware project accountability — not a passive reference. `/checkin` surfaces what genuinely needs attention across several concurrent projects, without turning into either a nag or a dump.
+
+**Currently `/checkin` only.** `/teach` (project-scoped teaching) and `/reflect` (portfolio-wide mentoring) were part of the original three-command design but are deliberately held back — neither has ever run against real usage or had any real critique pass, unlike `/checkin`, which has now survived three rounds of scrutiny (a dry-run in the original design, a privacy review, and a from-scratch prose walkthrough that found real gaps). Shipping them alongside a validated `/checkin` would dress up unvalidated behavior in credibility it hasn't earned. They come back once `/checkin` has real mileage and an actual felt need surfaces — see `knowledge-os/sitrep.md` for the full history.
 
 ## Prerequisites
 
-The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before running. Pairs with `wiki-operator` — `/teach` extends `/quiz`'s structure, and `/checkin`'s cadence pattern mirrors `wiki-governor`'s.
+The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before running.
 
-**Reference implementation:** `/checkin`'s narrowing algorithm (including the batch bootstrap and the "what should I work on" fallback), `/reflect`'s compartment-span check, portfolio breadth (active count, days since anything last completed), and which active projects are missing a `compartment` declaration are all mechanical enough to script — `skills/wiki-teacher/scripts/wiki_teacher.py`, tested against synthetic cases in `test_wiki_teacher.py` (42 tests). Check a real run's output against it; treat a mismatch as a bug in the run, not in the script. What to actually teach, which throughline is worth surfacing, or whether a given breadth pattern is actually concerning stays a judgment call — those parts aren't scripted, and shouldn't be.
+**Reference implementation:** `/checkin`'s narrowing algorithm — the batch bootstrap, the priority sort, the tie-margin, the cap, and the "what should I work on" fallback — plus portfolio breadth (active count, days since anything last completed) are mechanical enough to script: `skills/wiki-teacher/scripts/wiki_teacher.py`, tested both against synthetic cases and against real parsed files on disk (`test_wiki_teacher.py`). Check a real run's output against it; treat a mismatch as a bug in the run, not in the script.
 
-**Note on commands:** `/checkin`, `/teach`, `/reflect` are natural-language triggers — write them in the chat window. They are NOT Claude Code CLI slash commands.
+**Note on commands:** `/checkin` is a natural-language trigger — write it in the chat window. It is NOT a Claude Code CLI slash command.
 
 ## Principles
 
-1. **Portfolio-aware, not single-project.** Several concurrent projects are the expected case for `/checkin`, and the entire reason `/reflect` can do more than a single project's `/review` — it sees throughlines across all of them.
-2. **Opposite trigger philosophies, on purpose.** `/checkin` is a forcing function — auto-suggested, because accountability that only runs when asked stops being accountability. `/reflect` is user-initiated only, ambient-reminded at most — forcing it risks turning genuine reflection into a performed checkbox ritual instead.
-3. **Elicit missing signal, don't fabricate it.** When `priority` is needed and undeclared, ask — never default it. A guessed default would just reintroduce the exact ranking problem declaring `priority` exists to solve. `compartment` gets the same treatment, with a different urgency: `priority` blocks narrowing, so it's a forcing function; `compartment` isn't time-sensitive, so it's offered as a standing add-on rather than forced — but never guessed either.
-4. **Stateless — the vault is the state substrate.** `priority`, `checkin_interval`, `status`, and `compartment` live in the project note's own frontmatter (see `wiki-operator`'s note schema). No teacher-owned tracking file, no computed ease-factor.
-5. **Compartment discipline in `/reflect` output.** Its value is spotting a throughline across the whole portfolio — which by construction can cross whatever identity compartments those projects individually belong to. Never surface a cross-compartment throughline without naming, explicitly, that it crosses compartments. Never treat `/reflect`'s own output as exempt from the placement discipline that governs everything else in the vault.
-6. **Growth-mindset tone, not a verdict.** Describe what's observed — "you keep returning to X" — never a character judgment. Applies to `/checkin`'s framing and `/teach`'s handling of a wrong answer alike.
+1. **Portfolio-aware, not single-project.** Several concurrent projects are the expected case, not an edge case.
+2. **Elicit missing signal, don't fabricate it.** When `priority` is needed and undeclared, ask — never default it. A guessed default would just reintroduce the exact ranking problem declaring `priority` exists to solve.
+3. **Stateless — the vault is the state substrate.** `priority`, `checkin_interval`, and `status` live in the project note's own frontmatter (see `wiki-operator`'s note schema). No teacher-owned tracking file, no computed ease-factor.
+4. **Growth-mindset tone, not a verdict.** Describe what's observed — "3 projects are overdue" is a fact; "you're falling behind" is a verdict. Stick to the fact.
 
 ## Cadence & session start
 
 At session start, read `Maps/_context.md`. If `last_checkin` is not today, check whether any non-`paused`/`complete` project is flaggable (see `/checkin` below). If at least one is, suggest running `/checkin` — never run it unprompted. If nothing is flaggable, skip silently; a suggestion with nothing to say is worse than no suggestion. Throttled to once per day regardless of how many sessions start.
-
-**If `wiki-governor` also has a pending suggestion this session** (`/govern` overdue per its own `last_governed` check), combine both into a single message rather than presenting them as two separate prompts — e.g. *"Also worth running: `/govern` (vault maintenance) and `/checkin` (2 projects overdue)."* Two independent nags competing for the same moment is worse than one combined line; see `wiki-governor/SKILL.md`'s matching note.
 
 ## /checkin
 
@@ -41,44 +39,11 @@ Surface 1–2 projects that genuinely need attention — never a dump of everyth
 5. Any flaggable projects beyond the surfaced 1–2 get one passive line: *"N other projects are also overdue — say 'show all' to see them."*
 6. **Nothing flaggable, but explicitly asked** ("what should I work on," a direct `/checkin` invocation, not the silent session-start check): don't just say there's nothing to report. Rank all active projects with a declared `priority` (staleness doesn't gate this — nothing here is overdue) and suggest the highest-priority one, tie-broken by whichever has sat untouched longest. If *no* active project has a declared priority either, say so plainly and offer to set some — don't force a full bootstrap pass for an idle question with no urgency behind it, but don't guess either. `compute_checkin(..., explicit_request=True)` implements this exactly — `"suggested"` or `"no_signal"`.
 7. **Nothing flaggable, silent session-start check:** skip entirely — a suggestion with nothing to say is worse than no suggestion. This is the one case where step 6's fallback does *not* apply; a proactive suggestion is only useful when actually asked for, never as an unprompted nag.
-8. Whenever a project is surfaced — narrowed, bootstrapped-then-narrowed, or suggested — offer `/teach` on it as an optional next step: *"Want me to `/teach` on this one to get oriented before diving in?"* Accountability that names a project but leaves you cold-starting on it isn't actually helping you stay productive.
-9. Passively mention `/reflect`'s cadence: if `Maps/_context.md`'s `last_reflected` is 2+ weeks old (or absent), add one flat, non-escalating line — *"It's also been a while since you `/reflect`ed."* Never repeat, escalate, or turn this into its own check-in item.
-10. Passively report portfolio breadth: `portfolio_breadth()` in `wiki_teacher.py` gives the active project count and days since anything last completed — append one neutral line, e.g. *"5 active projects."* No framing, no threshold, no "that's a lot" — just the count. Judging whether that's a pattern worth noting is `/reflect`'s job, not `/checkin`'s.
-11. **Optional add-on, every run:** if `projects_missing_compartment()` returns any active projects, offer — don't force — to declare `compartment` for them too, batched the same way as the priority bootstrap: *"While we're at it: 2 active projects don't have a `compartment` declared (used by `/reflect`'s privacy check) — want to set those now?"* Not gated on flaggability, unlike `priority` — compartment isn't time-sensitive, so this closes the friction the field itself introduced (nothing else ever prompts for it) without turning into its own forcing function. Skip silently if none are missing.
-12. After any run, set `last_checkin` in `Maps/_context.md` to today.
-
-## /teach [project]
-
-Project-scoped teaching — extends `wiki-operator`'s `/quiz`, which is topic-scoped and generic. `/teach` grounds questions in what a specific project is actually doing right now, not a topic in the abstract.
-
-1. Retrieve the project note (`Projects/[name].md`) and its linked concept pages (the `## Key concepts` section).
-2. **If fewer than 2 concept pages are linked, say so plainly rather than forcing a thin quiz through anyway.** This is exactly the case a new project — the one most likely to prompt "teach me about this" in the first place — hits hardest. Offer either: generate questions grounded only in the project's own `## Goal`/`## Status`/`## Open questions` sections (no linked-concept requirement), or suggest `/learn`ing the relevant foundational concepts into the vault first. Don't manufacture questions from sparse material to avoid admitting there isn't much to teach from yet.
-3. Also read the project's own `## Open questions` and `## Status` sections — the source of what's actually current, not just what topics the project touches.
-4. Generate 3–5 questions at progressive difficulty, each grounded in this project specifically:
-   - **Recall** — what do the linked concepts actually say?
-   - **Application** — how does that concept apply to what *this* project is trying to do?
-   - **Synthesis** — given where the project currently stands, what's a non-obvious next step, risk, or connection to another linked concept?
-5. Do not show answers — wait for the user to respond before discussing, same discipline as `/quiz`.
-6. Treat a wrong or uncertain answer as a signal for what to review next, never as a failure to flag.
-7. **If a wrong or uncertain answer reveals a genuine gap — not a single slip — check whether it's already captured in the project's `## Open questions`** (already read in step 3). If it's already there, that's the recurrence signal itself: the vault, not conversation memory, is what makes something "recurring" across separate `/teach` sessions on different days — this skill is stateless, so there's nowhere else recurrence *could* be tracked. If it's genuinely new, offer to add it via `/update`. Never automatically — offer, and only add what's confirmed, same confirm-before-writing discipline as everything else in this vault. A signal that only ever lives in one conversation can't become something `/reflect` later notices as a persistent skill gap across projects.
-
-## /reflect [scope]
-
-User-initiated only — never suggested as an action, only mentioned ambiently by `/checkin` (see above). Defaults to the whole portfolio. **A named project narrows the retrieval in step 1 to that project plus anything it already links to** — but cross-project pattern-spotting (step 3) inherently needs ≥2 projects to mean anything, so a single-project `/reflect` will usually turn up little or nothing; say so plainly rather than manufacturing an observation, and suggest `/review` or `/teach` for single-project depth instead. `/reflect`'s value is genuinely in the portfolio-wide view — scoping it down trades away the thing it's for.
-
-1. Retrieve every `type: project` note with `status` not `paused`/`complete` — the active portfolio (or, if scoped to a named project, that project plus its existing links — see above).
-2. Retrieve each one's linked concept pages, to see what's actually being exercised across the portfolio, not just project titles.
-3. Look for: a concept or skill recurring across ≥2 projects (a developing specialization), a recurring theme across multiple `## Open questions` sections (a persistent skill gap), or a real connection between two projects that don't already link to each other — if it's the latter, offer to run `wiki-operator`'s `/connect` on them, the same way `/ask` already offers it for unlinked concept clusters. Noticing a connection and never acting on it wastes the one thing `/reflect` is positioned to see that nothing else is.
-4. **Also consider portfolio breadth** — `portfolio_breadth()` in `wiki_teacher.py` gives the active count and days since anything last completed. An unusually high active count, or a long stretch with nothing reaching `complete`, is a genuine throughline candidate, same as any other pattern above — surface it if it seems worth noting, in the same growth-mindset framing: *"You've got 7 active threads and haven't closed one out in 6 weeks"* is an observation; *"you're overcommitted"* is a verdict. There's no built-in threshold for what counts as "unusually high" — that's a judgment call in context, not a number to hardcode.
-5. Compose the observation in growth-mindset framing — what's observed, not a verdict.
-6. **Before presenting anything, check the projects behind the observation against `compartment` in each one's frontmatter** (see `wiki-operator`'s note schema) using `spans_multiple_compartments()` in `skills/wiki-teacher/scripts/wiki_teacher.py` — a structural check, not a judgment call: it returns `True` if the projects declare more than one distinct `compartment`, and *also* `True` if any of them leaves `compartment` undeclared, since an unknown compartment is never assumed safe. If it returns `True`, say so explicitly, plainly, as part of the output — never let a cross-compartment (or unknown-compartment) throughline pass as if it were compartment-neutral. This backstops the model's own read of the content; don't skip it because the content "seems" fine.
-7. **Never accumulate a `/reflect` history.** A log of reflections over time is structurally the exact "self-generated productivity log" a privacy review already flagged as sensitive to an employer or civil-discovery adversary — don't create one, even implicitly, by writing to a dedicated file each run. If an observation is worth keeping, route it through an *existing* command instead — `/update` on the relevant project note, or `/learn` into `Knowledge/` if it's durable enough to be a concept in its own right — so it inherits whatever compartment and placement discipline already governs that content. Default output is conversational only.
-8. The only durable trace of `/reflect` running is a single `last_reflected: YYYY-MM-DD` field in `Maps/_context.md` — a bare date, not a record of what was observed. That's what `/checkin`'s ambient mention (step 10 above) reads.
+8. Passively report portfolio breadth: `portfolio_breadth()` in `wiki_teacher.py` gives the active project count and days since anything last completed — append one neutral line, e.g. *"5 active projects."* No framing, no threshold, no "that's a lot" — just the count.
+9. After any run, set `last_checkin` in `Maps/_context.md` to today.
 
 ## Output discipline
 
 - Never auto-run `/checkin` — session start only suggests it.
-- Never write a `/reflect` history file. Durable insights go through `/update` or `/learn`, not a teacher-owned log.
-- State explicitly, every time, when a `/reflect` observation crosses identity compartments — this is not optional and not inferred from context.
-- Growth-mindset framing throughout: describe what's observed, never render a verdict on the person.
+- Growth-mindset framing: state what's observed as a fact, never as a verdict on the person.
 - If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.

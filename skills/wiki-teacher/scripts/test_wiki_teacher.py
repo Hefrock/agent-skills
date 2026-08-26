@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
 """Regression tests for wiki_teacher.py.
 
-Unlike test_check_vault.py and test_health_score.py, this file does NOT
-use the shared fixtures/vault - deliberately. compute_checkin() and
-spans_multiple_compartments() are both pure functions over an in-memory
-notes dict, and every scenario worth covering (bootstrap precedence, the
-tie-margin boundary, the cap-at-2 rule, interval defaulting) needs
-precise, hand-picked dates and priority combinations that would be
-fragile and hard to read if threaded through the shared fixture instead.
-Adding them there would also ripple into every other test file's
-hand-counted totals for Projects/, the way the paused/complete fixture
-notes already did once - not worth repeating for logic this is already
-directly, exactly testable in isolation.
+Two layers, deliberately kept separate:
+
+1. ComputeCheckinTests / PortfolioBreadthTests - pure-function unit tests
+   over hand-built in-memory notes dicts. Every scenario worth covering
+   (bootstrap precedence, the tie-margin boundary, the cap-at-2 rule,
+   interval defaulting) needs precise, hand-picked dates and priority
+   combinations that would be fragile and hard to read if threaded
+   through a shared fixture vault instead - and adding Projects/ fixture
+   files here would ripple into wiki-librarian's and wiki-governor's own
+   hand-counted totals, the way the paused/complete fixtures already did
+   once. Not worth repeating for logic this is already directly, exactly
+   testable in isolation.
+
+2. RunIntegrationTests - the layer those unit tests can't cover: proof
+   that run() actually works end-to-end against real .md files on disk,
+   parsed through the real load_vault()/parse_frontmatter() path, not a
+   hand-built dict. Every unit test above calls compute_checkin() or
+   portfolio_breadth() directly with synthetic input - none of them ever
+   exercise frontmatter parsing, file walking, or the CLI entry point
+   itself. check_vault.py and health_score.py both get this kind of
+   coverage from the shared fixture vault; wiki_teacher.py didn't have
+   any until this class. Uses its own small, dedicated fixture
+   (fixtures/vault/), not the shared one - same rippling-totals reason
+   as above, just for a different set of tests.
 
 Run with: python skills/wiki-teacher/scripts/test_wiki_teacher.py
 """
@@ -22,25 +35,18 @@ import unittest
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wiki_teacher import (
-    compute_checkin,
-    spans_multiple_compartments,
-    portfolio_breadth,
-    projects_missing_compartment,
-    _parse_interval,
-)
+from wiki_teacher import compute_checkin, portfolio_breadth, run, _parse_interval
 
 NOW = datetime(2026, 7, 20, tzinfo=timezone.utc)
+FIXTURE_VAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "vault")
 
 
-def project(status="draft", priority=None, checkin_interval=None, updated="2026-07-01", compartment=None):
+def project(status="draft", priority=None, checkin_interval=None, updated="2026-07-01"):
     fm = {"type": "project", "status": status, "updated": updated}
     if priority is not None:
         fm["priority"] = priority
     if checkin_interval is not None:
         fm["checkin_interval"] = checkin_interval
-    if compartment is not None:
-        fm["compartment"] = compartment
     return {"frontmatter": fm, "body": "", "links": []}
 
 
@@ -293,86 +299,53 @@ class PortfolioBreadthTests(unittest.TestCase):
         self.assertTrue(result["never_completed"])
 
 
-class ProjectsMissingCompartmentTests(unittest.TestCase):
-    def test_empty_vault(self):
-        self.assertEqual(projects_missing_compartment({}), [])
+class RunIntegrationTests(unittest.TestCase):
+    """run() against real .md files on disk - the layer the pure-function
+    unit tests above never touch: frontmatter parsing, file walking,
+    wikilink extraction, the actual load_vault() path check_vault.py and
+    health_score.py both already get tested against. Fixture is dedicated
+    to wiki-teacher (fixtures/vault/, not the shared wiki-librarian one)
+    so these scenarios don't perturb any other test file's hand counts.
+    """
 
-    def test_declared_valid_compartment_not_included(self):
-        notes = {"Projects/a.md": project(compartment="personal")}
-        self.assertEqual(projects_missing_compartment(notes), [])
+    @classmethod
+    def setUpClass(cls):
+        cls.result = run(FIXTURE_VAULT, now=NOW)
+        cls.result_explicit = run(FIXTURE_VAULT, now=NOW, explicit_request=True)
 
-    def test_undeclared_compartment_included(self):
-        notes = {"Projects/a.md": project()}
-        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md"])
+    def test_scanned_all_fixture_notes(self):
+        self.assertEqual(self.result["notes_scanned"], 5)
 
-    def test_invalid_compartment_value_included(self):
-        notes = {"Projects/a.md": project(compartment="secret")}
-        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md"])
+    def test_paused_project_excluded_via_real_parsed_frontmatter(self):
+        # paused-project.md is old enough to be flaggable by date alone -
+        # proves the paused exclusion holds against real parsed YAML, not
+        # just the synthetic dicts the unit tests build by hand.
+        self.assertNotIn("Projects/paused-project.md", str(self.result["checkin"]))
 
-    def test_paused_and_complete_excluded_even_if_missing_compartment(self):
-        notes = {
-            "Projects/paused.md": project(status="paused"),
-            "Projects/complete.md": project(status="complete"),
-        }
-        self.assertEqual(projects_missing_compartment(notes), [])
+    def test_needs_bootstrap_for_real_priority_less_overdue_project(self):
+        # needs-priority.md: real file, status: draft, updated far enough
+        # in the past to be flaggable, no priority field in its frontmatter.
+        self.assertEqual(self.result["checkin"]["status"], "needs_bootstrap")
+        self.assertIn("Projects/needs-priority.md", self.result["checkin"]["projects"])
 
-    def test_not_gated_on_flaggability_unlike_priority_bootstrap(self):
-        # Recently updated (not overdue) but still missing compartment -
-        # this is the whole point: compartment isn't time-sensitive, so
-        # it's surfaced regardless of whether the project is flaggable.
-        notes = {"Projects/a.md": project(priority="high", updated="2026-07-19")}
-        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md"])
+    def test_fresh_active_project_never_flagged(self):
+        # fresh-active.md is recently updated - must never appear in the
+        # bootstrap batch even though it's an active, priority-less project.
+        self.assertNotIn("Projects/fresh-active.md", self.result["checkin"]["projects"])
 
-    def test_multiple_missing_sorted_by_path(self):
-        notes = {
-            "Projects/b.md": project(),
-            "Projects/a.md": project(),
-            "Projects/c.md": project(compartment="personal"),  # declared, excluded
-        }
-        self.assertEqual(projects_missing_compartment(notes), ["Projects/a.md", "Projects/b.md"])
+    def test_breadth_active_count_matches_hand_count(self):
+        # 3 active (needs-priority, high-priority-overdue, fresh-active) +
+        # 1 paused (excluded) = 3, computed against real parsed files.
+        self.assertEqual(self.result["breadth"]["active_count"], 3)
 
+    def test_breadth_never_completed_true_when_fixture_has_no_complete_project(self):
+        self.assertTrue(self.result["breadth"]["never_completed"])
 
-class SpansMultipleCompartmentsTests(unittest.TestCase):
-    def _note(self, compartment=None):
-        fm = {"type": "project", "status": "draft", "updated": "2026-07-01"}
-        if compartment is not None:
-            fm["compartment"] = compartment
-        return {"frontmatter": fm, "body": "", "links": []}
-
-    def test_single_project_declared_compartment_not_spanning(self):
-        notes = {"Projects/a.md": self._note("personal")}
-        self.assertFalse(spans_multiple_compartments(["Projects/a.md"], notes))
-
-    def test_two_projects_same_compartment_not_spanning(self):
-        notes = {
-            "Projects/a.md": self._note("personal"),
-            "Projects/b.md": self._note("personal"),
-        }
-        self.assertFalse(spans_multiple_compartments(["Projects/a.md", "Projects/b.md"], notes))
-
-    def test_two_projects_different_compartments_spans(self):
-        notes = {
-            "Projects/a.md": self._note("personal"),
-            "Projects/b.md": self._note("public-professional"),
-        }
-        self.assertTrue(spans_multiple_compartments(["Projects/a.md", "Projects/b.md"], notes))
-
-    def test_undeclared_compartment_treated_as_spanning(self):
-        # Conservative: an undeclared compartment is never assumed safe,
-        # even when the other project's compartment is declared and identical
-        # to what the undeclared one might turn out to be.
-        notes = {
-            "Projects/a.md": self._note("personal"),
-            "Projects/b.md": self._note(None),
-        }
-        self.assertTrue(spans_multiple_compartments(["Projects/a.md", "Projects/b.md"], notes))
-
-    def test_invalid_compartment_value_treated_as_spanning(self):
-        notes = {
-            "Projects/a.md": self._note("personal"),
-            "Projects/b.md": self._note("secret"),
-        }
-        self.assertTrue(spans_multiple_compartments(["Projects/a.md", "Projects/b.md"], notes))
+    def test_explicit_request_still_hits_bootstrap_when_something_flaggable(self):
+        # Confirms explicit_request doesn't bypass a real flaggable/
+        # priority-less project loaded from disk - same precedence rule
+        # the synthetic unit test proves, now proven against a real file.
+        self.assertEqual(self.result_explicit["checkin"]["status"], "needs_bootstrap")
 
 
 if __name__ == "__main__":
