@@ -68,3 +68,6 @@ jobs:
 
       - name: wiki-governor — health_score.py regression suite (stdlib unittest)
         run: python skills/wiki-governor/scripts/test_health_score.py
+
+      - name: wiki-teacher — wiki_teacher.py regression suite (stdlib unittest)
+        run: python skills/wiki-teacher/scripts/test_wiki_teacher.py

@@ -4,6 +4,203 @@ _Last updated: 2026-08-02_
 
 ## Recently closed
 
+- **`wiki-teacher` pared back to `/checkin` only, after a review called
+  the prior two rounds reckless — a fair call, worth recording plainly.**
+  The pattern across the two rounds directly above this entry: self-
+  generate a list of gaps, self-approve it, self-fix it, and when the fix
+  itself turned up *more* self-found gaps, fix those too and roll forward
+  into the same commit rather than stopping to report. Every test written
+  for `/teach`, `/reflect`, `compartment`, and the `wiki-governor`
+  session-start coordination note was authored by the same process that
+  authored the code under test — a closed loop that can catch
+  implementation bugs but nothing about whether the behavior is actually
+  useful, matches real vault content, or is executable correctly by a
+  model from an increasingly long prose spec in a live session. None of
+  it had ever touched real usage. The original `/checkin` design got this
+  right and said so explicitly ("closed for further design... blocked on
+  real usage, not on more thinking"); that discipline was honored once,
+  for the first closure, and not since.
+  - **Reverted:** `/teach` (both its original 5 steps and the round-3/4
+    additions — thin-project fallback, wrong-answer routing), `/reflect`
+    in full (portfolio-breadth consumption, `/connect` offer, scope
+    handling, the compartment-span privacy check), the `compartment`
+    field itself (added to `wiki-operator`'s schema, now removed —
+    nothing consumes it once `/reflect` is gone), `projects_missing_
+    compartment()` and `spans_multiple_compartments()` (removed from
+    `wiki_teacher.py`, 12 tests removed), and the `wiki-governor`
+    session-start coordination note (self-generated, never validated,
+    same category as everything else here).
+  - **Kept:** `/checkin` in full — the batch bootstrap, the narrowing
+    algorithm, the `explicit_request`/"what should I work on" fallback,
+    and `portfolio_breadth()`'s `/checkin`-facing passive report (the
+    active count is independently useful without a `/reflect` judgment
+    layer to consume it). These are the pieces with real grounding: a
+    dry-run against a live vault in the original design, a verifiable bug
+    (the skill's own description promised a trigger its algorithm didn't
+    deliver), and an explicit user requirement (several concomitant
+    projects, stay productive).
+  - **Added, not just subtracted:** the validation gap this whole episode
+    was actually about. Every `/checkin` test before this round called
+    `compute_checkin()`/`portfolio_breadth()` directly with hand-built
+    dicts — never through `run()`, never against a real `.md` file, never
+    exercising `load_vault()`/`parse_frontmatter()` the way
+    `check_vault.py` and `health_score.py` both already do. A new
+    dedicated fixture vault (`skills/wiki-teacher/scripts/fixtures/
+    vault/`, separate from wiki-librarian's shared one, so nothing
+    ripples into its hand-counted totals) plus a `RunIntegrationTests`
+    class closes that gap — 5 real files on disk, exercising bootstrap,
+    the flaggability gate, the paused off-ramp, and breadth counting all
+    through the real parsing path.
+  - `test_wiki_teacher.py`: 42 → 37 tests (net: −12 removed, +7 real
+    integration tests added). `Maps/_context.md`'s `last_reflected` field
+    removed from the hot-cache template — nothing writes it anymore.
+    `/teach` and `/reflect` come back once `/checkin` has real mileage and
+    an actual felt need surfaces, not a self-generated one.
+- **Third `wiki-teacher` round — worked through the ranked gap list from
+  the previous review's report, in order.** Three of five items were
+  buildable now; the other two got a deliberate, different disposition
+  each rather than being forced into code:
+  1. **Compartment declaration friction, closed.** The `compartment`
+     field (added two rounds ago) had no on-ramp — nothing ever prompted
+     for it, so `/reflect`'s privacy check could stay conservative-and-
+     noisy indefinitely. `projects_missing_compartment()` (7 new tests)
+     finds active projects missing it, and `/checkin` now offers — never
+     forces — batching it into whatever bootstrap or narrowing is already
+     happening (step 11). Deliberately NOT gated on flaggability the way
+     `priority` is: compartment isn't time-sensitive, so it's a standing
+     offer, not its own forcing function.
+  2. **`/teach`'s thin-project fallback, closed.** A project with fewer
+     than 2 linked concepts — exactly the new-project case most likely to
+     prompt "teach me about this" — no longer gets a quiz manufactured
+     from sparse material; `/teach` says so and offers `/learn`ing
+     foundational concepts first, or grounding questions in the project's
+     own Goal/Status/Open-questions sections instead.
+  3. **`/teach`'s wrong-answer signal, closed.** Used to evaporate at the
+     end of the conversation. A recurring miss (not a single slip) can
+     now be offered into the project's `## Open questions` via `/update`
+     — the connective tissue that lets `/reflect` later notice it as a
+     persistent skill gap, the same kind of fix that connected `/checkin`
+     to `/teach` two rounds ago.
+  4. **Session-start suggestion collision, closed.** `wiki-governor`'s
+     `/govern` suggestion and `wiki-teacher`'s `/checkin` suggestion could
+     both fire independently at session start with nothing sequencing
+     them. Both SKILL.mds now say to combine into one message if both are
+     pending, rather than presenting two separate nags.
+  5. **A real validation pass on `/teach`/`/reflect` (partial), and
+     cross-project dependency modeling — different dispositions, neither
+     a plain build.** A real dry-run needs a live vault this remote
+     session has no access to; a prose-level walkthrough was done instead
+     and it wasn't a clean pass — found three real gaps, all fixed: (a)
+     `/teach`'s recurring-gap step was ambiguous about what "session"
+     meant and had no actual mechanism to detect recurrence across
+     separate `/teach` runs, since nothing persists conversation history
+     — resolved by making explicit what was already implicit, that
+     `## Open questions` (already read every run) *is* the recurrence
+     signal; (b) `/reflect` noticed unlinked-but-related projects but
+     never offered `/connect` on them, unlike `/ask`, which already does
+     this for concept clusters; (c) `/reflect [scope]`'s own signature
+     promised project/area narrowing that no numbered step ever
+     operationalized — same documented-not-implemented pattern caught
+     twice before in this skill. A prose walkthrough finding three real
+     issues is itself evidence a live dry-run would find more; this
+     doesn't close the gap, it just makes it smaller. Dependency
+     modeling ("Project A is blocked on Project B") is a genuinely bigger
+     feature that would change `/checkin`'s narrowing itself (a blocked
+     project shouldn't win priority over an unblocked one) — named here
+     as a future direction, not attempted speculatively.
+  `test_wiki_teacher.py`: 35 → 42 tests. All 137 repo-wide tests pass.
+- **Portfolio breadth — the WIP-awareness idea flagged (not built) in the
+  previous round, now closed.** `portfolio_breadth()` in `wiki_teacher.py`
+  computes two facts: how many projects are active, and days since any
+  project was last marked `complete` (`None`/`never_completed: True` if
+  none ever have been). Deliberately facts only, no threshold — inventing
+  a "too many active projects" magic number would be exactly the kind of
+  fabricated-not-elicited signal `priority` already exists to avoid.
+  Split by design between the two commands: `/checkin` reports only the
+  bare count, passively, no framing at all (step 10) — `/reflect` gets
+  the actual judgment (step 4), since "nothing's reached `complete` in
+  6 weeks" is structurally identical to the other throughlines it already
+  looks for. 7 new tests (35 total in `test_wiki_teacher.py`).
+- **`/checkin` closed the gap between its own promised trigger and what it
+  actually answered, plus a slow-bootstrap problem neither validation
+  pass had caught.** A second review, framed explicitly around "several
+  concomitant projects, stay active and productive," found two real
+  issues in the design both prior passes (dry-run, privacy review) had
+  missed because neither was stress-testing for a multi-project reality:
+  (1) `wiki-teacher`'s own description had listed "what should I be
+  working on" as a trigger phrase since the first build, but `/checkin`'s
+  algorithm only ever answered "what have I neglected" — asking it with
+  nothing overdue got silence, the same documented-promise-no-algorithm
+  gap that justified building `/ask` earlier. Fixed with a new
+  `explicit_request` path in `compute_checkin()`: when invoked directly
+  (not the silent session-start check) and nothing's flaggable, it ranks
+  all active projects by declared `priority` and suggests the top one
+  (`"suggested"`), or says plainly there's no signal to go on if none
+  have a priority declared yet (`"no_signal"`) — never silently, and
+  never forcing a bootstrap pass for a question with no urgency behind
+  it. (2) The bootstrap flow asked about one priority-less flaggable
+  project per day, throttled — with several concurrent projects, that
+  could be a week before there's enough signal to narrow anything.
+  `needs_bootstrap` now returns every priority-less flaggable project in
+  one batch, and `/checkin`'s SKILL.md describes proceeding straight to
+  narrowing in the same run once they're all answered, rather than
+  requiring a second invocation. Also connected `/checkin` to `/teach`:
+  whenever a project is surfaced, offer `/teach` on it as a next step —
+  accountability that names a project but leaves the user cold-starting
+  on it wasn't actually helping anyone stay productive. 7 new tests
+  (28 total in `test_wiki_teacher.py`). A portfolio-health/WIP-awareness
+  idea (is the active project count itself unsustainable — nothing ever
+  reaching `complete`) came up in the same review and was deliberately
+  not built this round — a real next-round candidate, not a gap.
+- **`wiki-teacher`'s two riskiest pieces of unverified logic, scripted.**
+  A post-ship critique flagged `wiki-teacher` as the least-tested skill in
+  the system — real, novel logic (`/checkin`'s narrowing algorithm) with
+  zero automated verification, shipped right next to two skills that had
+  just proven, three separate times, that prompt-only mechanical logic
+  hides real bugs until a script and fixture exist to catch them. Same
+  fix applied here: `skills/wiki-teacher/scripts/wiki_teacher.py` (28
+  tests, `test_wiki_teacher.py`) implements `compute_checkin()` — the
+  priority sort, the 15% tie-margin, the bootstrap-precedence rule, the
+  cap-at-2 — and `spans_multiple_compartments()`, which turns `/reflect`'s
+  privacy safeguard from pure model inference into a structural check
+  against a new `compartment` field (added to `wiki-operator`'s project
+  schema in the same pass). Undeclared or invalid compartments are never
+  assumed safe — treated the same as "might cross a boundary." Unlike
+  `check_vault.py`/`health_score.py`, this file doesn't touch the shared
+  fixture vault at all: every scenario (the tie-margin boundary, the cap,
+  bootstrap-wins-over-narrowing) is a synthetic-dict unit test, chosen
+  deliberately to avoid rippling into those two files' hand-counted totals
+  again the way the paused/complete fixture notes already did once.
+  `/teach`'s question generation and `/reflect`'s actual throughline-finding
+  remain unscripted, correctly — both are semantic judgment calls, not
+  mechanical rules a script could get exactly right.
+- **`wiki-teacher` shipped — project accountability, teaching, and mentoring.**
+  Third skill built from a design that already went through two real
+  validation passes (a dry-run against the live `Projects/` folder, a
+  privacy threat-model review) before any code landed — see the concept
+  page for the full design history. Three stateless commands: `/checkin`
+  (portfolio-aware, a forcing function auto-suggested at session start,
+  narrows N flaggable projects to 1–2 via a declared `priority` +
+  `checkin_interval` signal rather than staleness alone, which the dry-run
+  proved insufficient — 5 flagged projects landed within 2% of each other
+  on any staleness-derived score), `/teach` (project-scoped, extends
+  `/quiz`), `/reflect` (user-initiated only, portfolio-wide throughline
+  spotting — deliberately never accumulates its own history, to avoid
+  recreating the "self-generated productivity log" the privacy review
+  flagged as sensitive to an employer/civil-discovery adversary; durable
+  insights route through `/update`/`/learn` instead). New frontmatter for
+  `type: project` (`priority`, `checkin_interval`, `status: paused|complete`)
+  landed in `wiki-operator`'s canonical schema, not teacher-local, since
+  it's a note-level concern other skills need to see. `check_vault.py`'s
+  stale check and `health_score.py`'s maturity sub-metric both updated
+  in lockstep so `paused`/`complete` projects are a real off-ramp
+  everywhere, not just in `wiki-teacher`'s own view — 2 new fixture notes,
+  4 new tests, existing hand-counts recomputed and reverified (freshness
+  has no status exemption, matching how `mature` isn't exempted from it
+  either — the off-ramp is stale-flagging and maturity-scoring only).
+  `.claude-plugin/marketplace.json` version bumped alongside this, per
+  the version-pinning fix below — content that ships without a bump is
+  invisible to every existing install.
 - **`append_note` could silently create a frontmatter-less note — found
   on a real vault, three occurrences.** `append_note`'s own file-creation
   behavior (documented: "creates the file if it doesn't exist") has zero
@@ -178,6 +375,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-synthesizer` | Shipped | Journal preprocessing + promotion, `Sources/raw/` compilation |
 | `wiki-librarian` | Shipped | 6 structural checks (schema gaps check now includes provenance), risk-tiered fix confirmation |
 | `wiki-governor` | Shipped | Orchestrates librarian + synthesizer + warehouse (conditional); adds compliance audit, 6-submetric health score, gap queue |
+| `wiki-teacher` | Shipped, deliberately narrow | `/checkin` only — stateless; narrowing algorithm and portfolio breadth verified against both synthetic cases and real parsed files (`wiki_teacher.py`, 37 tests). `/teach` and `/reflect` were built, self-critiqued, and reverted in the same round — see Recently closed — pending real `/checkin` usage before they come back |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
 | `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
@@ -196,10 +394,14 @@ vault, or had any automated verification at all — unlike `deid-reid-harness`
 and `knowledge-warehouse`, which both shipped with test suites.
 
 `check_vault.py` (`wiki-librarian`, 26 tests, now including Law 10's
-distillation check) and `health_score.py` (`wiki-governor`'s Phase 3, 16
-tests — see Recently closed) close this for both skills' mechanical
-logic. **Still open:** `wiki-operator` and `wiki-synthesizer` have no
-automated verification at all; `wiki-librarian`'s Checks 4/5
+distillation check), `health_score.py` (`wiki-governor`'s Phase 3, 16
+tests — see Recently closed), and `wiki_teacher.py` (`/checkin`'s
+narrowing algorithm and portfolio breadth, 37 tests — including, as of
+this round, real-file integration tests against a dedicated fixture
+vault, not just synthetic-dict unit tests — see Recently closed) close
+this for all three skills' mechanical logic. **Still open:**
+`wiki-operator` and `wiki-synthesizer` have no automated verification at
+all; `wiki-librarian`'s Checks 4/5
 (near-duplicates, contradictions) are semantic and out of a script's
 reach by design, not an oversight to fix later; the health-score *weights
 themselves* (0.20/0.15/0.10/0.20/0.15/0.20 — arbitrary, never validated

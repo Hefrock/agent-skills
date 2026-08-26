@@ -15,6 +15,7 @@ How the wiki system fits together — the components, their responsibilities, an
 │    wiki-synthesizer    ← journal preprocessing + wiki   │
 │    wiki-librarian      ← structural audits              │
 │    wiki-governor       ← maintenance loop + compliance  │
+│    wiki-teacher        ← project accountability (/checkin)│
 └───────────────────┬─────────────────────────────────────┘
                     │ MCP (STDIO)
                     ▼
@@ -64,7 +65,7 @@ Healthy, connected knowledge graph
 
 ## The hot cache
 
-`Maps/_context.md` is a compact summary of the vault's current state — active areas, recently updated pages, open threads, vault stats, and the `last_synthesized` date. Every skill reads it at session start to orient without scanning the full vault.
+`Maps/_context.md` is a compact summary of the vault's current state — active areas, recently updated pages, open threads, vault stats, and cadence dates (`last_synthesized`, `last_governed`, `last_checkin`). Every skill reads it at session start to orient without scanning the full vault. `last_checkin` is `wiki-teacher`'s: it throttles `/checkin`'s session-start suggestion to once/day.
 
 Update `_context.md` at the end of any session that makes significant changes. wiki-synthesizer does this automatically in Phase 3.
 
@@ -100,5 +101,6 @@ For a full wiki session, load skills in this order:
 3. `wiki-librarian` — for maintenance passes
 4. `wiki-warehouse` — only if the vault has any `doc_id`-carrying notes (cold storage in use)
 5. `wiki-governor` — for the weekly governance loop; orchestrates 2, 3, and conditionally 4, then audits compliance and scores health
+6. `wiki-teacher` — independent of the governance chain above; load alongside `wiki-operator` whenever the `Projects/` portfolio is in play. Its `/checkin` is suggested at session start the same way `wiki-governor` suggests `/govern`, but the two loops don't call each other.
 
 The MCP server must be connected before any skill is invoked.

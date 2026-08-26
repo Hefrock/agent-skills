@@ -98,9 +98,13 @@ def connectedness(notes, inbound_count):
 def maturity(notes):
     """mature / (mature + draft + stale), scoped to the knowledge-graph domain.
 
-    ASSUMPTION: notes with a status outside {mature, draft, stale} (there
-    shouldn't be any per the schema, but defensively) are excluded from the
-    denominator rather than treated as a fourth bucket.
+    Notes with a status outside {mature, draft, stale} are excluded from
+    the denominator rather than treated as a fourth bucket. Originally a
+    defensive assumption ("there shouldn't be any per the schema"); now the
+    intentional behavior for type: project's paused/complete (wiki-teacher)
+    — a paused or finished project is neither immature nor a maturity
+    concern, so it opts out of this metric entirely rather than counting
+    against it. See test_maturity_excludes_paused_and_complete.
     """
     scoped = _scoped(notes, KNOWLEDGE_GRAPH_PREFIXES)
     statuses = [notes[p]["frontmatter"].get("status") for p in scoped]

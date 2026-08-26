@@ -184,7 +184,13 @@ def check_orphans(notes: dict):
 
 
 def check_stale(notes: dict, now: datetime):
-    """Check 3 — status: stale, or updated > 90 days ago and not mature."""
+    """Check 3 — status: stale, or updated > 90 days ago and not mature/paused/complete.
+
+    paused/complete (type: project only, per wiki-operator's schema — see
+    wiki-teacher) are an intentional off-ramp: a project on hold or
+    finished isn't neglected, so it shouldn't compete with genuinely
+    stale notes for attention the way an untouched draft should.
+    """
     findings = []
     for relpath, note in sorted(notes.items()):
         fm = note["frontmatter"]
@@ -200,7 +206,7 @@ def check_stale(notes: dict, now: datetime):
         except ValueError:
             continue
         age_days = (now - updated_dt).days
-        if age_days > STALE_DAYS and status != "mature":
+        if age_days > STALE_DAYS and status not in ("mature", "paused", "complete"):
             findings.append({"note": relpath, "reason": f"updated {age_days}d ago, status={status}"})
     return findings
 
