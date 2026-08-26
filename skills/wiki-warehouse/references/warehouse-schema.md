@@ -76,8 +76,12 @@ within the vault.
 The audit runs in two halves. The **warehouse side** is the warehouse repo's
 `bin/audit.py` (`--json`): it re-hashes every stored original against its `doc_id`,
 verifies manifest paths exist, and reports corrupt/missing/orphan/drift — the checks that
-need filesystem access to the warehouse. The **vault side** is the table above, run via
-MCP inside the `/warehouse-audit` command, since only it can see the vault notes.
+need filesystem access to the warehouse. Files in the `orphan` list have no manifest entry
+yet (e.g. `git push`ed straight into `raw/` instead of run through `intake.py`) — backfill
+them in place with `bin/intake.py --reindex <path>`, not a normal ingest, which would copy
+the file a second time under a new name and leave the original as a second orphan. The
+**vault side** is the table above, run via MCP inside the `/warehouse-audit` command,
+since only it can see the vault notes.
 
 ## Why a content hash, not a URL or path
 

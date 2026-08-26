@@ -117,11 +117,22 @@ direction here:
 3. For each vault `doc_id`: confirm it exists in the manifest, and that the note's
    `warehouse_path` / `text_path` match the manifest's current paths (the manifest is the
    source of truth — if they drifted, the note is stale, not the manifest).
-4. Report three buckets: **dangling** (doc_id not in manifest — original may have been
+4. Report four buckets: **dangling** (doc_id not in manifest — original may have been
    removed), **drifted** (paths in the note no longer match the manifest — offer to patch
-   the note's frontmatter to the manifest's current paths), and **orphaned-in-warehouse**
-   (manifest docs with no vault note; `audit.py`'s `orphan` list also flags files on disk
-   that aren't even in the manifest — offer to index either via a metadata `/ingest`).
+   the note's frontmatter to the manifest's current paths), **orphaned-in-warehouse**
+   (manifest docs with no vault note — offer to write a metadata Source note straight from
+   the existing `raw_path`/`text_path`; no intake step needed, the doc is already indexed),
+   and **unindexed** (files in `audit.py`'s `orphan` list — on disk under `raw/` but not
+   even in the manifest yet, typically from a manual `git push` straight to the warehouse
+   repo). For **unindexed** files, do NOT re-run `/ingest`'s normal copy path — the file is
+   already in place, and `intake.py` would copy it a second time under a new name, leaving
+   the original behind as a permanent second orphan. Instead run, from the warehouse repo:
+   ```bash
+   python bin/intake.py --reindex <path>
+   ```
+   to backfill the manifest entry and extracted text in place, then continue as a normal
+   `/ingest` from step 4 using its printed output (doc_id, paths, extraction_method,
+   excerpt).
 5. Propose fixes; apply only with confirmation (drifted-path patches are low-risk;
    anything involving deletion is not).
 
