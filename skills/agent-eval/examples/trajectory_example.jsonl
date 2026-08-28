@@ -1,0 +1,6 @@
+{"id": "traj_01", "score": 1.0, "category": "trajectory", "rationale": "Single correct tool call with correct arguments, minimal and sufficient", "cost_usd": 0.0019, "latency_ms": 590}
+{"id": "traj_02", "score": 0.4, "category": "trajectory", "rationale": "Correct final answer, but called list_all_tickets (broad/expensive) instead of search_ticket by ID — wrong tool selection", "cost_usd": 0.0087, "latency_ms": 2100}
+{"id": "traj_03", "score": 0.9, "category": "trajectory", "rationale": "Correct tool and args; one extra confirmatory read that wasn't strictly necessary but reasonable", "cost_usd": 0.0028, "latency_ms": 810}
+{"id": "traj_04", "score": 0.2, "category": "trajectory", "rationale": "Correct final answer, but retried the same failed call 3 times with identical bad arguments before succeeding by accident", "cost_usd": 0.0102, "latency_ms": 3400}
+{"id": "traj_05", "score": 1.0, "category": "trajectory", "rationale": "Two calls, both necessary, correct args, correct final answer", "cost_usd": 0.0021, "latency_ms": 640}
+{"id": "traj_06", "score": 0.5, "category": "trajectory", "rationale": "Right tool, but malformed argument (wrong field name) required a second corrective call", "cost_usd": 0.0041, "latency_ms": 1080}

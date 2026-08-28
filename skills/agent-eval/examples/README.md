@@ -92,3 +92,37 @@ Exit code **1** — in CI this fails the build.
 
 Commit the baseline alongside the case set; regenerate `results.jsonl` from the
 current agent on each run; the job fails the moment quality regresses.
+
+## Trajectory example — right answer, broken process
+
+A second worked example, for the eval type covered in
+[`references/trajectory-eval.md`](../references/trajectory-eval.md):
+[`trajectory_example.jsonl`](./trajectory_example.jsonl) is six cases from the
+same ticket-support agent, each of which reaches the **correct final
+answer** — an output-only eval would score this set 6/6. Trajectory scoring
+tells a different story:
+
+```bash
+python scripts/score_eval.py examples/trajectory_example.jsonl
+```
+
+| id | score | what happened |
+|---|---|---|
+| traj_01 | 1.0 | one correct call, correct args |
+| traj_02 | **0.4** | right answer, but called the broad `list_all_tickets` instead of a targeted lookup |
+| traj_03 | 0.9 | correct, one unnecessary-but-reasonable confirmatory call |
+| traj_04 | **0.2** | right answer, but retried an identical failing call 3× before succeeding by accident |
+| traj_05 | 1.0 | two necessary calls, correct args |
+| traj_06 | **0.5** | right tool, malformed argument forced a corrective retry |
+
+Against `score_eval.py`'s default 0.7 threshold, that's a **50% pass rate
+(3/6)** — mean score 0.67 — on a case set where every final answer was
+right. `traj_04` and `traj_02` are the two lowest-scoring cases, exactly the
+regression-with-a-lucky-correct-answer pattern trajectory eval exists to
+catch, and neither would show up in an accuracy-only or format-only eval at
+all.
+
+This file uses a single `trajectory` category on purpose — a real eval set
+would usually mix it with `accuracy`/`format`/etc. so `score_eval.py`'s
+per-category breakdown can separate "did it answer correctly" from "did it
+get there well," per `references/trajectory-eval.md`.
