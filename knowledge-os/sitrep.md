@@ -1,9 +1,27 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-08-02_
+_Last updated: 2026-08-29_
 
 ## Recently closed
 
+- **`obsidian-vault` MCP: vault-wide scans (`search_notes`, `list_notes`,
+  `query_frontmatter`, `list_links`) no longer abort on one malformed
+  file.** All four loop over every vault file, and previously threw the
+  moment gray-matter failed to parse a single file's frontmatter — one
+  bad file (a template with a mangled `---` fence) took down results for
+  the whole vault regardless of how unrelated the query was. Root cause
+  traced to a real vault: `Templates/Project.md` had `--- type: project`
+  glued onto its opening fence line, which gray-matter read as a request
+  for an unregistered custom parser engine. Fixed with `tryReadNote()`,
+  used only in the four scan loops — unreadable files are now skipped and
+  reported back in a `skipped: [{path, error}]` array instead of aborting
+  the whole call; single-path reads (`read_note`) still throw normally.
+  7 new regression tests (30 total in the MCP server's suite). Landed in
+  two passes: the fix itself arrived on `main` directly, and a small
+  follow-up restored `listNotes`'s original parallel-read behavior
+  (`Promise.all` over `tryReadNote`, which never rejects, rather than the
+  sequential loop the first pass introduced) — the other three scan
+  functions were already sequential, so this only affected `listNotes`.
 - **`wiki-teacher` pared back to `/checkin` only, after a review called
   the prior two rounds reckless — a fair call, worth recording plainly.**
   The pattern across the two rounds directly above this entry: self-
