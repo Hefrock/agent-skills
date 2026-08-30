@@ -4,8 +4,8 @@
     "name": "Hefrock"
   },
   "metadata": {
-    "description": "Personal collection of Agent Skills for agent design, evaluation, and knowledge management.",
-    "version": "0.4.0"
+    "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, and knowledge management.",
+    "version": "0.5.0"
   },
   "plugins": [
     {
@@ -53,6 +53,18 @@
       "strict": false,
       "skills": [
         "./repo-pincer"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "privacy-linter",
+      "description": "Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP) and Metadata risk (image/document types, confirmed EXIF GPS when Pillow is available). Runs entirely locally, no model or network call.",
+      "author": { "name": "Hefrock" },
+      "category": "privacy",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./privacy-linter"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },
