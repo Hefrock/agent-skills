@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, and knowledge management.",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "plugins": [
     {
