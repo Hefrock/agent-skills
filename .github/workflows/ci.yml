@@ -77,3 +77,6 @@ jobs:
 
       - name: broadcast — dedup_store.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_dedup_store.py
+
+      - name: broadcast — source_registry.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_source_registry.py

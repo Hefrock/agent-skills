@@ -1,0 +1,85 @@
+{
+  "categories": {
+    "regulatory": {
+      "authority_floor": 0.9,
+      "half_life_days": 30,
+      "note": "FDA guidance, regulations.gov, ONC/ASTP, CMS. High floor, slow decay — a regulatory action stays relevant long after it's announced."
+    },
+    "peer_reviewed": {
+      "authority_floor": 0.9,
+      "half_life_days": 30,
+      "note": "PubMed/NCBI E-utilities. Same treatment as regulatory — published, reviewed findings don't stale out in days."
+    },
+    "preprint": {
+      "authority_floor": 0.4,
+      "half_life_days": 3,
+      "note": "arXiv, medRxiv. Low floor, fast decay — unreviewed, and today's preprint is stale news within days unless it's still trending (the rolling-window dedup store's job, not this rubric's)."
+    },
+    "industry_press": {
+      "authority_floor": 0.4,
+      "half_life_days": 3,
+      "note": "STAT News, Fierce Healthcare, Healthcare IT News. Same treatment as preprint — timely but not authoritative on its own; a claim from here should usually be corroborated, not cited standalone."
+    }
+  },
+  "sources": [
+    {
+      "key": "pubmed",
+      "name": "PubMed / NCBI E-utilities",
+      "category": "peer_reviewed"
+    },
+    {
+      "key": "arxiv",
+      "name": "arXiv",
+      "category": "preprint"
+    },
+    {
+      "key": "medrxiv",
+      "name": "medRxiv",
+      "category": "preprint"
+    },
+    {
+      "key": "fda_guidance",
+      "name": "FDA Guidance Documents",
+      "category": "regulatory"
+    },
+    {
+      "key": "regulations_gov",
+      "name": "regulations.gov",
+      "category": "regulatory"
+    },
+    {
+      "key": "onc_astp",
+      "name": "ONC/ASTP",
+      "category": "regulatory"
+    },
+    {
+      "key": "cms",
+      "name": "CMS",
+      "category": "regulatory"
+    },
+    {
+      "key": "stat_news",
+      "name": "STAT News",
+      "category": "industry_press"
+    },
+    {
+      "key": "fierce_healthcare",
+      "name": "Fierce Healthcare",
+      "category": "industry_press"
+    },
+    {
+      "key": "healthcare_it_news",
+      "name": "Healthcare IT News",
+      "category": "industry_press"
+    }
+  ],
+  "throughline_keywords": [
+    "fhir",
+    "clinical decision support",
+    "agentic",
+    "clinical ai",
+    "interoperability",
+    "evidence provenance",
+    "clinical ai assurance"
+  ]
+}
