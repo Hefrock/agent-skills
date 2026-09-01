@@ -18,13 +18,25 @@ response shape that bundling them all into one unverified pass would
 violate the same incremental-and-tested discipline this project has
 followed since Phase 1.
 
-CAVEAT on the RSS feed URLs specifically: this dev sandbox's egress policy
-blocks statnews.com/fiercehealthcare.com/healthcareitnews.com directly (the
-same default-deny policy documented in mcp/evidence-pinning's README), so
-the three feed_url values in config/sources.json could not be confirmed
-against the live sites from here — they're built from each outlet's
-documented RSS conventions, not verified. Confirm they still resolve
-(and haven't moved) before the first real production run.
+RSS feed verification status (config/sources.json's feed_url_verified,
+confirmed live via GitHub Actions on 2026-09-01 — see the smoke test
+workflow, .github/workflows/broadcast-live-smoke-test.yml):
+  - stat_news: verified working. Needed a browser-like User-Agent — the
+    default urllib one ("Python-urllib/3.x") is a common anti-bot
+    blocklist entry, distinct from any egress-policy block.
+  - fierce_healthcare: verified working. Same User-Agent fix, plus a real
+    parsing bug: this feed's <pubDate> isn't RFC 822 ("Sep 1, 2026
+    2:08pm" — no day-of-week, 12hr+am/pm, no timezone) despite being an
+    otherwise valid RSS 2.0 feed. _parse_rss_pubdate() falls back to that
+    exact format when RFC 822 parsing fails.
+  - healthcare_it_news: confirmed BLOCKED, not just unverified. HTTP 403
+    on this URL and three other guessed variants, even with a full
+    Chrome-like header set (User-Agent, Accept, Accept-Language,
+    Referer) — looks like WAF/Cloudflare-style bot protection a plain
+    HTTP client structurally can't pass. Left broken and documented
+    (config/sources.json's feed_url_verified_note) rather than silently
+    dropped or faked working; needs a different approach (headless
+    browser, an alternate syndication endpoint) as a future follow-up.
 
 Every adapter produces the same normalized item shape, which is what feeds
 directly into the rest of the pipeline: dedup_store.classify_story() (via
@@ -46,10 +58,13 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 
 FETCH_TIMEOUT_S = 15.0
+
+# Used by fetch_rss() — see its docstring/comment for why.
+_USER_AGENT = "Mozilla/5.0 (compatible; healthcare-ai-briefing/0.1; +https://github.com/Hefrock/agent-skills)"
 
 _MONTH_NAMES = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -220,14 +235,22 @@ def _clean_html_text(raw: str) -> str:
 
 
 def _parse_rss_pubdate(raw: str) -> str | None:
-    """RSS <pubDate> is RFC 822 (e.g. "Mon, 15 Aug 2026 12:00:00 GMT" or
-    with a numeric offset like "+0000"). email.utils.parsedate_to_datetime
-    is the stdlib's actual RFC 822 parser — deliberately not hand-rolled,
-    unlike the regex-based date extraction PubMed/arXiv need (those aren't
-    RFC 822, so there's no stdlib parser to reach for)."""
+    """RSS <pubDate> is supposed to be RFC 822 (e.g. "Mon, 15 Aug 2026
+    12:00:00 GMT" or with a numeric offset like "+0000") — most feeds do
+    this correctly, so email.utils.parsedate_to_datetime (the stdlib's
+    actual RFC 822 parser) is tried first. Confirmed live against
+    fiercehealthcare.com's real feed: it ships a spec-violating custom
+    format instead ("Sep 1, 2026 2:08pm" — no day-of-week, 12-hour clock
+    with am/pm, no timezone), so that's tried as a fallback rather than
+    dropping every item from a feed that just isn't RFC 822 compliant."""
+    raw = raw.strip()
     try:
-        return parsedate_to_datetime(raw.strip()).date().isoformat()
+        return parsedate_to_datetime(raw).date().isoformat()
     except (TypeError, ValueError, IndexError):
+        pass
+    try:
+        return datetime.strptime(raw, "%b %d, %Y %I:%M%p").date().isoformat()
+    except ValueError:
         return None
 
 
@@ -260,6 +283,13 @@ def parse_rss_xml(xml: str, source_key: str) -> list[dict]:
 
 
 def fetch_rss(feed_url: str, source_key: str) -> list[dict]:
-    with urllib.request.urlopen(feed_url, timeout=FETCH_TIMEOUT_S) as resp:
+    # Confirmed live (2026-09-01 GitHub Actions run): stat_news and
+    # healthcare_it_news returned HTTP 403 without a browser-like
+    # User-Agent — urllib's default ("Python-urllib/3.x") is a common
+    # anti-bot blocklist entry. PubMed/arXiv's E-utilities/API don't need
+    # this (they're built for programmatic access), but outlet RSS feeds
+    # sitting behind the same CDN/WAF as the outlet's main site often do.
+    request = urllib.request.Request(feed_url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_S) as resp:
         xml = resp.read().decode("utf-8")
     return parse_rss_xml(xml, source_key)

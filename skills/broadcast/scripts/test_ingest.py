@@ -282,6 +282,26 @@ RSS_FIXTURE_MISSING_FIELDS = """<?xml version="1.0" encoding="UTF-8"?>
 </rss>
 """
 
+# The actual shape of fiercehealthcare.com's real feed (2026-09-01): title
+# wrapped in an <a> tag, a real <link>, and a non-RFC-822 <pubDate>. This
+# fixture is what would have caught the "zero items" regression before it
+# ever reached the live smoke test — reduced from the real captured item.
+RSS_FIXTURE_FIERCEHEALTHCARE_SHAPE = """<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" xml:base="https://www.fiercehealthcare.com/">
+  <channel>
+    <title>Fierce Healthcare</title>
+    <item>
+      <title><a href="/providers/example-story" hreflang="en">Hospital groups rail against CMS' proposed changes</a></title>
+      <link>https://www.fiercehealthcare.com/providers/example-story</link>
+      <description>Public comments saw several major hospital groups pushing back.</description>
+      <pubDate>Sep 1, 2026 2:08pm</pubDate>
+      <dc:creator><a href="/person/example" hreflang="en">A Reporter</a></dc:creator>
+      <guid isPermaLink="true">https://www.fiercehealthcare.com/d48b46a9</guid>
+    </item>
+  </channel>
+</rss>
+"""
+
 
 class ParseRssXml(unittest.TestCase):
     def test_extracts_two_items(self):
@@ -291,6 +311,17 @@ class ParseRssXml(unittest.TestCase):
     def test_source_key_is_passed_through(self):
         items = ingest.parse_rss_xml(RSS_FIXTURE, source_key="stat_news")
         self.assertTrue(all(i["source_key"] == "stat_news" for i in items))
+
+    def test_fiercehealthcare_shaped_feed_produces_an_item(self):
+        # Regression test: this exact shape (title wrapped in <a>, non-RFC-822
+        # pubDate) produced ZERO items before the pubDate fallback was added —
+        # confirmed live on 2026-09-01, see config/sources.json's
+        # feed_url_verified_note for fierce_healthcare.
+        items = ingest.parse_rss_xml(RSS_FIXTURE_FIERCEHEALTHCARE_SHAPE, source_key="fierce_healthcare")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["published_date"], "2026-09-01")
+        self.assertIn("Hospital groups", items[0]["title"])
+        self.assertEqual(items[0]["url"], "https://www.fiercehealthcare.com/providers/example-story")
 
     def test_cdata_wrapped_html_description_is_cleaned(self):
         items = ingest.parse_rss_xml(RSS_FIXTURE, source_key="stat_news")
@@ -365,6 +396,23 @@ class ParseRssPubdate(unittest.TestCase):
 
     def test_empty_string_returns_none(self):
         self.assertIsNone(ingest._parse_rss_pubdate(""))
+
+    def test_fiercehealthcare_non_rfc822_format(self):
+        # Confirmed live against the real feed (2026-09-01): "Sep 1, 2026
+        # 2:08pm" — no day-of-week, 12hr clock with am/pm, no timezone.
+        # Not RFC 822 despite being an otherwise-valid RSS 2.0 feed.
+        self.assertEqual(ingest._parse_rss_pubdate("Sep 1, 2026 2:08pm"), "2026-09-01")
+
+    def test_fiercehealthcare_format_single_digit_day(self):
+        self.assertEqual(ingest._parse_rss_pubdate("Jan 5, 2026 11:59am"), "2026-01-05")
+
+    def test_fiercehealthcare_format_double_digit_day(self):
+        self.assertEqual(ingest._parse_rss_pubdate("Dec 25, 2026 12:00pm"), "2026-12-25")
+
+    def test_rfc822_is_tried_before_the_fallback_format(self):
+        # A string that happens to be valid RFC 822 should never fall
+        # through to the fiercehealthcare-specific parser.
+        self.assertEqual(ingest._parse_rss_pubdate("Wed, 01 Jul 2026 00:00:00 GMT"), "2026-07-01")
 
 
 class IngestFeedsIntoDownstreamModules(unittest.TestCase):
