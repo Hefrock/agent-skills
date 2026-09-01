@@ -11,15 +11,19 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ingest  # noqa: E402
 
+FULLER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml, text/xml, */*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.healthcareitnews.com/",
+}
+
 for url in [
-    "https://www.fiercehealthcare.com/rss/xml",
     "https://www.healthcareitnews.com/home/feed",
-    "https://www.healthcareitnews.com/rss.xml",
-    "https://www.healthcareitnews.com/feed",
 ]:
-    print(f"=== {url} ===")
+    print(f"=== {url} (fuller browser-like headers) ===")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": ingest._USER_AGENT})
+        req = urllib.request.Request(url, headers=FULLER_HEADERS)
         with urllib.request.urlopen(req, timeout=15) as resp:
             status = resp.status
             content_type = resp.headers.get("Content-Type")

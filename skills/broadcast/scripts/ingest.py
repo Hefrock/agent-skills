@@ -46,7 +46,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 
 FETCH_TIMEOUT_S = 15.0
@@ -223,14 +223,22 @@ def _clean_html_text(raw: str) -> str:
 
 
 def _parse_rss_pubdate(raw: str) -> str | None:
-    """RSS <pubDate> is RFC 822 (e.g. "Mon, 15 Aug 2026 12:00:00 GMT" or
-    with a numeric offset like "+0000"). email.utils.parsedate_to_datetime
-    is the stdlib's actual RFC 822 parser — deliberately not hand-rolled,
-    unlike the regex-based date extraction PubMed/arXiv need (those aren't
-    RFC 822, so there's no stdlib parser to reach for)."""
+    """RSS <pubDate> is supposed to be RFC 822 (e.g. "Mon, 15 Aug 2026
+    12:00:00 GMT" or with a numeric offset like "+0000") — most feeds do
+    this correctly, so email.utils.parsedate_to_datetime (the stdlib's
+    actual RFC 822 parser) is tried first. Confirmed live against
+    fiercehealthcare.com's real feed: it ships a spec-violating custom
+    format instead ("Sep 1, 2026 2:08pm" — no day-of-week, 12-hour clock
+    with am/pm, no timezone), so that's tried as a fallback rather than
+    dropping every item from a feed that just isn't RFC 822 compliant."""
+    raw = raw.strip()
     try:
-        return parsedate_to_datetime(raw.strip()).date().isoformat()
+        return parsedate_to_datetime(raw).date().isoformat()
     except (TypeError, ValueError, IndexError):
+        pass
+    try:
+        return datetime.strptime(raw, "%b %d, %Y %I:%M%p").date().isoformat()
+    except ValueError:
         return None
 
 
