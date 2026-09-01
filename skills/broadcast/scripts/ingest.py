@@ -9,14 +9,22 @@ the fetch wrappers are simple enough (build a URL, GET it, hand the body to
 the parser) that they don't need their own logic tests beyond what a real
 pipeline run exercises.
 
-Scoped to PubMed and arXiv for this pass — two sources chosen because they
-have stable, public, no-API-key documented formats (NCBI E-utilities,
-arXiv's Atom feed). The other eight sources named in the source registry
-(medRxiv, FDA guidance, regulations.gov, ONC/ASTP, CMS, STAT News, Fierce
-Healthcare, Healthcare IT News) are follow-up adapters, not attempted here —
-each has a different enough response shape that bundling them all into one
-unverified pass would violate the same incremental-and-tested discipline
-this project has followed since Phase 1.
+Covers PubMed, arXiv, and — as of this pass — the three industry-press RSS
+sources (STAT News, Fierce Healthcare, Healthcare IT News), which share one
+generic RSS 2.0 parser since it's one format regardless of which outlet.
+medRxiv, FDA guidance, regulations.gov, ONC/ASTP, and CMS are still
+follow-up adapters, not attempted here — each has a different enough
+response shape that bundling them all into one unverified pass would
+violate the same incremental-and-tested discipline this project has
+followed since Phase 1.
+
+CAVEAT on the RSS feed URLs specifically: this dev sandbox's egress policy
+blocks statnews.com/fiercehealthcare.com/healthcareitnews.com directly (the
+same default-deny policy documented in mcp/evidence-pinning's README), so
+the three feed_url values in config/sources.json could not be confirmed
+against the live sites from here — they're built from each outlet's
+documented RSS conventions, not verified. Confirm they still resolve
+(and haven't moved) before the first real production run.
 
 Every adapter produces the same normalized item shape, which is what feeds
 directly into the rest of the pipeline: dedup_store.classify_story() (via
@@ -33,11 +41,13 @@ NCBI and arXiv return, would miss a namespaced or attribute-heavy variant.
 stdlib only, matching this repo's other reference tooling.
 """
 
+import html
 import json
 import re
 import urllib.parse
 import urllib.request
 from datetime import date
+from email.utils import parsedate_to_datetime
 
 FETCH_TIMEOUT_S = 15.0
 
@@ -189,3 +199,67 @@ def fetch_arxiv(query: str, max_results: int = 20) -> list[dict]:
     with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as resp:
         xml = resp.read().decode("utf-8")
     return parse_arxiv_atom_xml(xml)
+
+
+# ── Industry-press RSS (STAT News, Fierce Healthcare, Healthcare IT News) ──
+#
+# One generic RSS 2.0 parser shared by all three, since it's a single
+# standard format — the only per-outlet difference is which feed_url is
+# passed in, which lives in config/sources.json, not in code.
+
+def _clean_html_text(raw: str) -> str:
+    """RSS <description> content is routinely CDATA-wrapped, carries inline
+    HTML tags, and uses HTML entities — strip all three down to plain text."""
+    text = raw.strip()
+    cdata_match = re.match(r"^<!\[CDATA\[(.*)\]\]>$", text, re.DOTALL)
+    if cdata_match:
+        text = cdata_match.group(1)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _parse_rss_pubdate(raw: str) -> str | None:
+    """RSS <pubDate> is RFC 822 (e.g. "Mon, 15 Aug 2026 12:00:00 GMT" or
+    with a numeric offset like "+0000"). email.utils.parsedate_to_datetime
+    is the stdlib's actual RFC 822 parser — deliberately not hand-rolled,
+    unlike the regex-based date extraction PubMed/arXiv need (those aren't
+    RFC 822, so there's no stdlib parser to reach for)."""
+    try:
+        return parsedate_to_datetime(raw.strip()).date().isoformat()
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def parse_rss_xml(xml: str, source_key: str) -> list[dict]:
+    items_xml = re.findall(r"<item>.*?</item>", xml, re.DOTALL)
+    items = []
+    for item_xml in items_xml:
+        title_match = re.search(r"<title>(.*?)</title>", item_xml, re.DOTALL)
+        link_match = re.search(r"<link>(.*?)</link>", item_xml, re.DOTALL)
+        pubdate_match = re.search(r"<pubDate>(.*?)</pubDate>", item_xml, re.DOTALL)
+        if not title_match or not link_match or not pubdate_match:
+            continue  # malformed item — skip it rather than crash the whole feed
+
+        published = _parse_rss_pubdate(pubdate_match.group(1))
+        if published is None:
+            continue  # unparseable date — can't be scored downstream
+
+        description_match = re.search(r"<description>(.*?)</description>", item_xml, re.DOTALL)
+        summary = _clean_html_text(description_match.group(1)) if description_match else ""
+
+        items.append(normalize_item(
+            source_key=source_key,
+            title=_clean_html_text(title_match.group(1)),
+            url=_clean_html_text(link_match.group(1)),
+            published_date=published,
+            summary=summary,
+            id_hint=None,  # industry press articles have no DOI/PMID; canonicalize_id() falls back to a URL hash
+        ))
+    return items
+
+
+def fetch_rss(feed_url: str, source_key: str) -> list[dict]:
+    with urllib.request.urlopen(feed_url, timeout=FETCH_TIMEOUT_S) as resp:
+        xml = resp.read().decode("utf-8")
+    return parse_rss_xml(xml, source_key)
