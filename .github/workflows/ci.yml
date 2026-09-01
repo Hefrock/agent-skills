@@ -80,3 +80,6 @@ jobs:
 
       - name: broadcast — source_registry.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_source_registry.py
+
+      - name: broadcast — ingest.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_ingest.py
