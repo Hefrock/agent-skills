@@ -1,0 +1,20 @@
+{
+  "name": "evidence-pinning-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that pins claims against their source evidence, tracks provenance, and checks sources for decay (retraction/update/unreachable) over time.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "npm run build && node test/decay-classify.test.mjs && node test/logic.test.mjs && node test/server.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
