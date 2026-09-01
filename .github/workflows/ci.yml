@@ -74,3 +74,6 @@ jobs:
 
       - name: wiki-teacher — wiki_teacher.py regression suite (stdlib unittest)
         run: python skills/wiki-teacher/scripts/test_wiki_teacher.py
+
+      - name: broadcast — dedup_store.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_dedup_store.py
