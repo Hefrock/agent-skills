@@ -18,13 +18,25 @@ response shape that bundling them all into one unverified pass would
 violate the same incremental-and-tested discipline this project has
 followed since Phase 1.
 
-CAVEAT on the RSS feed URLs specifically: this dev sandbox's egress policy
-blocks statnews.com/fiercehealthcare.com/healthcareitnews.com directly (the
-same default-deny policy documented in mcp/evidence-pinning's README), so
-the three feed_url values in config/sources.json could not be confirmed
-against the live sites from here — they're built from each outlet's
-documented RSS conventions, not verified. Confirm they still resolve
-(and haven't moved) before the first real production run.
+RSS feed verification status (config/sources.json's feed_url_verified,
+confirmed live via GitHub Actions on 2026-09-01 — see the smoke test
+workflow, .github/workflows/broadcast-live-smoke-test.yml):
+  - stat_news: verified working. Needed a browser-like User-Agent — the
+    default urllib one ("Python-urllib/3.x") is a common anti-bot
+    blocklist entry, distinct from any egress-policy block.
+  - fierce_healthcare: verified working. Same User-Agent fix, plus a real
+    parsing bug: this feed's <pubDate> isn't RFC 822 ("Sep 1, 2026
+    2:08pm" — no day-of-week, 12hr+am/pm, no timezone) despite being an
+    otherwise valid RSS 2.0 feed. _parse_rss_pubdate() falls back to that
+    exact format when RFC 822 parsing fails.
+  - healthcare_it_news: confirmed BLOCKED, not just unverified. HTTP 403
+    on this URL and three other guessed variants, even with a full
+    Chrome-like header set (User-Agent, Accept, Accept-Language,
+    Referer) — looks like WAF/Cloudflare-style bot protection a plain
+    HTTP client structurally can't pass. Left broken and documented
+    (config/sources.json's feed_url_verified_note) rather than silently
+    dropped or faked working; needs a different approach (headless
+    browser, an alternate syndication endpoint) as a future follow-up.
 
 Every adapter produces the same normalized item shape, which is what feeds
 directly into the rest of the pipeline: dedup_store.classify_story() (via

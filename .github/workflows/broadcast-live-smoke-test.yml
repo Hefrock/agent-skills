@@ -25,9 +25,3 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
-
-      # Throwaway — diagnosing the two still-failing RSS feed_urls with real
-      # response data. Will be removed before this branch merges.
-      - name: TEMP — diagnose failing RSS feeds
-        if: always()
-        run: python skills/broadcast/scripts/_diagnose_rss.py
