@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: TEMP — diagnose medRxiv response shape
+        run: python skills/broadcast/scripts/_diagnose_medrxiv.py
+
       - name: broadcast — live smoke test (real network calls)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
