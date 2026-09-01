@@ -60,17 +60,23 @@
     {
       "key": "stat_news",
       "name": "STAT News",
-      "category": "industry_press"
+      "category": "industry_press",
+      "feed_url": "https://www.statnews.com/feed/",
+      "feed_url_verified": false
     },
     {
       "key": "fierce_healthcare",
       "name": "Fierce Healthcare",
-      "category": "industry_press"
+      "category": "industry_press",
+      "feed_url": "https://www.fiercehealthcare.com/rss/xml",
+      "feed_url_verified": false
     },
     {
       "key": "healthcare_it_news",
       "name": "Healthcare IT News",
-      "category": "industry_press"
+      "category": "industry_press",
+      "feed_url": "https://www.healthcareitnews.com/home/feed",
+      "feed_url_verified": false
     }
   ],
   "throughline_keywords": [
