@@ -51,6 +51,9 @@ from email.utils import parsedate_to_datetime
 
 FETCH_TIMEOUT_S = 15.0
 
+# Used by fetch_rss() — see its docstring/comment for why.
+_USER_AGENT = "Mozilla/5.0 (compatible; healthcare-ai-briefing/0.1; +https://github.com/Hefrock/agent-skills)"
+
 _MONTH_NAMES = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
@@ -260,6 +263,13 @@ def parse_rss_xml(xml: str, source_key: str) -> list[dict]:
 
 
 def fetch_rss(feed_url: str, source_key: str) -> list[dict]:
-    with urllib.request.urlopen(feed_url, timeout=FETCH_TIMEOUT_S) as resp:
+    # Confirmed live (2026-09-01 GitHub Actions run): stat_news and
+    # healthcare_it_news returned HTTP 403 without a browser-like
+    # User-Agent — urllib's default ("Python-urllib/3.x") is a common
+    # anti-bot blocklist entry. PubMed/arXiv's E-utilities/API don't need
+    # this (they're built for programmatic access), but outlet RSS feeds
+    # sitting behind the same CDN/WAF as the outlet's main site often do.
+    request = urllib.request.Request(feed_url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_S) as resp:
         xml = resp.read().decode("utf-8")
     return parse_rss_xml(xml, source_key)
