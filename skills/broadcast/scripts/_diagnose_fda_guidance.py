@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic — this sandbox's egress policy blocks fda.gov entirely
-(confirmed: even WebFetch on www.fda.gov returns EGRESS_BLOCKED), and no
-search result confirms a documented, stable JSON API or RSS feed for FDA
-guidance documents specifically (unlike medRxiv, which had *a* documented
-API that just turned out to have a subtly wrong shorthand — here there's
-no documented machine-readable endpoint for this dataset at all that
-search turned up). So before writing any parser/fetch code, this probes
-several real candidates from a runner with open egress and reports what
-actually exists. Deleted before the real PR is finalized."""
+"""TEMP diagnostic, round 2 — round 1 found: no dedicated RSS feed (all
+three guessed slugs 404), and the search page is plain server-rendered
+HTML with no JS API markers. This round inspects the actual table/data
+structure of that HTML page, and tests whether Drupal's Views JSON export
+format works via ?_format=json, before deciding scrape-vs-API. Deleted
+before the real PR is finalized."""
 import urllib.request
 
 _UA = "Mozilla/5.0 (compatible; healthcare-ai-briefing/0.1; +https://github.com/Hefrock/agent-skills)"
@@ -23,26 +20,37 @@ def _get(url, headers=None):
         return None, None, f"{type(e).__name__}: {e}".encode()
 
 
-# Candidate 1: a guessed RSS feed following the same pattern as the
-# confirmed-real drugs/press-releases/consumers feeds.
-for slug in ("guidances", "guidance", "guidance-documents"):
-    url = f"https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/{slug}/rss.xml"
+# Round 2a: does a Views JSON export exist?
+for suffix in ("?_format=json", "?_format=hal_json"):
+    url = f"https://www.fda.gov/regulatory-information/search-fda-guidance-documents{suffix}"
     status, ctype, body = _get(url)
-    print(f"=== RSS candidate: {url} ===")
+    print(f"=== {url} ===")
     print(f"status={status} content-type={ctype!r} length={len(body)}")
-    print(body[:300])
+    print(body[:400])
     print()
 
-# Candidate 2: the actual search page HTML — look for signs of an
-# underlying API call (Drupal JSON:API, a views/ajax endpoint, or an
-# inline fetch()/XHR call the page's JS makes).
+# Round 2b: inspect the real HTML table structure.
 url = "https://www.fda.gov/regulatory-information/search-fda-guidance-documents"
 status, ctype, body = _get(url)
-print(f"=== Guidance search page: {url} ===")
-print(f"status={status} content-type={ctype!r} length={len(body)}")
 text = body.decode("utf-8", errors="replace")
-for marker in ("jsonapi", "views/ajax", "/api/", "fetch(", "XMLHttpRequest", "endpoint"):
-    count = text.lower().count(marker.lower())
-    print(f"  occurrences of {marker!r}: {count}")
-print("--- first 1000 chars ---")
-print(text[:1000])
+print(f"=== full page length={len(text)} ===")
+for marker in ("<table", "views-table", "drupalSettings", "csv", "download", "<form", "action=\""):
+    idx = text.lower().find(marker.lower())
+    print(f"  first index of {marker!r}: {idx}")
+
+table_idx = text.lower().find("<table")
+if table_idx >= 0:
+    print("--- 3000 chars starting at first <table ---")
+    print(text[table_idx:table_idx + 3000])
+else:
+    print("--- no <table> found. Searching for 'guidance' near a list/grid structure ---")
+    g_idx = text.lower().find("guidance-documents-search")
+    print(f"  'guidance-documents-search' idx: {g_idx}")
+    # dump a middle slice for manual inspection
+    mid = len(text) // 2
+    print(text[mid:mid + 2000])
+
+form_idx = text.lower().find("<form")
+if form_idx >= 0:
+    print("--- 1500 chars starting at first <form (to see the search form's action/params) ---")
+    print(text[form_idx:form_idx + 1500])
