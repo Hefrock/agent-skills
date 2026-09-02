@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Live network smoke test for broadcast's ingest adapters and
-dedup_store.embed_text().
+"""Live network smoke test for broadcast's ingest adapters,
+dedup_store.embed_text(), and audio_synth.synthesize_text().
 
 NOT part of the regular test suite (test_ingest.py, test_dedup_store.py,
 etc. stay hermetic and network-free by design) — this is a separate,
 manually-triggered check that exercises the real external APIs. It exists
-to close two specific verification gaps: fetch_pubmed/fetch_arxiv/fetch_rss
+to close specific verification gaps: fetch_pubmed/fetch_arxiv/fetch_rss
 had only ever been confirmed to correctly SURFACE a blocked-network error
 (this dev sandbox's egress policy), never to return a real successful
-response; embed_text() had never been executed against the live Gemini API
-at all. Passing here is the actual close of those gaps — not an inference
-by analogy from a different code path succeeding elsewhere.
+response; embed_text() and synthesize_text() had never been executed
+against the live Gemini API at all. Passing here is the actual close of
+those gaps — not an inference by analogy from a different code path
+succeeding elsewhere.
 
 Also doubles as the real verification for the three RSS feed_url values,
 which config/sources.json marks feed_url_verified: false — a wrong URL
@@ -33,6 +34,7 @@ sys.path.insert(0, HERE)
 import ingest  # noqa: E402
 import dedup_store  # noqa: E402
 import source_registry  # noqa: E402
+import audio_synth  # noqa: E402
 
 passed = 0
 failed = 0
@@ -169,6 +171,21 @@ else:
         return f"{len(vec)}-dim vector, first values: {[round(v, 4) for v in vec[:3]]}"
 
     check("embed_text returns a real embedding vector", _embed)
+
+print("\n── Gemini TTS ───────────────────────────────────────────────")
+if not api_key:
+    skip("synthesize_text returns a real WAV clip", "GEMINI_API_KEY not set in environment")
+else:
+    def _tts():
+        import wave
+        import io
+        wav_bytes = audio_synth.synthesize_text("Say cheerfully: Have a wonderful day!", api_key)
+        assert wav_bytes[:4] == b"RIFF", "output does not start with a RIFF/WAV header"
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            assert wf.getnframes() > 0, "WAV clip has zero frames"
+            return f"{wf.getnframes()} frames, {wf.getnchannels()}ch, {wf.getframerate()}Hz, {len(wav_bytes)} bytes"
+
+    check("synthesize_text returns a real WAV clip", _tts)
 
 print(f"\n{'─' * 62}\n  {passed} passed  —  {failed} failed  —  {skipped} skipped")
 if failed > 0:
