@@ -16,10 +16,20 @@ requested — before writing the real function, same discipline as every
 other endpoint this pipeline has ever called.
 
 Run manually (workflow_dispatch on the smoke-test workflow) with
-GEMINI_API_KEY set. Deliberately ONE call only — this project's last
-live-reconnaissance round for a new Gemini capability (TTS) went through
-several rounds of retriggering and ended up exhausting a shared quota;
-this script is written to get everything needed from a single request."""
+GEMINI_API_KEY set. Deliberately ONE generateContent call only — this
+project's last live-reconnaissance round for a new Gemini capability
+(TTS) went through several rounds of retriggering and ended up
+exhausting a shared quota; this script is written to get everything
+needed from a single generation request.
+
+Round 3 addition: gemini-3.6-flash returned two consecutive HTTP 503s
+("high demand") on rounds 1-2, after gemini-2.5-flash's round-1 404
+pointed to it as the replacement. Before spending a third generation
+attempt against a possibly-overloaded model, this round first calls
+ListModels — a cheap, non-generative metadata read that doesn't compete
+for the same generation capacity — to get authoritative confirmation of
+which model IDs actually exist and are usable right now, rather than
+guessing from error-message text alone."""
 
 import json
 import os
@@ -31,6 +41,21 @@ api_key = os.environ.get("GEMINI_API_KEY")
 if not api_key:
     print("GEMINI_API_KEY not set — skipping narration diagnostic")
     sys.exit(0)
+
+list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+try:
+    with urllib.request.urlopen(list_url, timeout=30) as resp:
+        models_body = json.loads(resp.read().decode("utf-8"))
+    flash_like = [
+        m["name"] for m in models_body.get("models", [])
+        if "flash" in m.get("name", "").lower()
+        and "generateContent" in m.get("supportedGenerationMethods", [])
+    ]
+    print("Models supporting generateContent with 'flash' in the name:")
+    for name in flash_like:
+        print(f"  {name}")
+except urllib.error.HTTPError as e:
+    print(f"ListModels HTTPError {e.code}: {e.read().decode('utf-8', errors='replace')[:1000]}")
 
 MODEL = "gemini-3.6-flash"
 url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={api_key}"

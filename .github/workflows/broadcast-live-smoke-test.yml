@@ -27,7 +27,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
 
-      - name: TEMP — round 1 — diagnose Gemini structured text generation for narrate.py
+      - name: TEMP — round 3 — diagnose Gemini structured text generation for narrate.py
         # if: always() — the smoke test step above always exits non-zero
         # right now (healthcare_it_news is a known, documented, unrelated
         # RSS block), which would otherwise skip every step after it.
