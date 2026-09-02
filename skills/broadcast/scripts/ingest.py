@@ -284,13 +284,20 @@ def fetch_arxiv(query: str, max_results: int = 20) -> list[dict]:
 
 def _clean_html_text(raw: str) -> str:
     """RSS <description> content is routinely CDATA-wrapped, carries inline
-    HTML tags, and uses HTML entities — strip all three down to plain text."""
+    HTML tags, and uses HTML entities — strip all three down to plain text.
+    Tags are stripped both before AND after unescaping: stat_news/
+    fierce_healthcare's CDATA blocks carry literal tags, but cms.gov's
+    real feed (confirmed live, 2026-09-02) double-encodes its markup
+    instead ("&lt;p&gt;...&lt;/p&gt;" — HTML-entity-escaped tags, not
+    literal ones), which the first pass can't see until unescaping
+    reveals them."""
     text = raw.strip()
     cdata_match = re.match(r"^<!\[CDATA\[(.*)\]\]>$", text, re.DOTALL)
     if cdata_match:
         text = cdata_match.group(1)
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text)
+    text = re.sub(r"<[^>]+>", "", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -302,7 +309,11 @@ def _parse_rss_pubdate(raw: str) -> str | None:
     fiercehealthcare.com's real feed: it ships a spec-violating custom
     format instead ("Sep 1, 2026 2:08pm" — no day-of-week, 12-hour clock
     with am/pm, no timezone), so that's tried as a fallback rather than
-    dropping every item from a feed that just isn't RFC 822 compliant."""
+    dropping every item from a feed that just isn't RFC 822 compliant.
+    Confirmed live against cms.gov's real newsroom feed: yet a third
+    custom format ("Tue, 09/01/2026 - 09:02" — day name, then US
+    MM/DD/YYYY, then " - ", then 24hr time, no seconds/timezone), so
+    that's a second fallback."""
     raw = raw.strip()
     try:
         return parsedate_to_datetime(raw).date().isoformat()
@@ -311,7 +322,33 @@ def _parse_rss_pubdate(raw: str) -> str | None:
     try:
         return datetime.strptime(raw, "%b %d, %Y %I:%M%p").date().isoformat()
     except ValueError:
+        pass
+    try:
+        return datetime.strptime(raw, "%a, %m/%d/%Y - %H:%M").date().isoformat()
+    except ValueError:
         return None
+
+
+def _recover_link_from_corrupted_field(link_raw: str, title_raw: str) -> str | None:
+    """Confirmed live against cms.gov's real newsroom feed (2026-09-02):
+    its <link> field isn't a URL at all — it's a URL-percent-encoded copy
+    of the <title> field's own "<a href=...>...</a>" markup pasted in
+    verbatim (e.g. "https://www.cms.gov/%3Ca%20href%3D%22/newsroom/
+    press-releases/...%22..."), not a clean link. The real destination
+    path is still recoverable from the raw <title> field's own
+    <a href="..."> (same title-wrapped-in-<a> shape fierce_healthcare
+    uses, just with a broken <link> alongside it here); the scheme+host
+    prefix is still intact at the start of the corrupted <link> value, so
+    that's reused rather than hardcoding a domain into this otherwise
+    source-agnostic parser. Returns None if either half can't be
+    recovered, so the caller can skip the item like any other malformed
+    one."""
+    origin_match = re.match(r"^(https?://[^/%]+)", link_raw)
+    href_match = re.search(r'<a[^>]+href="([^"]+)"', title_raw)
+    if not origin_match or not href_match:
+        return None
+    href = href_match.group(1)
+    return href if href.startswith("http") else origin_match.group(1) + href
 
 
 def parse_rss_xml(xml: str, source_key: str) -> list[dict]:
@@ -328,13 +365,23 @@ def parse_rss_xml(xml: str, source_key: str) -> list[dict]:
         if published is None:
             continue  # unparseable date — can't be scored downstream
 
+        link_raw = link_match.group(1)
+        if "%3c" in link_raw.lower():
+            # cms.gov-style corrupted <link> (a URL-encoded copy of the
+            # title's own markup) — recover the real URL from the title.
+            url = _recover_link_from_corrupted_field(link_raw, title_match.group(1))
+            if url is None:
+                continue  # corrupted link with no recoverable title href — skip
+        else:
+            url = _clean_html_text(link_raw)
+
         description_match = re.search(r"<description>(.*?)</description>", item_xml, re.DOTALL)
         summary = _clean_html_text(description_match.group(1)) if description_match else ""
 
         items.append(normalize_item(
             source_key=source_key,
             title=_clean_html_text(title_match.group(1)),
-            url=_clean_html_text(link_match.group(1)),
+            url=url,
             published_date=published,
             summary=summary,
             id_hint=None,  # industry press articles have no DOI/PMID; canonicalize_id() falls back to a URL hash
