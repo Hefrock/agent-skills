@@ -93,6 +93,18 @@ def _medrxiv():
 
 check("fetch_medrxiv returns real results", _medrxiv)
 
+print("\n── FDA guidance documents ───────────────────────────────────")
+
+
+def _fda_guidance():
+    items = ingest.fetch_fda_guidance(max_results=5)
+    assert len(items) > 0, "the static datatables JSON returned zero usable records"
+    assert items[0]["title"], "first item has no title"
+    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+
+
+check("fetch_fda_guidance returns real results", _fda_guidance)
+
 print("\n── Industry RSS feeds ──────────────────────────────────────")
 registry = source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
 for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):

@@ -499,6 +499,130 @@ class ParseMedrxivJson(unittest.TestCase):
         self.assertEqual(ingest.parse_medrxiv_json({}), [])
 
 
+FDA_GUIDANCE_FIXTURE = [
+    {
+        # Real record shape, captured live from
+        # fda.gov/files/api/datatables/static/search-for-guidance.json
+        # (2026-09-02) — see the module docstring for how this data source
+        # was traced.
+        "title": '<a href="/regulatory-information/search-fda-guidance-documents/small-entity-compliance-guide-safe-handling-statements-labeling-shell-eggs-and-refrigeration-shell">Small Entity Compliance Guide: Safe Handling Statements on Labeling of Shell Eggs and the Refrigeration of Shell Eggs Held for Retail Distribution</a>',
+        "field_associated_media_2": "",
+        "field_issue_datetime": "07/01/2001",
+        "field_issuing_office_taxonomy": "Human Foods Program",
+        "field_health_topics": "",
+        "term_node_tid": "Egg/Egg Product, Retail Food Protection",
+        "field_topics": "",
+        "topics-product": "Egg/Egg Product, Retail Food Protection",
+        "field_final_guidance_1": "Final",
+        "open-comment": "  No ",
+        "field_comment_close_date": "",
+        "field_docket_number": '<a href="https://www.regulations.gov/docket/FDA-2020-D-1954">FDA-2020-D-1954</a>',
+        "field_communication_type": "Small Entity Compliance Guide",
+        "field_center": "Human Foods Program",
+        "field_regulated_product_field": "Food &amp; Beverages",
+        "changed": '<time datetime="2024-10-01T07:00:51-04:00">2024-10-01 07:00</time>\n',
+    },
+    {
+        "title": '<a href="/regulatory-information/search-fda-guidance-documents/draft-guidance-industry-and-fda-staff-clinical-decision-support-software">Draft Guidance for Industry: Clinical Decision Support Software Using Artificial Intelligence</a>',
+        "field_associated_media_2": "",
+        "field_issue_datetime": "08/20/2026",
+        "field_issuing_office_taxonomy": "Center for Devices and Radiological Health",
+        "field_health_topics": "",
+        "term_node_tid": "Software",
+        "field_topics": "",
+        "topics-product": "Software",
+        "field_final_guidance_1": "Draft",
+        "open-comment": "  Yes ",
+        "field_comment_close_date": "10/20/2026",
+        "field_docket_number": '<a href="https://www.regulations.gov/docket/FDA-2026-D-0042">FDA-2026-D-0042</a>',
+        "field_communication_type": "Guidance Document",
+        "field_center": "Center for Devices and Radiological Health",
+        "field_regulated_product_field": "Medical Devices",
+        "changed": '<time datetime="2026-08-20T09:00:00-04:00">2026-08-20 09:00</time>\n',
+    },
+]
+
+FDA_GUIDANCE_FIXTURE_MISSING_FIELDS = [
+    {"title": "no link here, just text", "field_issue_datetime": "07/01/2001"},  # title has no <a href>
+    {
+        "title": '<a href="/x">Missing date record</a>',
+        "field_issue_datetime": "",
+    },  # empty issue date
+    {
+        "title": '<a href="/x">Malformed date record</a>',
+        "field_issue_datetime": "2026-08-20",
+    },  # ISO, not the documented MM/DD/YYYY
+]
+
+FDA_GUIDANCE_FIXTURE_NO_DOCKET_NO_SUMMARY_FIELDS = [
+    {
+        "title": '<a href="/x">Bare record</a>',
+        "field_issue_datetime": "01/15/2026",
+        "field_docket_number": "",
+        "field_communication_type": "",
+        "field_issuing_office_taxonomy": "",
+        "field_regulated_product_field": "",
+    },
+]
+
+
+class ParseFdaGuidanceJson(unittest.TestCase):
+    def test_extracts_two_records(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertEqual(len(items), 2)
+
+    def test_source_key_is_fda_guidance(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertTrue(all(i["source_key"] == "fda_guidance" for i in items))
+
+    def test_title_is_extracted_from_the_anchor_text(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertIn("Clinical Decision Support Software", items[1]["title"])
+        self.assertNotIn("<a", items[1]["title"])
+
+    def test_url_is_built_from_the_relative_href(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertEqual(
+            items[0]["url"],
+            "https://www.fda.gov/regulatory-information/search-fda-guidance-documents/small-entity-compliance-guide-safe-handling-statements-labeling-shell-eggs-and-refrigeration-shell",
+        )
+
+    def test_us_date_format_is_converted_to_iso(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertEqual(items[0]["published_date"], "2001-07-01")
+        self.assertEqual(items[1]["published_date"], "2026-08-20")
+
+    def test_id_hint_is_the_docket_number(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertEqual(items[0]["id_hint"], "docket:FDA-2020-D-1954")
+        self.assertEqual(items[1]["id_hint"], "docket:FDA-2026-D-0042")
+
+    def test_summary_is_assembled_from_structured_fields(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        summary = items[1]["summary"]
+        self.assertIn("Guidance Document", summary)
+        self.assertIn("Center for Devices and Radiological Health", summary)
+        self.assertIn("Medical Devices", summary)
+
+    def test_html_entities_in_summary_fields_are_unescaped(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)
+        self.assertIn("Food & Beverages", items[0]["summary"])
+        self.assertNotIn("&amp;", items[0]["summary"])
+
+    def test_missing_title_link_missing_date_and_malformed_date_are_skipped(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE_MISSING_FIELDS)
+        self.assertEqual(items, [])
+
+    def test_missing_docket_and_empty_summary_fields_degrade_gracefully(self):
+        items = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE_NO_DOCKET_NO_SUMMARY_FIELDS)
+        self.assertEqual(len(items), 1)
+        self.assertIsNone(items[0]["id_hint"])
+        self.assertEqual(items[0]["summary"], "")
+
+    def test_empty_records_list_returns_empty_list(self):
+        self.assertEqual(ingest.parse_fda_guidance_json([]), [])
+
+
 class IngestFeedsIntoDownstreamModules(unittest.TestCase):
     """Integration-shaped tests, still no network: confirms parsed items are
     actually consumable by source_registry.py and dedup_store.py without
@@ -571,6 +695,28 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
         source = self.source_registry.get_source(registry, "medrxiv")
         self.assertEqual(source["category"], "preprint")
+
+    def test_fda_guidance_item_canonicalizes_via_its_docket_id_hint(self):
+        item = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)[1]
+        canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
+        self.assertEqual(canonical, "docket:FDA-2026-D-0042")
+
+    def test_fda_guidance_item_scores_against_the_real_registry_regulatory_category(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)[0]
+        score = self.source_registry.score_source_item(registry, item["source_key"], age_days=0)
+        self.assertAlmostEqual(score, 1.0)  # regulatory: floor 0.9, half_life 30d -> 1.0 at age 0
+
+    def test_fda_guidance_throughline_classification_on_a_real_parsed_title(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_fda_guidance_json(FDA_GUIDANCE_FIXTURE)[1]
+        scope = self.source_registry.classify_topic_scope(item["title"], registry["throughline_keywords"])
+        self.assertEqual(scope, "throughline")  # title contains "Clinical Decision Support" and "Artificial Intelligence"
+
+    def test_fda_guidance_source_key_is_registered_in_the_real_config_as_regulatory(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        source = self.source_registry.get_source(registry, "fda_guidance")
+        self.assertEqual(source["category"], "regulatory")
 
 
 if __name__ == "__main__":
