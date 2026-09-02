@@ -12,8 +12,8 @@ pipeline run exercises.
 Covers PubMed, arXiv, the three industry-press RSS sources (STAT News,
 Fierce Healthcare, Healthcare IT News), which share one generic RSS 2.0
 parser since it's one format regardless of which outlet, medRxiv
-(api.medrxiv.org's JSON /details endpoint), and — as of this pass — FDA
-guidance documents. regulations.gov, ONC/ASTP, and CMS (the rest of the
+(api.medrxiv.org's JSON /details endpoint), FDA guidance documents, and
+— as of this pass — regulations.gov. ONC/ASTP and CMS (the rest of the
 "regulatory" category) are still follow-up adapters, not attempted here —
 each has a different enough response shape that bundling them all into
 one unverified pass would violate the same incremental-and-tested
@@ -66,6 +66,26 @@ US "MM/DD/YYYY" (not ISO), and there is no abstract/summary field at all
 from the structured fields that do exist (communication type, issuing
 office, regulated product), rather than inventing narrative text for a
 field the source doesn't provide.
+
+regulations.gov (fetch_regulations_gov) data source: the official,
+documented v4 /documents API (open.gsa.gov/api/regulationsgov/), unlike
+FDA guidance — but documented behavior has been wrong before (medRxiv's
+"Nd" shorthand), so this was still confirmed live before writing the
+parser. Confirmed: the shared DEMO_KEY (sent via the X-Api-Key header)
+works with no registration, rate-limited to 10 requests/hour, which is
+adequate for one ingest call plus occasional smoke-test runs — a real
+key (api.data.gov, free, 1000 req/hr) would be needed if this pipeline's
+call volume grows. Response is standard JSON:API
+({"data": [...], "meta": {...}}, each item as {"id", "type",
+"attributes": {...}}); "id" (e.g. "FDA-2026-N-10100-0001") is the
+regulations.gov document id, more specific than the docket-level
+"docketId" attribute, and is used as the docket: id_hint (same prefix as
+FDA guidance's docket numbers — both are regulations.gov-family
+identifiers). The human-facing document URL
+(regulations.gov/document/{id}) was confirmed live to resolve. Like FDA
+guidance, there is no abstract/summary attribute; the summary is
+assembled from real structured attributes (documentType, agencyId,
+docketId, open-for-comment status) rather than invented.
 
 Every adapter produces the same normalized item shape, which is what feeds
 directly into the rest of the pipeline: dedup_store.classify_story() (via
@@ -463,3 +483,79 @@ def fetch_fda_guidance(max_results: int = 20) -> list[dict]:
     items = parse_fda_guidance_json(records)
     items.sort(key=lambda item: item["published_date"], reverse=True)
     return items[:max_results]
+
+
+# ── regulations.gov ──────────────────────────────────────────────────────
+#
+# api.regulations.gov/v4/documents — a real, documented, standard JSON:API
+# response, unlike FDA guidance's traced-by-reverse-engineering static
+# file. See the module docstring for the DEMO_KEY / id_hint / URL details
+# confirmed live before this was written.
+
+def parse_regulations_gov_json(payload: dict) -> list[dict]:
+    """payload is the parsed JSON body of a /v4/documents response — a
+    JSON:API document with a top-level "data" list, each item shaped as
+    {"id", "type", "attributes": {...}}. "id" (e.g.
+    "FDA-2026-N-10100-0001") is the regulations.gov document id — more
+    specific than the docket-level "docketId" attribute — and becomes the
+    docket: id_hint. Records missing an id, title, or postedDate are
+    skipped rather than guessed at, same policy as every other parser
+    here. There is no abstract/summary attribute in this API at all, so
+    the summary is assembled from real structured attributes
+    (documentType, agencyId, docketId, comment-period status) rather than
+    inventing narrative text the source doesn't provide."""
+    items = []
+    for record in payload.get("data", []):
+        doc_id = record.get("id")
+        attrs = record.get("attributes") or {}
+        title = attrs.get("title")
+        posted_date_raw = attrs.get("postedDate")
+        if not doc_id or not title or not posted_date_raw:
+            continue  # incomplete record — skip it rather than crash the whole batch
+
+        published = posted_date_raw[:10]  # "2026-08-31T04:00:00Z" -> "2026-08-31"
+        try:
+            date.fromisoformat(published)
+        except ValueError:
+            continue  # not the documented ISO-prefixed shape — skip rather than mis-parse
+
+        summary_parts = []
+        document_type = attrs.get("documentType")
+        agency_id = attrs.get("agencyId")
+        docket_id = attrs.get("docketId")
+        if document_type:
+            summary_parts.append(document_type)
+        if agency_id:
+            summary_parts.append(f"Agency: {agency_id}")
+        if docket_id:
+            summary_parts.append(f"Docket: {docket_id}")
+        if attrs.get("openForComment") and attrs.get("commentEndDate"):
+            summary_parts.append(f"Open for comment until {attrs['commentEndDate'][:10]}")
+
+        items.append(normalize_item(
+            source_key="regulations_gov",
+            title=title,
+            url=f"https://www.regulations.gov/document/{doc_id}",
+            published_date=published,
+            summary=". ".join(summary_parts),
+            id_hint=f"docket:{doc_id}",
+        ))
+    return items
+
+
+def fetch_regulations_gov(query: str, days: int = 30, max_results: int = 20, api_key: str | None = None) -> list[dict]:
+    since = (date.today() - timedelta(days=days)).isoformat()
+    params = {
+        "filter[searchTerm]": query,
+        "filter[postedDate][ge]": since,
+        "sort": "-postedDate",
+        "page[size]": str(max_results),
+    }
+    url = f"https://api.regulations.gov/v4/documents?{urllib.parse.urlencode(params)}"
+    # DEMO_KEY (10 req/hr, no registration) confirmed live to work — see
+    # the module docstring. A real api.data.gov key raises that to
+    # 1000 req/hr for when this pipeline's call volume needs it.
+    request = urllib.request.Request(url, headers={"X-Api-Key": api_key or "DEMO_KEY"})
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_S) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    return parse_regulations_gov_json(payload)
