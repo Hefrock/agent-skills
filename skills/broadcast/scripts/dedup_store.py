@@ -52,13 +52,20 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.92
 #    module docstring) ─────────────────────────────────────────────────────
 
 def canonicalize_id(url: str, id_hint: str | None = None) -> str:
-    """DOI/PMID extraction from a URL, falling back to a hash of the URL
-    itself when neither is present. Deterministic, no I/O."""
+    """DOI/PMID/docket extraction from a URL or id_hint, falling back to a
+    hash of the URL itself when none are present. Deterministic, no I/O.
+    docket: (an FDA/regulations.gov docket number, e.g. FDA-2026-D-0042)
+    is recognized the same way as doi:/pmid: — it's a stable,
+    human-citable identifier a regulatory document ingest adapter can
+    supply, not something extractable from the URL itself the way a DOI
+    or PMID is."""
     if id_hint:
         if id_hint.startswith("doi:"):
             return f"doi:{id_hint[4:].lower()}"
         if id_hint.startswith("pmid:"):
             return f"pmid:{id_hint[5:]}"
+        if id_hint.startswith("docket:"):
+            return f"docket:{id_hint[7:]}"
     doi_match = DOI_RE.search(url)
     if doi_match:
         return f"doi:{doi_match.group(0).lower()}"

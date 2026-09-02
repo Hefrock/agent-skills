@@ -67,6 +67,16 @@ class CanonicalizeId(unittest.TestCase):
         result = dedup_store.canonicalize_id("https://doi.org/10.1000/XYZ1")
         self.assertEqual(result, "doi:10.1000/xyz1")
 
+    def test_id_hint_forces_docket(self):
+        result = dedup_store.canonicalize_id("https://www.fda.gov/some-guidance", id_hint="docket:FDA-2026-D-0042")
+        self.assertEqual(result, "docket:FDA-2026-D-0042")
+
+    def test_docket_not_lowercased(self):
+        # Unlike DOIs, docket numbers are conventionally uppercase
+        # (FDA-2026-D-0042) — preserve case rather than normalizing it away.
+        result = dedup_store.canonicalize_id("https://example.com/x", id_hint="docket:fda-2026-d-0042")
+        self.assertEqual(result, "docket:fda-2026-d-0042")
+
 
 class CosineSimilarity(unittest.TestCase):
     def test_identical_vectors_are_1(self):

@@ -11,13 +11,13 @@ pipeline run exercises.
 
 Covers PubMed, arXiv, the three industry-press RSS sources (STAT News,
 Fierce Healthcare, Healthcare IT News), which share one generic RSS 2.0
-parser since it's one format regardless of which outlet, and — as of this
-pass — medRxiv (api.medrxiv.org's JSON /details endpoint). FDA guidance,
-regulations.gov, ONC/ASTP, and CMS (the entire "regulatory" category) are
-still follow-up adapters, not attempted here — each has a different enough
-response shape that bundling them all into one unverified pass would
-violate the same incremental-and-tested discipline this project has
-followed since Phase 1.
+parser since it's one format regardless of which outlet, medRxiv
+(api.medrxiv.org's JSON /details endpoint), and — as of this pass — FDA
+guidance documents. regulations.gov, ONC/ASTP, and CMS (the rest of the
+"regulatory" category) are still follow-up adapters, not attempted here —
+each has a different enough response shape that bundling them all into
+one unverified pass would violate the same incremental-and-tested
+discipline this project has followed since Phase 1.
 
 RSS feed verification status (config/sources.json's feed_url_verified,
 confirmed live via GitHub Actions on 2026-09-01 — see the smoke test
@@ -47,6 +47,25 @@ collection and {"status": "Both dates must be in yyyy-mm-dd format"} —
 silently zero results, not an error. Confirmed live (2026-09-01) that only
 an explicit start/end date range actually returns data; fetch_medrxiv()
 computes one from the days lookback rather than using the shorthand.
+
+FDA guidance (fetch_fda_guidance) data source: fda.gov's own "Search for
+FDA Guidance Documents" page (fda.gov/regulatory-information/search-fda-
+guidance-documents) has no dedicated RSS feed (three guessed slugs all
+404'd) and no documented JSON/REST API — openFDA doesn't cover guidance
+text. The page itself ships a plain server-rendered HTML shell with an
+EMPTY <tbody>: the visible table is a jQuery DataTables instance
+populated client-side. Traced the real data source by fetching the
+page's aggregated footer JS bundles and finding the DataTables init call
+inline: it points at a static, unauthenticated JSON file —
+fda.gov/files/api/datatables/static/search-for-guidance.json — that is
+the entire dataset (confirmed live: 2786 real records, not paginated).
+That file's records use Drupal's raw field shape: title is an HTML
+"<a href=...>text</a>" string (not two separate fields), issue date is
+US "MM/DD/YYYY" (not ISO), and there is no abstract/summary field at all
+— parse_fda_guidance_json() builds a short, entirely-factual summary
+from the structured fields that do exist (communication type, issuing
+office, regulated product), rather than inventing narrative text for a
+field the source doesn't provide.
 
 Every adapter produces the same normalized item shape, which is what feeds
 directly into the rest of the pipeline: dedup_store.classify_story() (via
@@ -357,3 +376,90 @@ def fetch_medrxiv(days: int = 7, max_results: int = 20) -> list[dict]:
     with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     return parse_medrxiv_json(payload)[:max_results]
+
+
+# ── FDA guidance documents ──────────────────────────────────────────────
+#
+# fda.gov/files/api/datatables/static/search-for-guidance.json — a static,
+# unauthenticated JSON file that is the entire guidance-documents dataset
+# (thousands of records, not paginated), traced from the search page's own
+# jQuery DataTables config. See the module docstring for how it was found.
+# Drupal's raw field shape, unlike every other adapter's clean JSON/XML:
+# title is an HTML "<a href=...>text</a>" string, dates are US
+# "MM/DD/YYYY", and several fields carry HTML entities.
+
+_TITLE_LINK_RE = re.compile(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.DOTALL)
+_DOCKET_LINK_RE = re.compile(r'<a[^>]*>([^<]+)</a>')
+
+
+def _clean_fda_text(raw: str) -> str:
+    """Same idea as _clean_html_text() for RSS, but simpler: these fields
+    carry HTML entities and stray whitespace, not CDATA or nested tags."""
+    return html.unescape(re.sub(r"<[^>]+>", "", raw or "")).strip()
+
+
+def parse_fda_guidance_json(records: list[dict]) -> list[dict]:
+    """records is the parsed JSON body of the static datatables file — a
+    flat list, no wrapper object (dataSrc:"" in the site's own DataTables
+    config confirms the top-level array IS the data). Records whose title
+    has no href, or whose issue date is missing/non-US-format, are skipped
+    rather than guessed at — same policy as every other parser here. There
+    is no abstract/summary field in this dataset at all, so the summary is
+    assembled from the structured fields that DO exist (communication
+    type, issuing office, regulated product) rather than inventing
+    narrative text the source doesn't provide — "distill, don't invent"
+    applies to what's omitted, not just what's included."""
+    items = []
+    for record in records:
+        title_match = _TITLE_LINK_RE.search(record.get("title") or "")
+        if not title_match:
+            continue  # no link in the title field — can't build a URL, skip
+        href, title_html = title_match.groups()
+        title = _clean_fda_text(title_html)
+        url = href if href.startswith("http") else f"https://www.fda.gov{href}"
+
+        date_raw = (record.get("field_issue_datetime") or "").strip()
+        if not date_raw:
+            continue  # no issue date — can't be scored downstream
+        try:
+            published = datetime.strptime(date_raw, "%m/%d/%Y").date().isoformat()
+        except ValueError:
+            continue  # not the documented MM/DD/YYYY shape — skip rather than mis-parse
+
+        docket_match = _DOCKET_LINK_RE.search(record.get("field_docket_number") or "")
+        id_hint = f"docket:{_clean_fda_text(docket_match.group(1))}" if docket_match else None
+
+        summary_parts = []
+        communication_type = _clean_fda_text(record.get("field_communication_type", ""))
+        issuing_office = _clean_fda_text(record.get("field_issuing_office_taxonomy", ""))
+        product = _clean_fda_text(record.get("field_regulated_product_field", ""))
+        if communication_type:
+            summary_parts.append(communication_type)
+        if issuing_office:
+            summary_parts.append(f"Issuing office: {issuing_office}")
+        if product:
+            summary_parts.append(f"Regulated product: {product}")
+
+        items.append(normalize_item(
+            source_key="fda_guidance",
+            title=title,
+            url=url,
+            published_date=published,
+            summary=". ".join(summary_parts),
+            id_hint=id_hint,
+        ))
+    return items
+
+
+def fetch_fda_guidance(max_results: int = 20) -> list[dict]:
+    # The JSON file is the entire dataset (thousands of records spanning
+    # decades), not filtered or paginated by the server — confirmed live,
+    # first records observed were from 2001/2006/2008, not recent. So the
+    # newest max_results are selected client-side after parsing, same as
+    # every other adapter's "most recent N" contract.
+    url = "https://www.fda.gov/files/api/datatables/static/search-for-guidance.json"
+    with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as resp:
+        records = json.loads(resp.read().decode("utf-8"))
+    items = parse_fda_guidance_json(records)
+    items.sort(key=lambda item: item["published_date"], reverse=True)
+    return items[:max_results]
