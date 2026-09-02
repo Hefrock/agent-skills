@@ -51,6 +51,7 @@ import rank  # noqa: E402
 import evidence  # noqa: E402
 import evidence_pinning_client  # noqa: E402
 import script_gen  # noqa: E402
+import narrate  # noqa: E402
 import qa_gate  # noqa: E402
 import audio_synth  # noqa: E402
 
@@ -145,16 +146,19 @@ def run_episode(
     max_results_per_source: int = DEFAULT_MAX_RESULTS_PER_SOURCE,
     fetch_fn=_fetch_for_source,
     embed_fn=dedup_store.embed_text,
+    narrate_fn=narrate.generate_narration,
     synth_fn=audio_synth.synthesize_text,
     show_name: str = "Healthcare AI Briefing",
     synth_delay_seconds: float = 0.0,
+    enable_narration: bool = True,
+    narration_success_threshold: float = narrate.DEFAULT_SUCCESS_THRESHOLD,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
-    -> embed -> rank -> pin evidence -> generate script -> QA gate ->
-    (only if the gate passes) synthesize audio -> assemble one episode
-    WAV. This is deliberately the first place in this pipeline that
-    exercises every stage in one call; every stage before this PR was
-    only ever unit-tested in isolation.
+    -> embed -> rank -> pin evidence -> generate script -> narrate (best-
+    effort, see below) -> QA gate -> (only if the gate passes) synthesize
+    audio -> assemble one episode WAV. This is deliberately the first
+    place in this pipeline that exercises every stage in one call; every
+    stage before this PR was only ever unit-tested in isolation.
 
     evidence_client must already be a started EvidencePinningClient (or,
     in tests, a fake exposing the same register_source/pin_claim/
@@ -162,10 +166,33 @@ def run_episode(
     one itself, same "caller owns the resource" convention evidence.py
     and qa_gate.py already use.
 
-    fetch_fn/embed_fn/synth_fn default to the real network-touching
-    functions; tests inject fakes so the full wiring — every stage's
-    real output shape actually feeding the next stage's expected input
-    shape — can be proven without any network call or spawned process.
+    fetch_fn/embed_fn/narrate_fn/synth_fn default to the real network-
+    touching functions; tests inject fakes so the full wiring — every
+    stage's real output shape actually feeding the next stage's expected
+    input shape — can be proven without any network call or spawned
+    process. narrate_fn is narrate.py's PER-STORY generate_narration()
+    (the same "inject the network call, not the orchestration around it"
+    level fetch_fn/embed_fn/synth_fn already use) — narrate.narrate_script()
+    itself, the pure orchestration wrapping it, is always called for
+    real, same as audio_synth.assemble_episode_audio() never being
+    injected either.
+
+    enable_narration (default True — this pipeline's whole point,
+    decided in conversation, is genuinely AI-generated narration, not a
+    template pretending to be one) runs narrate.narrate_script() on the
+    script generate_script() just produced, BEFORE the QA gate — qa_gate.
+    gate() never compares a segment's text against the pinned claim's
+    stored text verbatim (only claim_id/source_id/canonical_id presence
+    and a live re-verification that the claim is still pinned, see
+    qa_gate.py's own docstring), so a narrated paraphrase passes the same
+    structural checks the original mechanical text would. Narration's own
+    two-tier fallback (see narrate.py's docstring) means a bad or
+    unreachable narration call degrades this episode's prose quality, not
+    its grounding — every story segment qa_gate then checks still traces
+    to a real pinned claim regardless of whether narration succeeded,
+    partially succeeded, or was skipped entirely. Set False to reproduce
+    the pre-narration, purely mechanical script (e.g. for a cost-
+    conscious or narration-API-down run) without touching any other stage.
 
     Never raises on a per-item failure anywhere in the pipeline (every
     stage already has its own explicit failure bucket, all threaded
@@ -193,10 +220,17 @@ def run_episode(
     Returns:
       {
         "run_date", "ingest_failed", "embed_failed",
-        "rank_result", "pinned", "script", "qa_result", "synth_failed",
+        "rank_result", "pinned", "script", "narration_result", "qa_result", "synth_failed",
         "episode_audio",   # None if the QA gate failed OR any segment failed to synthesize
         "store",           # caller must dedup_store.save_store() this
-      }"""
+      }
+      narration_result is None when enable_narration is False; otherwise
+      narrate.narrate_script()'s own return value (narration_attempted/
+      succeeded/success_rate, episode_level_fallback, narration_failures)
+      — "script" above is already the POST-narration script (or the
+      unmodified one, if enable_narration is False), same "one source of
+      truth, not the pre- and post- versions both floating around" policy
+      the rest of this pipeline already follows."""
     ingest_result = ingest_all(registry, max_results_per_source, fetch_fn)
     embed_result = embed_items(ingest_result["items"], api_key, embed_fn)
 
@@ -206,6 +240,12 @@ def run_episode(
     pinned = evidence.pin_evidence_for_stories(evidence_client, selected, run_id=run_date)
 
     script = script_gen.generate_script(rank_result, pinned, registry, run_date, show_name=show_name)
+
+    narration_result = None
+    if enable_narration:
+        narration_result = narrate.narrate_script(script, api_key, narrate_fn=narrate_fn, success_threshold=narration_success_threshold)
+        script = narration_result["script"]
+
     qa_result = qa_gate.gate(script, client=evidence_client)
 
     episode_audio = None
@@ -229,6 +269,7 @@ def run_episode(
         "rank_result": rank_result,
         "pinned": pinned,
         "script": script,
+        "narration_result": narration_result,
         "qa_result": qa_result,
         "synth_failed": synth_failed,
         "episode_audio": episode_audio,
@@ -247,6 +288,7 @@ def _report_json(result: dict) -> dict:
     value so that dict can stay the single source of truth for a caller
     that wants the real data, not a lossy summary."""
     qa = result["qa_result"]
+    narration = result["narration_result"]
     return {
         "run_date": result["run_date"],
         "ingest_failed": result["ingest_failed"],
@@ -259,6 +301,15 @@ def _report_json(result: dict) -> dict:
         "pinned_failed_count": len(result["pinned"]["failed"]),
         "excluded_no_evidence_count": len(result["script"]["excluded_no_evidence"]),
         "segment_count": len(result["script"]["segments"]),
+        # narration_attempted/succeeded/success_rate/episode_level_fallback/
+        # narration_failures are all None when narration was disabled for
+        # this run (--no-narration) — distinguishable from a real 0/0 run
+        # (a narrated episode with zero story segments), which reports 0s.
+        "narration_attempted": narration["narration_attempted"] if narration else None,
+        "narration_succeeded": narration["narration_succeeded"] if narration else None,
+        "narration_success_rate": narration["narration_success_rate"] if narration else None,
+        "narration_episode_level_fallback": narration["episode_level_fallback"] if narration else None,
+        "narration_failures": narration["narration_failures"] if narration else None,
         "qa_passed": qa["passed"],
         "qa_checks": qa["checks"],
         "synth_failed": result["synth_failed"],
@@ -275,11 +326,19 @@ def main() -> int:
         "--synth-delay-seconds", type=float, default=DEFAULT_SYNTH_DELAY_SECONDS,
         help="Pause between synthesize_text() calls, to stay under Gemini TTS's real rate limit (confirmed live: a tight sequential loop with no delay hit HTTP 429s and read timeouts).",
     )
+    parser.add_argument(
+        "--no-narration", dest="enable_narration", action="store_false",
+        help="Skip narrate.py entirely and ship the mechanical script_gen.py text as-is (e.g. for a cost-conscious run, or if the narration API is known to be down). Default: narration is enabled.",
+    )
+    parser.add_argument(
+        "--narration-success-threshold", type=float, default=narrate.DEFAULT_SUCCESS_THRESHOLD,
+        help="Fraction of attempted per-story narrations that must pass grounding for the episode to keep any of them — see narrate.py's docstring for why this is an episode-level, not just per-segment, threshold.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("GEMINI_API_KEY must be set — embeddings and audio synthesis both require it.", file=sys.stderr)
+        print("GEMINI_API_KEY must be set — embeddings, narration, and audio synthesis all require it.", file=sys.stderr)
         return 2
 
     os.makedirs(args.data_dir, exist_ok=True)
@@ -295,6 +354,7 @@ def main() -> int:
         result = run_episode(
             args.date, registry, store, client, api_key,
             max_results_per_source=args.max_results_per_source, synth_delay_seconds=args.synth_delay_seconds,
+            enable_narration=args.enable_narration, narration_success_threshold=args.narration_success_threshold,
         )
 
     dedup_store.save_store(result["store"], store_path)
