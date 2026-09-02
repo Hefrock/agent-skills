@@ -1,38 +1,20 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic — ASTP/ONC (healthit.gov) publishes via a WordPress-style
-blog. WebSearch surfaced "healthit.gov/buzz-blog" (Health IT Buzz Blog) and
-the main "healthit.gov/blog" — neither confirmed with an exact feed URL.
-Guessed RSS slugs have been wrong before (FDA guidance's four 404s), so
-this probes real candidates from a runner with open egress before writing
-any parser/fetch code. Deleted before the real PR is finalized."""
-import urllib.request
+"""TEMP diagnostic round 2 — round 1 confirmed /buzz-blog/feed is a real,
+working RSS 2.0 feed (84626 bytes). This dumps the first <item> block and
+runs the EXISTING parse_rss_xml/fetch_rss against it live, to confirm the
+already-built generic RSS parser (used for STAT News/Fierce Healthcare)
+handles this feed correctly with zero new adapter code. Deleted before
+the real PR is finalized."""
+import os
+import sys
 
-_UA = "Mozilla/5.0 (compatible; healthcare-ai-briefing/0.1; +https://github.com/Hefrock/agent-skills)"
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import ingest  # noqa: E402
 
-
-def _get(url, headers=None):
-    req = urllib.request.Request(url, headers=headers or {"User-Agent": _UA})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read()
-            return resp.status, resp.headers.get("Content-Type", ""), body
-    except Exception as e:
-        return None, None, f"{type(e).__name__}: {e}".encode()
-
-
-candidates = [
-    "https://www.healthit.gov/buzz-blog/feed",
-    "https://www.healthit.gov/buzz-blog/feed/",
-    "https://www.healthit.gov/buzz-blog/rss.xml",
-    "https://healthit.gov/buzz-blog/feed",
-    "https://www.healthit.gov/blog/feed",
-    "https://www.healthit.gov/blog/feed/",
-    "https://www.healthit.gov/feed",
-    "https://www.healthit.gov/feed/",
-]
-for url in candidates:
-    status, ctype, body = _get(url)
-    print(f"=== {url} ===")
-    print(f"status={status} content-type={ctype!r} length={len(body)}")
-    print(body[:300])
-    print()
+items = ingest.fetch_rss("https://www.healthit.gov/buzz-blog/feed", "onc_astp")
+print(f"parsed {len(items)} items via the existing generic RSS parser")
+if items:
+    import json
+    print(json.dumps(items[0], indent=2))
+    print(json.dumps(items[1], indent=2) if len(items) > 1 else "")
