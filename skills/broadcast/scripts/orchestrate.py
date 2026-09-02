@@ -55,7 +55,14 @@ import qa_gate  # noqa: E402
 import audio_synth  # noqa: E402
 
 DEFAULT_MAX_RESULTS_PER_SOURCE = 10
-DEFAULT_SYNTH_DELAY_SECONDS = 2.0
+# 6s (~10 calls/minute) is deliberately conservative, not a guess: a 2s
+# pace (~30/min) was tried live first and made a real rate-limit
+# situation WORSE on the very next run (more segments failed, not
+# fewer) — every one of audio_synth.synthesize_text()'s own retries is
+# itself another request competing for the same tight quota, so pacing
+# has to assume that quota is lower than it looks from a single
+# successful call, not higher.
+DEFAULT_SYNTH_DELAY_SECONDS = 6.0
 
 
 def _fetch_for_source(source: dict, max_results: int) -> list[dict]:

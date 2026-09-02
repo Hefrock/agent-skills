@@ -164,6 +164,30 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
+def _retry_delay_seconds(exc: Exception, attempt: int, backoff_base_seconds: float) -> float:
+    """Prefers the server's own Retry-After header (seconds) on a 429
+    response, when present, over a guessed backoff schedule — the server
+    knows its own rate-limit window better than any fixed schedule this
+    module could pick. Falls back to exponential backoff
+    (backoff_base_seconds * 2**attempt) when there's no Retry-After
+    header (or the exception isn't an HTTPError at all — e.g. a
+    timeout). This matters in practice, not just in theory: a live run
+    of orchestrate.py that retried blindly on a fixed backoff schedule
+    made a real rate-limit situation WORSE (more segments failed on the
+    second live run than the first) — each blind retry is itself another
+    request competing for the same exhausted quota, so honoring the
+    server's own stated wait time, when it gives one, is the more
+    correct behavior, not just a defensive nicety."""
+    if isinstance(exc, urllib.error.HTTPError) and exc.headers is not None:
+        retry_after = exc.headers.get("Retry-After")
+        if retry_after is not None:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+    return backoff_base_seconds * (2 ** attempt)
+
+
 # ── Network wrapper (not used by anything above) ────────────────────────
 
 def synthesize_text(
@@ -172,8 +196,8 @@ def synthesize_text(
     voice_name: str = DEFAULT_VOICE,
     model: str = DEFAULT_MODEL,
     timeout: float = 30.0,
-    max_attempts: int = 4,
-    backoff_base_seconds: float = 2.0,
+    max_attempts: int = 3,
+    backoff_base_seconds: float = 5.0,
 ) -> bytes:
     """Calls the Gemini API's generateContent endpoint with
     responseModalities: ["AUDIO"] and returns a complete WAV file's
@@ -182,15 +206,21 @@ def synthesize_text(
     split as dedup_store.embed_text(). Requires outbound access to
     generativelanguage.googleapis.com.
 
-    Retries up to max_attempts times, with exponential backoff
-    (backoff_base_seconds * 2**attempt), but ONLY for errors
-    _is_retryable() recognizes as transient (see its docstring for why
-    those two specific errors and not "any exception" — this was added
-    after a real rate-limit was hit live, not speculatively). A caller
-    synthesizing many segments in a loop (see orchestrate.py's
-    run_episode()) still gets a real exception on the last attempt if
-    every retry also fails — this doesn't hide failures, it just stops
-    treating a transient rate limit as a permanent one on the first try."""
+    Retries up to max_attempts times, for errors _is_retryable()
+    recognizes as transient only (see its docstring for why those two
+    specific errors and not "any exception"). Each retry's wait comes
+    from _retry_delay_seconds() — the server's own Retry-After header
+    when a 429 response provides one, else backoff_base_seconds *
+    2**attempt. max_attempts/backoff_base_seconds are deliberately
+    conservative (kept low/high respectively, not tuned for speed): a
+    live run of orchestrate.py that retried more aggressively on a fixed
+    schedule made a real rate-limit situation WORSE, not better — every
+    blind retry is itself one more request competing for the same
+    exhausted quota. A caller synthesizing many segments in a loop (see
+    orchestrate.py's run_episode()) still gets a real exception on the
+    last attempt if every retry also fails — this doesn't hide failures,
+    it just stops treating a transient rate limit as a permanent one on
+    the first try."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": text}]}],
@@ -211,4 +241,4 @@ def synthesize_text(
         except Exception as e:
             if attempt == max_attempts - 1 or not _is_retryable(e):
                 raise
-            time.sleep(backoff_base_seconds * (2 ** attempt))
+            time.sleep(_retry_delay_seconds(e, attempt, backoff_base_seconds))

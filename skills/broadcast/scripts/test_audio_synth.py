@@ -16,6 +16,7 @@ import os
 import unittest
 import urllib.error
 import wave
+from email.message import Message
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "audio_synth.py")
@@ -191,6 +192,37 @@ class IsRetryable(unittest.TestCase):
     def test_unrelated_exception_is_not_retryable(self):
         self.assertFalse(audio_synth._is_retryable(KeyError("candidates")))
         self.assertFalse(audio_synth._is_retryable(ValueError("bad json")))
+
+
+def make_http_error(code, retry_after=None):
+    hdrs = Message()
+    if retry_after is not None:
+        hdrs["Retry-After"] = str(retry_after)
+    return urllib.error.HTTPError(url="x", code=code, msg="err", hdrs=hdrs, fp=None)
+
+
+class RetryDelaySeconds(unittest.TestCase):
+    def test_honors_a_numeric_retry_after_header(self):
+        exc = make_http_error(429, retry_after=12)
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=0, backoff_base_seconds=5.0), 12.0)
+
+    def test_retry_after_wins_regardless_of_attempt_number(self):
+        # Not an exponential schedule — the server's stated wait doesn't
+        # grow just because this is a later attempt.
+        exc = make_http_error(429, retry_after=7)
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=2, backoff_base_seconds=5.0), 7.0)
+
+    def test_falls_back_to_exponential_backoff_when_no_retry_after_header(self):
+        exc = make_http_error(429, retry_after=None)
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=1, backoff_base_seconds=5.0), 10.0)
+
+    def test_falls_back_to_exponential_backoff_on_a_malformed_retry_after_value(self):
+        exc = make_http_error(429, retry_after="not-a-number")
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=0, backoff_base_seconds=5.0), 5.0)
+
+    def test_falls_back_to_exponential_backoff_for_a_non_http_error(self):
+        exc = TimeoutError("The read operation timed out")
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=2, backoff_base_seconds=5.0), 20.0)
 
 
 if __name__ == "__main__":
