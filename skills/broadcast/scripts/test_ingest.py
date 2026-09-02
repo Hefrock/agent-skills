@@ -303,6 +303,23 @@ RSS_FIXTURE_FIERCEHEALTHCARE_SHAPE = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
+RSS_FIXTURE_ONC_ASTP_SHAPE = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>ONC Blog</title>
+    <item>
+      <title>Nine Teams, One Mission: Meet the EHIgnite Phase 1 Winners</title>
+      <link>https://healthit.gov/blog/interoperability/nine-teams-one-mission-meet-the-ehignite-phase-1-winners/</link>
+      <pubDate>Tue, 21 Jul 2026 13:00:00 +0000</pubDate>
+      <dc:creator><![CDATA[ASTP Staff]]></dc:creator>
+      <description><![CDATA[What started as a challenge to tame unwieldy single patient EHI exports&#8230; The post Nine Teams, One Mission appeared first on ONC Blog.]]></description>
+      <guid isPermaLink="false">https://healthit.gov/?p=12345</guid>
+    </item>
+  </channel>
+</rss>
+"""
+
+
 class ParseRssXml(unittest.TestCase):
     def test_extracts_two_items(self):
         items = ingest.parse_rss_xml(RSS_FIXTURE, source_key="stat_news")
@@ -322,6 +339,24 @@ class ParseRssXml(unittest.TestCase):
         self.assertEqual(items[0]["published_date"], "2026-09-01")
         self.assertIn("Hospital groups", items[0]["title"])
         self.assertEqual(items[0]["url"], "https://www.fiercehealthcare.com/providers/example-story")
+
+    def test_onc_astp_shaped_feed_produces_an_item(self):
+        # Regression coverage for the real WordPress shape confirmed live
+        # on 2026-09-02 (see config/sources.json's feed_url_verified_note
+        # for onc_astp) — unlike fierce_healthcare, this needed zero
+        # parser changes: plain (non-<a>-wrapped) title, standard RFC 822
+        # pubDate, CDATA description with a WordPress "appeared first on"
+        # footer that's left as-is (this parser cleans HTML/CDATA/entities,
+        # not source-specific boilerplate).
+        items = ingest.parse_rss_xml(RSS_FIXTURE_ONC_ASTP_SHAPE, source_key="onc_astp")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["published_date"], "2026-07-21")
+        self.assertIn("EHIgnite", items[0]["title"])
+        self.assertEqual(
+            items[0]["url"],
+            "https://healthit.gov/blog/interoperability/nine-teams-one-mission-meet-the-ehignite-phase-1-winners/",
+        )
+        self.assertIn("appeared first on ONC Blog", items[0]["summary"])
 
     def test_cdata_wrapped_html_description_is_cleaned(self):
         items = ingest.parse_rss_xml(RSS_FIXTURE, source_key="stat_news")
@@ -360,8 +395,8 @@ class ParseRssXml(unittest.TestCase):
         self.assertEqual(items, [])
 
     def test_generic_parser_works_for_any_source_key(self):
-        # Same parser, three different outlets — only source_key changes.
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
+        # Same parser, four different outlets — only source_key changes.
+        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news", "onc_astp"):
             items = ingest.parse_rss_xml(RSS_FIXTURE, source_key=key)
             self.assertTrue(all(i["source_key"] == key for i in items))
 
@@ -870,6 +905,32 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
         source = self.source_registry.get_source(registry, "regulations_gov")
         self.assertEqual(source["category"], "regulatory")
+
+    def test_onc_astp_source_key_is_registered_in_the_real_config_as_regulatory_with_a_feed_url(self):
+        # onc_astp is unlike the other three RSS sources: same parser, but
+        # category "regulatory" (not "industry_press"), since it's an
+        # agency's own blog, not third-party press coverage.
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        source = self.source_registry.get_source(registry, "onc_astp")
+        self.assertEqual(source["category"], "regulatory")
+        self.assertIn("feed_url", source)
+
+    def test_onc_astp_item_scores_against_the_real_registry_regulatory_category(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_rss_xml(RSS_FIXTURE_ONC_ASTP_SHAPE, source_key="onc_astp")[0]
+        score = self.source_registry.score_source_item(registry, item["source_key"], age_days=0)
+        self.assertAlmostEqual(score, 1.0)  # regulatory: floor 0.9, half_life 30d -> 1.0 at age 0
+
+    def test_onc_astp_throughline_classification_on_a_real_parsed_title(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_rss_xml(RSS_FIXTURE_ONC_ASTP_SHAPE, source_key="onc_astp")[0]
+        scope = self.source_registry.classify_topic_scope(item["title"], registry["throughline_keywords"])
+        self.assertEqual(scope, "broad_industry")  # title contains none of the throughline keywords
+
+    def test_onc_astp_item_canonicalizes_via_url_fallback(self):
+        item = ingest.parse_rss_xml(RSS_FIXTURE_ONC_ASTP_SHAPE, source_key="onc_astp")[0]
+        canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
+        self.assertTrue(canonical.startswith("url:"))  # no id_hint for blog posts, same as the other RSS sources
 
 
 if __name__ == "__main__":

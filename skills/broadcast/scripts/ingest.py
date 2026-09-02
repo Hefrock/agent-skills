@@ -9,27 +9,28 @@ the fetch wrappers are simple enough (build a URL, GET it, hand the body to
 the parser) that they don't need their own logic tests beyond what a real
 pipeline run exercises.
 
-Covers PubMed, arXiv, the three industry-press RSS sources (STAT News,
-Fierce Healthcare, Healthcare IT News), which share one generic RSS 2.0
-parser since it's one format regardless of which outlet, medRxiv
-(api.medrxiv.org's JSON /details endpoint), FDA guidance documents, and
-— as of this pass — regulations.gov. ONC/ASTP and CMS (the rest of the
-"regulatory" category) are still follow-up adapters, not attempted here —
-each has a different enough response shape that bundling them all into
-one unverified pass would violate the same incremental-and-tested
-discipline this project has followed since Phase 1.
+Covers PubMed, arXiv, four industry/agency RSS sources (STAT News,
+Fierce Healthcare, Healthcare IT News, ONC/ASTP's blog), which share one
+generic RSS 2.0 parser since it's one format regardless of which outlet,
+medRxiv (api.medrxiv.org's JSON /details endpoint), FDA guidance
+documents, and regulations.gov. CMS (the last of the "regulatory"
+category) is still a follow-up adapter, not attempted here — it likely
+has a different enough response shape that bundling it into one
+unverified pass would violate the same incremental-and-tested discipline
+this project has followed since Phase 1.
 
 RSS feed verification status (config/sources.json's feed_url_verified,
-confirmed live via GitHub Actions on 2026-09-01 — see the smoke test
-workflow, .github/workflows/broadcast-live-smoke-test.yml):
-  - stat_news: verified working. Needed a browser-like User-Agent — the
-    default urllib one ("Python-urllib/3.x") is a common anti-bot
-    blocklist entry, distinct from any egress-policy block.
-  - fierce_healthcare: verified working. Same User-Agent fix, plus a real
-    parsing bug: this feed's <pubDate> isn't RFC 822 ("Sep 1, 2026
-    2:08pm" — no day-of-week, 12hr+am/pm, no timezone) despite being an
-    otherwise valid RSS 2.0 feed. _parse_rss_pubdate() falls back to that
-    exact format when RFC 822 parsing fails.
+confirmed live via GitHub Actions — see the smoke test workflow,
+.github/workflows/broadcast-live-smoke-test.yml):
+  - stat_news: verified working (2026-09-01). Needed a browser-like
+    User-Agent — the default urllib one ("Python-urllib/3.x") is a
+    common anti-bot blocklist entry, distinct from any egress-policy
+    block.
+  - fierce_healthcare: verified working (2026-09-01). Same User-Agent
+    fix, plus a real parsing bug: this feed's <pubDate> isn't RFC 822
+    ("Sep 1, 2026 2:08pm" — no day-of-week, 12hr+am/pm, no timezone)
+    despite being an otherwise valid RSS 2.0 feed. _parse_rss_pubdate()
+    falls back to that exact format when RFC 822 parsing fails.
   - healthcare_it_news: confirmed BLOCKED, not just unverified. HTTP 403
     on this URL and three other guessed variants, even with a full
     Chrome-like header set (User-Agent, Accept, Accept-Language,
@@ -38,6 +39,14 @@ workflow, .github/workflows/broadcast-live-smoke-test.yml):
     (config/sources.json's feed_url_verified_note) rather than silently
     dropped or faked working; needs a different approach (headless
     browser, an alternate syndication endpoint) as a future follow-up.
+  - onc_astp: verified working (2026-09-02), the simplest of the four —
+    a standard WordPress RSS feed (healthit.gov/buzz-blog/feed) that
+    this generic parser already handled correctly with zero code
+    changes: real RFC-822 pubDates, no fierce_healthcare-style fallback
+    needed. Found by probing real candidates rather than trusting the
+    first URL a search turned up — one guessed slug (/buzz-blog/rss.xml)
+    404'd, and the bare site-root /feed exists but is a different,
+    much shorter, non-blog feed.
 
 medRxiv (fetch_medrxiv) verification status: verified working, but only
 after a real bug was found and fixed via the same live-smoke-test loop.
@@ -265,11 +274,13 @@ def fetch_arxiv(query: str, max_results: int = 20) -> list[dict]:
     return parse_arxiv_atom_xml(xml)
 
 
-# ── Industry-press RSS (STAT News, Fierce Healthcare, Healthcare IT News) ──
+# ── RSS sources (STAT News, Fierce Healthcare, Healthcare IT News, ────────
+#    ONC/ASTP's blog) ────────────────────────────────────────────────────
 #
-# One generic RSS 2.0 parser shared by all three, since it's a single
-# standard format — the only per-outlet difference is which feed_url is
-# passed in, which lives in config/sources.json, not in code.
+# One generic RSS 2.0 parser shared by all four, regardless of category
+# (industry_press vs. regulatory) — since it's a single standard format,
+# the only per-outlet difference is which feed_url is passed in, which
+# lives in config/sources.json, not in code.
 
 def _clean_html_text(raw: str) -> str:
     """RSS <description> content is routinely CDATA-wrapped, carries inline
