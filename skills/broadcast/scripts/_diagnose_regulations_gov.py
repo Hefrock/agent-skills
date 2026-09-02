@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic — regulations.gov's v4 /documents API is documented
-(open.gsa.gov/api/regulationsgov/), unlike FDA guidance, but documented
-behavior has been wrong before (medRxiv's "Nd" shorthand). Confirms
-DEMO_KEY actually works, the real response shape, and real field names
-before writing the parser. Deleted before the real PR is finalized."""
+"""TEMP diagnostic round 2 — round 1 confirmed DEMO_KEY works and the
+real /documents response shape (JSON:API: data[].id/type/attributes, no
+abstract/summary field). This confirms the human-facing document URL
+pattern (regulations.gov/document/{id}) actually resolves, and checks
+meta.totalElements/pagination fields without truncation. Deleted before
+the real PR is finalized."""
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -15,34 +17,33 @@ def _get(url, headers=None):
     req = urllib.request.Request(url, headers=headers or {"User-Agent": _UA})
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
-            body = resp.read()
-            return resp.status, dict(resp.headers), body
+            return resp.status, resp.read()
     except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers or {}), e.read()
+        return e.code, e.read()
     except Exception as e:
-        return None, None, f"{type(e).__name__}: {e}".encode()
+        return None, f"{type(e).__name__}: {e}".encode()
 
 
+# A query closer to what this adapter will actually use in production.
 params = {
-    "filter[searchTerm]": "artificial intelligence",
-    "filter[postedDate][ge]": "2026-08-01",
+    "filter[searchTerm]": "clinical decision support software",
+    "filter[postedDate][ge]": "2025-01-01",
     "sort": "-postedDate",
     "page[size]": "5",
 }
 url = f"https://api.regulations.gov/v4/documents?{urllib.parse.urlencode(params)}"
-status, headers, body = _get(url, headers={"User-Agent": _UA, "X-Api-Key": "DEMO_KEY"})
+status, body = _get(url, headers={"User-Agent": _UA, "X-Api-Key": "DEMO_KEY"})
 print(f"status={status} length={len(body)}")
-if headers:
-    for k in ("X-RateLimit-Limit", "X-RateLimit-Remaining", "Content-Type"):
-        print(f"  header {k}: {headers.get(k)}")
-if status == 200:
-    data = json.loads(body)
-    print(f"top-level keys: {list(data.keys())}")
+data = json.loads(body) if status == 200 else None
+if data:
     docs = data.get("data", [])
     print(f"count={len(docs)}")
-    for d in docs[:3]:
-        print(json.dumps(d, indent=2)[:1500])
-        print("---")
-    print("meta:", json.dumps(data.get("meta", {}), indent=2)[:500])
+    print("meta (full):", json.dumps(data.get("meta", {}), indent=2))
+    if docs:
+        doc_id = docs[0]["id"]
+        print(f"\nfirst doc id: {doc_id}")
+        doc_url = f"https://www.regulations.gov/document/{doc_id}"
+        s2, b2 = _get(doc_url)
+        print(f"document page {doc_url} -> status={s2} length={len(b2)}")
 else:
-    print(body[:800])
+    print(body[:500])
