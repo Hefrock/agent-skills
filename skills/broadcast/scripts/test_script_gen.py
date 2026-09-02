@@ -66,21 +66,21 @@ class GenerateScript(unittest.TestCase):
     def test_intro_and_outro_always_present(self):
         result = script_gen.generate_script(make_rank_result(), {"pinned": []}, REGISTRY, "2026-09-02")
         types = [s["segment_type"] for s in result["segments"]]
-        self.assertEqual(types, ["intro", "outro"])
+        self.assertEqual(types, ["intro", "disclosure", "outro"])
 
     def test_top_three_item_included_when_pinned(self):
         item = make_item("c1", title="Story One")
         pinned = {"pinned": [make_pinned_entry(item)]}
         result = script_gen.generate_script(make_rank_result(top_three=[item]), pinned, REGISTRY, "2026-09-02")
         types = [s["segment_type"] for s in result["segments"]]
-        self.assertEqual(types, ["intro", "top_three_item", "outro"])
+        self.assertEqual(types, ["intro", "disclosure", "top_three_item", "outro"])
         self.assertEqual(result["excluded_no_evidence"], [])
 
     def test_top_three_item_excluded_when_not_pinned(self):
         item = make_item("c1", title="Story One")
         result = script_gen.generate_script(make_rank_result(top_three=[item]), {"pinned": []}, REGISTRY, "2026-09-02")
         types = [s["segment_type"] for s in result["segments"]]
-        self.assertEqual(types, ["intro", "outro"])
+        self.assertEqual(types, ["intro", "disclosure", "outro"])
         self.assertEqual(result["excluded_no_evidence"], [item])
 
     def test_quick_hits_transition_only_emitted_when_a_quick_hit_survives(self):
@@ -88,20 +88,20 @@ class GenerateScript(unittest.TestCase):
         pinned = {"pinned": [make_pinned_entry(item)]}
         result = script_gen.generate_script(make_rank_result(quick_hits=[item]), pinned, REGISTRY, "2026-09-02")
         types = [s["segment_type"] for s in result["segments"]]
-        self.assertEqual(types, ["intro", "quick_hits_transition", "quick_hits_item", "outro"])
+        self.assertEqual(types, ["intro", "disclosure", "quick_hits_transition", "quick_hits_item", "outro"])
 
     def test_quick_hits_transition_suppressed_when_all_quick_hits_excluded(self):
         item = make_item("c1", title="Quick Hit One", source_key="stat_news")
         result = script_gen.generate_script(make_rank_result(quick_hits=[item]), {"pinned": []}, REGISTRY, "2026-09-02")
         types = [s["segment_type"] for s in result["segments"]]
-        self.assertEqual(types, ["intro", "outro"])
+        self.assertEqual(types, ["intro", "disclosure", "outro"])
         self.assertEqual(result["excluded_no_evidence"], [item])
 
     def test_story_segment_carries_canonical_id_claim_id_and_source_id(self):
         item = make_item("c1", title="Story One")
         pinned = {"pinned": [make_pinned_entry(item, claim_id="claim-xyz", source_id="url:xyz")]}
         result = script_gen.generate_script(make_rank_result(top_three=[item]), pinned, REGISTRY, "2026-09-02")
-        story_segment = result["segments"][1]
+        story_segment = result["segments"][2]
         self.assertEqual(story_segment["canonical_id"], "c1")
         self.assertEqual(story_segment["claim_id"], "claim-xyz")
         self.assertEqual(story_segment["source_id"], "url:xyz")
@@ -117,7 +117,7 @@ class GenerateScript(unittest.TestCase):
         item = make_item("c1", title="Story One", source_key="stat_news", summary="Here is the summary.")
         pinned = {"pinned": [make_pinned_entry(item)]}
         result = script_gen.generate_script(make_rank_result(top_three=[item]), pinned, REGISTRY, "2026-09-02")
-        text = result["segments"][1]["text"]
+        text = result["segments"][2]["text"]
         self.assertIn("Story One", text)
         self.assertIn("Here is the summary.", text)
         self.assertIn("STAT News", text)
@@ -128,7 +128,23 @@ class GenerateScript(unittest.TestCase):
         pinned = {"pinned": [make_pinned_entry(top, claim_id="claim-top"), make_pinned_entry(quick, claim_id="claim-quick")]}
         result = script_gen.generate_script(make_rank_result(top_three=[top], quick_hits=[quick]), pinned, REGISTRY, "2026-09-02")
         types = [s["segment_type"] for s in result["segments"]]
-        self.assertEqual(types, ["intro", "top_three_item", "quick_hits_transition", "quick_hits_item", "outro"])
+        self.assertEqual(types, ["intro", "disclosure", "top_three_item", "quick_hits_transition", "quick_hits_item", "outro"])
+
+    def test_disclosure_segment_appears_exactly_once_right_after_intro(self):
+        result = script_gen.generate_script(make_rank_result(), {"pinned": []}, REGISTRY, "2026-09-02")
+        types = [s["segment_type"] for s in result["segments"]]
+        self.assertEqual(types.count("disclosure"), 1)
+        self.assertEqual(types.index("disclosure"), types.index("intro") + 1)
+
+    def test_disclosure_segment_uses_the_default_text(self):
+        result = script_gen.generate_script(make_rank_result(), {"pinned": []}, REGISTRY, "2026-09-02")
+        disclosure_segment = next(s for s in result["segments"] if s["segment_type"] == "disclosure")
+        self.assertEqual(disclosure_segment["text"], script_gen.DEFAULT_DISCLOSURE_TEXT)
+
+    def test_disclosure_text_is_overridable(self):
+        result = script_gen.generate_script(make_rank_result(), {"pinned": []}, REGISTRY, "2026-09-02", disclosure_text="Custom disclosure.")
+        disclosure_segment = next(s for s in result["segments"] if s["segment_type"] == "disclosure")
+        self.assertEqual(disclosure_segment["text"], "Custom disclosure.")
 
     def test_multiple_top_three_items_preserve_input_order(self):
         first = make_item("c1", title="First")

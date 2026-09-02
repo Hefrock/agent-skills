@@ -104,6 +104,34 @@ class BuildEpisodeMetadata(unittest.TestCase):
         meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
         self.assertEqual(meta["pub_date_rfc822"], distribute._rfc822_date("2026-09-02"))
 
+    def test_disclosure_field_reads_the_scripts_own_disclosure_segment(self):
+        segments = [make_segment("intro"), make_segment("disclosure", text="This is AI-generated."), make_segment("outro")]
+        script = make_script(segments)
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["disclosure"], "This is AI-generated.")
+
+    def test_disclosure_defaults_to_empty_string_when_no_disclosure_segment(self):
+        script = make_script([make_segment("intro"), make_segment("outro")])
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["disclosure"], "")
+
+    def test_description_appends_disclosure_after_story_texts(self):
+        segments = [
+            make_segment("intro"),
+            make_segment("disclosure", text="This is AI-generated."),
+            make_story_segment("top_three_item", "c1", "Story one text."),
+            make_segment("outro"),
+        ]
+        script = make_script(segments)
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["description"], "Story one text. This is AI-generated.")
+
+    def test_description_is_just_disclosure_when_there_are_no_stories(self):
+        segments = [make_segment("intro"), make_segment("disclosure", text="This is AI-generated."), make_segment("outro")]
+        script = make_script(segments)
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["description"], "This is AI-generated.")
+
 
 FEED_CONFIG = {"title": "Test Feed", "link": "https://example.com", "description": "A test feed."}
 
@@ -244,7 +272,12 @@ class PublishEpisode(unittest.TestCase):
         episode_dir = os.path.join(self.data_dir, "episodes", self.run_date)
         os.makedirs(episode_dir)
         self.script = make_script(
-            [make_segment("intro"), make_story_segment("top_three_item", "c1", "Story one."), make_segment("outro")],
+            [
+                make_segment("intro"),
+                make_segment("disclosure", text="This is AI-generated."),
+                make_story_segment("top_three_item", "c1", "Story one."),
+                make_segment("outro"),
+            ],
             run_date=self.run_date,
         )
         with open(os.path.join(episode_dir, "script.json"), "w", encoding="utf-8") as f:
@@ -264,6 +297,13 @@ class PublishEpisode(unittest.TestCase):
         self.assertTrue(os.path.exists(result["audio_path"]))
         with open(result["audio_path"], "rb") as f:
             self.assertEqual(f.read(), b"RIFF-fake-wav-bytes-for-testing")
+
+    def test_published_feed_item_description_includes_the_disclosure_text(self):
+        self._publish()
+        with open(os.path.join(self.publish_dir, "feed.xml"), "r", encoding="utf-8") as f:
+            root = ET.fromstring(f.read())
+        item_description = root.find("channel").find("item").find("description").text
+        self.assertIn("This is AI-generated.", item_description)
 
     def test_writes_a_parseable_feed_xml(self):
         result = self._publish()

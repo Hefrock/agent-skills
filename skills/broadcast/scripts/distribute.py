@@ -82,18 +82,32 @@ def build_episode_metadata(script: dict, audio_byte_length: int, audio_url: str,
     segments' already-composed narration text (title + summary + source,
     per script_gen.py) — the same "distill, don't invent" principle
     every stage before this one already follows; nothing here drafts new
-    prose.
+    prose. It's followed by the script's own "disclosure" segment text —
+    read back out of the script rather than redeclared here, so the
+    disclosure a listener hears in the audio (script_gen.py's
+    DEFAULT_DISCLOSURE_TEXT) is word-for-word the same one that lands in
+    the episode's public metadata, one source of truth either way. This
+    is what carries Apple Podcasts' (and similar platforms') AI-use
+    disclosure requirement into the metadata half of their "audio AND
+    metadata" rule — the audio half is the disclosure segment itself,
+    already spoken in every episode.
 
     Returns one feed <item>'s worth of data: {"title", "description",
-    "pub_date_rfc822", "guid", "audio_url", "audio_byte_length",
-    "mime_type", "run_date"} — run_date is carried through so
-    build_feed_xml() can sort chronologically without re-parsing
-    pub_date_rfc822 (RFC 822 strings don't sort lexically the way ISO
-    dates do)."""
+    "disclosure", "pub_date_rfc822", "guid", "audio_url",
+    "audio_byte_length", "mime_type", "run_date"} — run_date is carried
+    through so build_feed_xml() can sort chronologically without
+    re-parsing pub_date_rfc822 (RFC 822 strings don't sort lexically the
+    way ISO dates do)."""
     story_texts = [s["text"] for s in script["segments"] if s["segment_type"] in qa_gate.STORY_SEGMENT_TYPES]
+    disclosure_segment = next((s for s in script["segments"] if s["segment_type"] == "disclosure"), None)
+    disclosure = disclosure_segment["text"] if disclosure_segment else ""
+    description = " ".join(story_texts)
+    if disclosure:
+        description = f"{description} {disclosure}".strip()
     return {
         "title": f"{script['show_name']} — {script['run_date']}",
-        "description": " ".join(story_texts),
+        "description": description,
+        "disclosure": disclosure,
         "pub_date_rfc822": _rfc822_date(script["run_date"]),
         "guid": f"{script['show_name']}-{script['run_date']}",
         "audio_url": audio_url,
