@@ -113,3 +113,6 @@ jobs:
 
       - name: broadcast — audio_synth.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_audio_synth.py
+
+      - name: broadcast — orchestrate.py regression suite (fully faked wiring, stdlib unittest)
+        run: python skills/broadcast/scripts/test_orchestrate.py

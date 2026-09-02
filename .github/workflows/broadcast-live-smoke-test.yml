@@ -1,13 +1,13 @@
 name: broadcast live smoke test
 
-# Manually-triggered only — deliberately NOT on push/pull_request. This
-# workflow makes real calls to external APIs (PubMed, arXiv, three
-# industry RSS feeds, and optionally Gemini's embeddings and
-# text-to-speech APIs), unlike ci.yml which stays hermetic and
-# network-free on every push. Running it on every commit would make CI
-# flaky on someone else's downtime and burn Gemini API quota on every
-# push for no reason — it's a deliberate, occasional check, not a merge
-# gate.
+# Manually-triggered only — deliberately NOT on push/pull_request. Both
+# jobs below make real calls to external APIs (PubMed, arXiv, five
+# industry/agency RSS feeds, and Gemini's embeddings and text-to-speech
+# APIs) and, in run-episode's case, spawn a real evidence-pinning-mcp
+# subprocess — unlike ci.yml, which stays hermetic and network-free on
+# every push. Running this on every commit would make CI flaky on
+# someone else's downtime and burn Gemini API quota on every push for no
+# reason — it's a deliberate, occasional check, not a merge gate.
 on:
   workflow_dispatch:
 
@@ -26,3 +26,46 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
+
+  run-episode:
+    name: Run one real episode end-to-end (orchestrate.py)
+    # Separate job from smoke-test above: this exercises the FULL
+    # pipeline (ingest -> rank -> evidence pinning -> script generation
+    # -> QA gate -> audio synthesis) against real sources, a real
+    # spawned evidence-pinning-mcp server, and the real Gemini API — the
+    # actual end-to-end proof that orchestrate.py's wiring, already
+    # proven with fakes in test_orchestrate.py, also holds against the
+    # real world. --max-results-per-source is kept small to bound run
+    # time and Gemini API quota use.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcp/evidence-pinning/package-lock.json
+
+      - name: Build evidence-pinning-mcp (orchestrate.py spawns it as a real subprocess)
+        working-directory: mcp/evidence-pinning
+        run: |
+          npm ci
+          npm run build
+
+      - name: broadcast — run one real episode end-to-end
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python skills/broadcast/scripts/orchestrate.py --data-dir "$RUNNER_TEMP/broadcast-data" --max-results-per-source 5
+
+      - name: Upload episode + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broadcast-episode
+          path: ${{ runner.temp }}/broadcast-data/episodes/**
+          retention-days: 14
