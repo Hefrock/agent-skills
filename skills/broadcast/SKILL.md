@@ -33,6 +33,8 @@ python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
 
 There's also a manually-triggered GitHub Actions workflow, `.github/workflows/broadcast-live-smoke-test.yml` (`workflow_dispatch` only, never on push/PR — it makes real external API calls). It has two jobs: a smoke test of the ingest adapters + embeddings, and a full real episode run via `orchestrate.py`. Triggering it always runs *both* jobs — there is no way to trigger just one.
 
+**Prefer running `orchestrate.py` directly in-session over triggering that workflow**, whenever the session can (i.e. it has `GEMINI_API_KEY` and can reach the network directly): direct invocation lets you run exactly one thing — e.g. just `live_smoke_test.py` to check ingest health, or one `orchestrate.py` call with a low `--max-results-per-source` — while `workflow_dispatch` always fires *both* jobs together, including the TTS-quota-heavy full episode run, whether you wanted that or not. That mismatch is exactly how this project has burned Gemini TTS quota before: a reconnaissance trigger meant to check one small thing also silently re-ran a full episode in the background. Reach for `workflow_dispatch` only when the session itself can't execute Python/reach the network, or when you specifically need to confirm behavior in the CI environment rather than locally.
+
 ## Reading the result — what "success" actually looks like
 
 `report.json` (also printed to stdout) is the thing to read, not just the process exit code (which is 1 whenever `episode_produced` is `false`, even though everything upstream may have worked correctly):
@@ -41,6 +43,35 @@ There's also a manually-triggered GitHub Actions workflow, `.github/workflows/br
 - **`episode_produced`** — `true` only if *every* segment's audio synthesized. One segment failing withholds the whole episode's audio (deliberate — a partial episode isn't assembled with a silent gap). Check `synth_failed` for which segments and why.
 - **`narration_attempted` / `narration_succeeded` / `narration_success_rate` / `narration_episode_level_fallback` / `narration_failures`** — the AI narration layer's own results. A narration failure is **not a pipeline failure** — it's a best-effort enhancement with an automatic two-tier fallback (per-segment, then whole-episode) to the original mechanical text, by design. A low success rate or `episode_level_fallback: true` means that day's episode shipped with plainer prose, not that anything is broken. These fields are all `null` when `--no-narration` was passed (distinguishable from a real 0/0 result).
 - **`ingest_failed`** — per-source ingest failures. `healthcare_it_news` failing with `HTTP 403` is expected every run (see below), not a bug to chase.
+
+A real, unedited (trimmed for length) example from an actual live run — `qa_passed: true` and narration mostly succeeded, but `episode_produced` is `false` purely because of a TTS rate limit, not a script problem:
+
+```json
+{
+  "run_date": "2026-09-02",
+  "ingest_failed": [{"source_key": "healthcare_it_news", "error": "HTTPError: HTTP Error 403: Forbidden"}],
+  "top_three_count": 3,
+  "quick_hits_count": 7,
+  "pinned_count": 10,
+  "segment_count": 14,
+  "narration_attempted": 10,
+  "narration_succeeded": 9,
+  "narration_success_rate": 0.9,
+  "narration_episode_level_fallback": false,
+  "narration_failures": [
+    {"canonical_id": "pmid:42644472", "reasons": ["narration length ratio 0.19 outside [0.4, 2.0]"]}
+  ],
+  "qa_passed": true,
+  "qa_checks": [
+    {"check": "has_intro", "passed": true, "detail": ""},
+    {"check": "story_segments_grounded", "passed": true, "detail": ""}
+  ],
+  "synth_failed": [
+    {"segment_type": "top_three_item", "canonical_id": "pmid:42644472", "error": "HTTPError: HTTP Error 429: Too Many Requests"}
+  ],
+  "episode_produced": false
+}
+```
 
 ## Debugging a failed or partial episode
 
@@ -72,6 +103,22 @@ Every source lives in `config/sources.json`, validated at load time by `source_r
 - **Removing a source:** delete its entry from `"sources"` — nothing else references sources by a fixed list, `ingest_all()` just iterates whatever's currently in the registry.
 - **Tuning relevance scoring:** `authority_floor` (0–1) and `half_life_days` (>0) are set per-*category*, not per-source (see `source_registry.py`'s docstring for what they control — a higher floor and longer half-life age a story more slowly). Every category and query in `config/sources.json` already carries a `*_note` field marking it as "a working default, not a validated measurement" — change these against real episode output, not intuition, and update the note to record why.
 - **After any change**, run `python skills/broadcast/scripts/live_smoke_test.py` — it's cheap (real ingest + embedding calls, no TTS or narration spend) and will confirm the new or changed source actually returns real items before it's trusted in a full, expensive episode run.
+
+## Verifying a code change to this pipeline
+
+Every module in `scripts/` has a matching `test_*.py`, all stdlib `unittest`, no network calls (network-touching functions like `synthesize_text()` or `generate_narration()` are injectable and faked in tests — see any `test_orchestrate.py` `RunEpisodeWiring` test for the pattern). Run the full suite before trusting any change:
+
+```bash
+for f in skills/broadcast/scripts/test_*.py; do python3 "$f"; done
+```
+
+`test_evidence.py`, `test_evidence_pinning_client.py`, and `test_qa_gate.py` will report their evidence-pinning-mcp-server-dependent tests as **skipped**, not failed, if that server isn't built yet — a suite full of `OK (skipped=N)` can look deceptively clean. Build it first to actually exercise those tests for real:
+
+```bash
+cd mcp/evidence-pinning && npm ci && npm run build
+```
+
+`ci.yml` already runs the full suite (server built) on every push/PR — this is what to run locally *before* pushing, to catch a failure before CI does, not a substitute for it.
 
 ## Known operational risks — read before running live
 
