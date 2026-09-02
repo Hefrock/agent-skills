@@ -4,10 +4,22 @@
     "name": "Hefrock"
   },
   "metadata": {
-    "description": "Personal collection of Agent Skills for agent design, evaluation, and knowledge management.",
-    "version": "0.6.0"
+    "description": "Personal collection of Agent Skills for agent design, evaluation, knowledge management, and content automation.",
+    "version": "0.7.0"
   },
   "plugins": [
+    {
+      "name": "broadcast",
+      "description": "Produces a daily healthcare AI news audio briefing — ingests from ten registered sources, dedupes and ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a spoken script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires GEMINI_API_KEY and a locally-built evidence-pinning-mcp server.",
+      "author": { "name": "Hefrock" },
+      "category": "content-automation",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./broadcast"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
     {
       "name": "agent-redteam",
       "description": "Generates adversarial test cases targeting safe-failure behavior — refusal, hedging, graceful degradation. Pairs with agent-eval for scoring.",

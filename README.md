@@ -15,6 +15,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 
 | Skill | Category | Description |
 |---|---|---|
+| [`broadcast`](./skills/broadcast) | Content Automation | Produces a daily healthcare AI news audio briefing — ingests from ten registered sources, dedupes/ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires `GEMINI_API_KEY` and a locally-built evidence-pinning-mcp server. |
 | [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
 | [`agent-redteam`](./skills/agent-redteam) | Agent Design | Generates adversarial test cases for safe-failure testing — refusals, hedging, graceful degradation. Pairs with agent-eval for scoring. |
 | [`deid-reid-harness`](./skills/deid-reid-harness) | Agent Design | Adversarial de-identification ⟷ re-identification eval harness for clinical text — generates synthetic notes with ground-truth PHI spans, runs a de-id pipeline, and scores Safe Harbor leakage, Expert Determination re-id risk, and free-text inference across a privacy-utility frontier. Model-independent, verified offline with bootstrap CIs and significance tests. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
@@ -70,6 +71,7 @@ agent-skills/
 ├── docs/
 │   └── stalled-work-tracking.md # how the blocked-human / dated-followup convention works
 ├── skills/                     # flat — one folder per skill, no category nesting
+│   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 392-test suite
 │   ├── agent-eval/             # rubric-based evals, LLM-as-judge, regression test sets
 │   ├── agent-redteam/          # adversarial case generation, pairs with agent-eval
 │   ├── deid-reid-harness/      # clinical de-id/re-id eval — scripts, refs, 31-test suite
@@ -81,6 +83,7 @@ agent-skills/
 │   ├── wiki-teacher/           # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
 │   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
 ├── mcp/
+│   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
 │       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
 │       ├── test/               # end-to-end STDIO tests — `npm test`
