@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic, round 3 — round 2 found the guidance table
-(class="lcds-datatable--sfgd", Drupal view "fda_guidance_documents",
-display "block_11") ships with an EMPTY <tbody> in the raw HTML: it's
-populated client-side after page load. No inline AJAX URL was found in
-the page's own markup. This lists every <script src=...> on the page to
-find the JS bundle that drives the datatable, then fetches it looking for
-the actual AJAX endpoint URL/data-table config. Deleted before the real
-PR is finalized."""
+"""TEMP diagnostic, round 4 — round 3 confirmed only the generic
+DataTables.js library files are loaded (no custom AJAX-init script found
+among external <script src> files). This means the DataTable is likely
+initialized inline with either a JS data array/object passed directly, or
+reads a hidden JSON blob elsewhere on the page. Searches inline <script>
+content and any application/json blocks for the real data source.
+Deleted before the real PR is finalized."""
 import re
 import urllib.request
 
@@ -26,21 +25,26 @@ def _get(url, headers=None):
 url = "https://www.fda.gov/regulatory-information/search-fda-guidance-documents"
 status, ctype, body = _get(url)
 text = body.decode("utf-8", errors="replace")
+print(f"page length={len(text)}")
 
-srcs = re.findall(r'<script[^>]+src=["\']?([^"\'\s>]+)', text)
-print(f"total <script src> tags: {len(srcs)}")
-candidates = [s for s in srcs if any(k in s.lower() for k in ("guidance", "sfgd", "datatable", "views", "search"))]
-print("candidates matching guidance/sfgd/datatable/views/search:")
-for c in candidates:
-    print(f"  {c}")
-print()
-print("all script srcs (first 40):")
-for s in srcs[:40]:
-    print(f"  {s}")
+idx = text.find("DataTable(")
+print(f"'DataTable(' index: {idx}")
+if idx >= 0:
+    print(text[max(0, idx - 500):idx + 2500])
+else:
+    idx2 = text.find(".dataTable")
+    print(f"'.dataTable' index: {idx2}")
+    if idx2 >= 0:
+        print(text[max(0, idx2 - 500):idx2 + 2500])
 
-# Also: does the page reference a data-table-ajax attribute or similar on
-# the table/view div itself (sometimes config is in a data-* attribute)?
-table_idx = text.find('lcds-datatable--sfgd')
 print()
-print("--- 400 chars before the table class (to catch a data-* config attr) ---")
-print(text[max(0, table_idx - 800):table_idx + 200])
+print("=== application/json script blocks ===")
+for m in re.finditer(r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>', text, re.DOTALL):
+    print(m.group(0)[:500])
+    print("---")
+
+print()
+print("=== all inline <script>...</script> blocks (no src), lengths ===")
+inline_scripts = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', text, re.DOTALL)
+for i, s in enumerate(inline_scripts):
+    print(f"  [{i}] length={len(s)} preview={s[:120]!r}")
