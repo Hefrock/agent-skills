@@ -27,6 +27,18 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
 
+      - name: TEMP — round 1 — diagnose Gemini structured text generation for narrate.py
+        # if: always() — the smoke test step above always exits non-zero
+        # right now (healthcare_it_news is a known, documented, unrelated
+        # RSS block), which would otherwise skip every step after it.
+        # Deliberately a single call, isolated from run-episode's job
+        # below — no reason to touch the TTS-quota-sensitive pipeline for
+        # a text-generation reconnaissance check.
+        if: always()
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python skills/broadcast/scripts/_diagnose_narration.py
+
   run-episode:
     name: Run one real episode end-to-end (orchestrate.py)
     # Separate job from smoke-test above: this exercises the FULL
