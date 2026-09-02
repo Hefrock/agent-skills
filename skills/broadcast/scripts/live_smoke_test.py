@@ -131,6 +131,20 @@ def _onc_astp():
 
 check("fetch_rss(onc_astp) returns real results", _onc_astp)
 
+print("\n── CMS newsroom ──────────────────────────────────────────────")
+cms_source = source_registry.get_source(registry, "cms")
+
+
+def _cms():
+    items = ingest.fetch_rss(cms_source["feed_url"], "cms")
+    assert len(items) > 0, "feed returned zero items"
+    assert items[0]["title"], "first item has no title"
+    assert not items[0]["url"].startswith("https://www.cms.gov/%3C"), "link recovery from the corrupted <link> field failed"
+    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+
+
+check("fetch_rss(cms) returns real results", _cms)
+
 print("\n── Industry RSS feeds ──────────────────────────────────────")
 for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
     source = source_registry.get_source(registry, key)

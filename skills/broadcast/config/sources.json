@@ -58,7 +58,10 @@
     {
       "key": "cms",
       "name": "CMS",
-      "category": "regulatory"
+      "category": "regulatory",
+      "feed_url": "https://www.cms.gov/newsroom/rss-feeds",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Confirmed live via the broadcast-live-smoke-test workflow (GitHub Actions run, 2026-09-02): 10 real items. The URL itself serves RSS XML directly (no separate HTML links page to scrape). Needed two real fixes to the shared RSS parser, not just a feed_url: this feed's <link> field is corrupted (a URL-percent-encoded copy of the <title>'s own markup, not a clean URL — recovered from the title's <a href> instead), and its <pubDate> uses a third undocumented format ('Tue, 09/01/2026 - 09:02') beyond RFC 822 and fierce_healthcare's. Also surfaced a pre-existing description-cleaning bug (multi-paragraph text glued together with no space) fixed in the same pass."
     },
     {
       "key": "stat_news",
