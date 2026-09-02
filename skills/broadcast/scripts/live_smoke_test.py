@@ -117,8 +117,21 @@ def _regulations_gov():
 
 check("fetch_regulations_gov returns real results", _regulations_gov)
 
-print("\n── Industry RSS feeds ──────────────────────────────────────")
+print("\n── ONC/ASTP blog ────────────────────────────────────────────")
 registry = source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+onc_astp_source = source_registry.get_source(registry, "onc_astp")
+
+
+def _onc_astp():
+    items = ingest.fetch_rss(onc_astp_source["feed_url"], "onc_astp")
+    assert len(items) > 0, "feed returned zero items"
+    assert items[0]["title"], "first item has no title"
+    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+
+
+check("fetch_rss(onc_astp) returns real results", _onc_astp)
+
+print("\n── Industry RSS feeds ──────────────────────────────────────")
 for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
     source = source_registry.get_source(registry, key)
 

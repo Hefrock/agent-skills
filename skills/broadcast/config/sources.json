@@ -50,7 +50,10 @@
     {
       "key": "onc_astp",
       "name": "ONC/ASTP",
-      "category": "regulatory"
+      "category": "regulatory",
+      "feed_url": "https://www.healthit.gov/buzz-blog/feed",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Confirmed live via the broadcast-live-smoke-test workflow (GitHub Actions run, 2026-09-02): 10 real items, parsed correctly by the existing generic RSS parser (fetch_rss/parse_rss_xml, same one built for STAT News/Fierce Healthcare) with no code changes needed — real dates parsed as standard RFC 822, no pubDate-format fix required unlike fierce_healthcare. Three guessed alternate slugs (/rss.xml on this path, and healthit.gov's site-root /feed which is a much shorter, non-blog feed) were checked and ruled out first."
     },
     {
       "key": "cms",
