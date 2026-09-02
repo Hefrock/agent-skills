@@ -37,11 +37,21 @@ sounds pitch- or speed-wrong.
 Requires outbound access to generativelanguage.googleapis.com, same
 constraint as embed_text(); will fail under a default-deny egress policy.
 
+Real rate limit confirmed live (not hypothetical) via orchestrate.py's
+first real end-to-end GitHub Actions run: synthesizing 13 segments in a
+tight sequential loop got 3 HTTP 429s and 4 read timeouts from Gemini
+TTS. synthesize_text() now retries transient failures (429s and
+timeouts specifically — see _is_retryable()) with exponential backoff
+rather than assuming a single call is always representative of the
+API's real behavior under a realistic call volume.
+
 stdlib only, matching this repo's other reference tooling."""
 
 import base64
 import io
 import json
+import time
+import urllib.error
 import urllib.request
 import wave
 
@@ -136,15 +146,81 @@ def assemble_episode_audio(script: dict, segment_audio: list[bytes]) -> dict:
     return {"full_episode_wav": concatenate_wav_clips(segment_audio), "segments": paired}
 
 
+def _is_retryable(exc: Exception) -> bool:
+    """True for a 429 (rate limited) or a read timeout — both confirmed
+    live, not hypothetical: a real GitHub Actions run of orchestrate.py
+    (13 sequential synthesize_text() calls, one per script segment) hit
+    Gemini TTS's real rate limit under that burst — 3 calls got HTTP 429,
+    4 more timed out (almost certainly the same underlying throttling,
+    not a separate problem) — and both are worth one retry rather than
+    losing that segment's audio outright. Anything else (malformed
+    request, auth failure, unexpected response shape) is NOT retried:
+    retrying those would just waste time before failing the same way
+    again, since the problem isn't transient."""
+    if isinstance(exc, urllib.error.HTTPError) and exc.code == 429:
+        return True
+    if isinstance(exc, TimeoutError):
+        return True
+    return False
+
+
+def _retry_delay_seconds(exc: Exception, attempt: int, backoff_base_seconds: float) -> float:
+    """Prefers the server's own Retry-After header (seconds) on a 429
+    response, when present, over a guessed backoff schedule — the server
+    knows its own rate-limit window better than any fixed schedule this
+    module could pick. Falls back to exponential backoff
+    (backoff_base_seconds * 2**attempt) when there's no Retry-After
+    header (or the exception isn't an HTTPError at all — e.g. a
+    timeout). This matters in practice, not just in theory: a live run
+    of orchestrate.py that retried blindly on a fixed backoff schedule
+    made a real rate-limit situation WORSE (more segments failed on the
+    second live run than the first) — each blind retry is itself another
+    request competing for the same exhausted quota, so honoring the
+    server's own stated wait time, when it gives one, is the more
+    correct behavior, not just a defensive nicety."""
+    if isinstance(exc, urllib.error.HTTPError) and exc.headers is not None:
+        retry_after = exc.headers.get("Retry-After")
+        if retry_after is not None:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+    return backoff_base_seconds * (2 ** attempt)
+
+
 # ── Network wrapper (not used by anything above) ────────────────────────
 
-def synthesize_text(text: str, api_key: str, voice_name: str = DEFAULT_VOICE, model: str = DEFAULT_MODEL, timeout: float = 30.0) -> bytes:
+def synthesize_text(
+    text: str,
+    api_key: str,
+    voice_name: str = DEFAULT_VOICE,
+    model: str = DEFAULT_MODEL,
+    timeout: float = 30.0,
+    max_attempts: int = 3,
+    backoff_base_seconds: float = 5.0,
+) -> bytes:
     """Calls the Gemini API's generateContent endpoint with
     responseModalities: ["AUDIO"] and returns a complete WAV file's
     bytes. The one function in this module that touches the network —
     kept separate so everything above can be unit-tested without it, same
     split as dedup_store.embed_text(). Requires outbound access to
-    generativelanguage.googleapis.com."""
+    generativelanguage.googleapis.com.
+
+    Retries up to max_attempts times, for errors _is_retryable()
+    recognizes as transient only (see its docstring for why those two
+    specific errors and not "any exception"). Each retry's wait comes
+    from _retry_delay_seconds() — the server's own Retry-After header
+    when a 429 response provides one, else backoff_base_seconds *
+    2**attempt. max_attempts/backoff_base_seconds are deliberately
+    conservative (kept low/high respectively, not tuned for speed): a
+    live run of orchestrate.py that retried more aggressively on a fixed
+    schedule made a real rate-limit situation WORSE, not better — every
+    blind retry is itself one more request competing for the same
+    exhausted quota. A caller synthesizing many segments in a loop (see
+    orchestrate.py's run_episode()) still gets a real exception on the
+    last attempt if every retry also fails — this doesn't hide failures,
+    it just stops treating a transient rate limit as a permanent one on
+    the first try."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": text}]}],
@@ -153,9 +229,16 @@ def synthesize_text(text: str, api_key: str, voice_name: str = DEFAULT_VOICE, mo
             "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice_name}}},
         },
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode("utf-8"))
-    inline_data = body["candidates"][0]["content"]["parts"][0]["inlineData"]
-    pcm_bytes = base64.b64decode(inline_data["data"])
-    return _pcm_to_wav(pcm_bytes)
+
+    for attempt in range(max_attempts):
+        try:
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            inline_data = body["candidates"][0]["content"]["parts"][0]["inlineData"]
+            pcm_bytes = base64.b64decode(inline_data["data"])
+            return _pcm_to_wav(pcm_bytes)
+        except Exception as e:
+            if attempt == max_attempts - 1 or not _is_retryable(e):
+                raise
+            time.sleep(_retry_delay_seconds(e, attempt, backoff_base_seconds))

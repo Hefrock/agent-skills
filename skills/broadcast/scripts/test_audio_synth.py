@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Tests for audio_synth.py's pure logic (_pcm_to_wav, concatenate_wav_clips,
-assemble_episode_audio) — no network. synthesize_text() is deliberately NOT
-unit tested here, same treatment dedup_store.embed_text() gets: it's a thin
-network wrapper, verified live via live_smoke_test.py instead (see that
-file for the real, GitHub-Actions-confirmed request/response shape this
-module's docstring documents).
+assemble_episode_audio, _is_retryable) — no network. synthesize_text()
+itself is deliberately NOT unit tested here, same treatment
+dedup_store.embed_text() gets: it's a thin network wrapper, verified live
+via live_smoke_test.py instead (see that file, and orchestrate.py's real
+GitHub Actions run, for the real request/response/failure shapes this
+module's docstring documents — including the real 429/timeout rate-limit
+_is_retryable() exists to handle).
 
 Run: python test_audio_synth.py"""
 
@@ -12,7 +14,9 @@ import importlib.util
 import io
 import os
 import unittest
+import urllib.error
 import wave
+from email.message import Message
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "audio_synth.py")
@@ -164,6 +168,61 @@ class AssembleEpisodeAudio(unittest.TestCase):
         clips = [make_wav(1), make_wav(1), make_wav(1)]
         result = audio_synth.assemble_episode_audio(script, clips)
         self.assertEqual(len(result["segments"]), 3)
+
+
+class IsRetryable(unittest.TestCase):
+    def test_http_429_is_retryable(self):
+        exc = urllib.error.HTTPError(url="x", code=429, msg="Too Many Requests", hdrs=None, fp=None)
+        self.assertTrue(audio_synth._is_retryable(exc))
+
+    def test_http_500_is_not_retryable(self):
+        exc = urllib.error.HTTPError(url="x", code=500, msg="Internal Server Error", hdrs=None, fp=None)
+        self.assertFalse(audio_synth._is_retryable(exc))
+
+    def test_http_400_is_not_retryable(self):
+        # A malformed request retrying won't fix itself by waiting.
+        exc = urllib.error.HTTPError(url="x", code=400, msg="Bad Request", hdrs=None, fp=None)
+        self.assertFalse(audio_synth._is_retryable(exc))
+
+    def test_timeout_error_is_retryable(self):
+        # The exact exception type real synthesize_text() calls hit live
+        # (confirmed via orchestrate.py's first real end-to-end run).
+        self.assertTrue(audio_synth._is_retryable(TimeoutError("The read operation timed out")))
+
+    def test_unrelated_exception_is_not_retryable(self):
+        self.assertFalse(audio_synth._is_retryable(KeyError("candidates")))
+        self.assertFalse(audio_synth._is_retryable(ValueError("bad json")))
+
+
+def make_http_error(code, retry_after=None):
+    hdrs = Message()
+    if retry_after is not None:
+        hdrs["Retry-After"] = str(retry_after)
+    return urllib.error.HTTPError(url="x", code=code, msg="err", hdrs=hdrs, fp=None)
+
+
+class RetryDelaySeconds(unittest.TestCase):
+    def test_honors_a_numeric_retry_after_header(self):
+        exc = make_http_error(429, retry_after=12)
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=0, backoff_base_seconds=5.0), 12.0)
+
+    def test_retry_after_wins_regardless_of_attempt_number(self):
+        # Not an exponential schedule — the server's stated wait doesn't
+        # grow just because this is a later attempt.
+        exc = make_http_error(429, retry_after=7)
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=2, backoff_base_seconds=5.0), 7.0)
+
+    def test_falls_back_to_exponential_backoff_when_no_retry_after_header(self):
+        exc = make_http_error(429, retry_after=None)
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=1, backoff_base_seconds=5.0), 10.0)
+
+    def test_falls_back_to_exponential_backoff_on_a_malformed_retry_after_value(self):
+        exc = make_http_error(429, retry_after="not-a-number")
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=0, backoff_base_seconds=5.0), 5.0)
+
+    def test_falls_back_to_exponential_backoff_for_a_non_http_error(self):
+        exc = TimeoutError("The read operation timed out")
+        self.assertEqual(audio_synth._retry_delay_seconds(exc, attempt=2, backoff_base_seconds=5.0), 20.0)
 
 
 if __name__ == "__main__":

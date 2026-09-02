@@ -25,12 +25,16 @@
     {
       "key": "pubmed",
       "name": "PubMed / NCBI E-utilities",
-      "category": "peer_reviewed"
+      "category": "peer_reviewed",
+      "query": "FHIR AND clinical decision support",
+      "query_note": "A documented judgment call, not a validated one (same status as the authority floors/half-lives above) — reused as-is from the query that live_smoke_test.py already confirmed returns real, on-topic results. Revisit once a real run's story mix can be judged against actual episodes, same as the other hand-tuned rubric values in this file."
     },
     {
       "key": "arxiv",
       "name": "arXiv",
-      "category": "preprint"
+      "category": "preprint",
+      "query": "cat:cs.AI AND abs:clinical",
+      "query_note": "Same status as pubmed's query above — reused from live_smoke_test.py, a documented judgment call open to revision."
     },
     {
       "key": "medrxiv",
@@ -45,7 +49,9 @@
     {
       "key": "regulations_gov",
       "name": "regulations.gov",
-      "category": "regulatory"
+      "category": "regulatory",
+      "query": "clinical decision support software",
+      "query_note": "Same status as pubmed's query above — reused from live_smoke_test.py, a documented judgment call open to revision."
     },
     {
       "key": "onc_astp",
