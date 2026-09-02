@@ -110,3 +110,6 @@ jobs:
 
       - name: broadcast — qa_gate.py regression suite (drives the real built MCP server, stdlib unittest)
         run: python skills/broadcast/scripts/test_qa_gate.py
+
+      - name: broadcast — audio_synth.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_audio_synth.py

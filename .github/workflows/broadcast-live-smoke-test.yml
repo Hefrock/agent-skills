@@ -2,11 +2,12 @@ name: broadcast live smoke test
 
 # Manually-triggered only — deliberately NOT on push/pull_request. This
 # workflow makes real calls to external APIs (PubMed, arXiv, three
-# industry RSS feeds, and optionally Gemini's embeddings API), unlike
-# ci.yml which stays hermetic and network-free on every push. Running it
-# on every commit would make CI flaky on someone else's downtime and burn
-# Gemini API quota on every push for no reason — it's a deliberate,
-# occasional check, not a merge gate.
+# industry RSS feeds, and optionally Gemini's embeddings and
+# text-to-speech APIs), unlike ci.yml which stays hermetic and
+# network-free on every push. Running it on every commit would make CI
+# flaky on someone else's downtime and burn Gemini API quota on every
+# push for no reason — it's a deliberate, occasional check, not a merge
+# gate.
 on:
   workflow_dispatch:
 
@@ -25,12 +26,3 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
-
-      - name: TEMP — round 1 — diagnose Gemini TTS
-        # if: always() — the smoke test step above always exits non-zero
-        # right now (healthcare_it_news is a known, documented, unrelated
-        # RSS block), which would otherwise skip every step after it.
-        if: always()
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python skills/broadcast/scripts/_diagnose_tts.py
