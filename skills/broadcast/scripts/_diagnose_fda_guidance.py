@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic, round 2 — round 1 found: no dedicated RSS feed (all
-three guessed slugs 404), and the search page is plain server-rendered
-HTML with no JS API markers. This round inspects the actual table/data
-structure of that HTML page, and tests whether Drupal's Views JSON export
-format works via ?_format=json, before deciding scrape-vs-API. Deleted
-before the real PR is finalized."""
+"""TEMP diagnostic, round 3 — round 2 found the guidance table
+(class="lcds-datatable--sfgd", Drupal view "fda_guidance_documents",
+display "block_11") ships with an EMPTY <tbody> in the raw HTML: it's
+populated client-side after page load. No inline AJAX URL was found in
+the page's own markup. This lists every <script src=...> on the page to
+find the JS bundle that drives the datatable, then fetches it looking for
+the actual AJAX endpoint URL/data-table config. Deleted before the real
+PR is finalized."""
+import re
 import urllib.request
 
 _UA = "Mozilla/5.0 (compatible; healthcare-ai-briefing/0.1; +https://github.com/Hefrock/agent-skills)"
@@ -20,37 +23,24 @@ def _get(url, headers=None):
         return None, None, f"{type(e).__name__}: {e}".encode()
 
 
-# Round 2a: does a Views JSON export exist?
-for suffix in ("?_format=json", "?_format=hal_json"):
-    url = f"https://www.fda.gov/regulatory-information/search-fda-guidance-documents{suffix}"
-    status, ctype, body = _get(url)
-    print(f"=== {url} ===")
-    print(f"status={status} content-type={ctype!r} length={len(body)}")
-    print(body[:400])
-    print()
-
-# Round 2b: inspect the real HTML table structure.
 url = "https://www.fda.gov/regulatory-information/search-fda-guidance-documents"
 status, ctype, body = _get(url)
 text = body.decode("utf-8", errors="replace")
-print(f"=== full page length={len(text)} ===")
-for marker in ("<table", "views-table", "drupalSettings", "csv", "download", "<form", "action=\""):
-    idx = text.lower().find(marker.lower())
-    print(f"  first index of {marker!r}: {idx}")
 
-table_idx = text.lower().find("<table")
-if table_idx >= 0:
-    print("--- 3000 chars starting at first <table ---")
-    print(text[table_idx:table_idx + 3000])
-else:
-    print("--- no <table> found. Searching for 'guidance' near a list/grid structure ---")
-    g_idx = text.lower().find("guidance-documents-search")
-    print(f"  'guidance-documents-search' idx: {g_idx}")
-    # dump a middle slice for manual inspection
-    mid = len(text) // 2
-    print(text[mid:mid + 2000])
+srcs = re.findall(r'<script[^>]+src=["\']?([^"\'\s>]+)', text)
+print(f"total <script src> tags: {len(srcs)}")
+candidates = [s for s in srcs if any(k in s.lower() for k in ("guidance", "sfgd", "datatable", "views", "search"))]
+print("candidates matching guidance/sfgd/datatable/views/search:")
+for c in candidates:
+    print(f"  {c}")
+print()
+print("all script srcs (first 40):")
+for s in srcs[:40]:
+    print(f"  {s}")
 
-form_idx = text.lower().find("<form")
-if form_idx >= 0:
-    print("--- 1500 chars starting at first <form (to see the search form's action/params) ---")
-    print(text[form_idx:form_idx + 1500])
+# Also: does the page reference a data-table-ajax attribute or similar on
+# the table/view div itself (sometimes config is in a data-* attribute)?
+table_idx = text.find('lcds-datatable--sfgd')
+print()
+print("--- 400 chars before the table class (to catch a data-* config attr) ---")
+print(text[max(0, table_idx - 800):table_idx + 200])
