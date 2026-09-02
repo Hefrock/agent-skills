@@ -9,15 +9,12 @@ the fetch wrappers are simple enough (build a URL, GET it, hand the body to
 the parser) that they don't need their own logic tests beyond what a real
 pipeline run exercises.
 
-Covers PubMed, arXiv, four industry/agency RSS sources (STAT News,
-Fierce Healthcare, Healthcare IT News, ONC/ASTP's blog), which share one
-generic RSS 2.0 parser since it's one format regardless of which outlet,
-medRxiv (api.medrxiv.org's JSON /details endpoint), FDA guidance
-documents, and regulations.gov. CMS (the last of the "regulatory"
-category) is still a follow-up adapter, not attempted here — it likely
-has a different enough response shape that bundling it into one
-unverified pass would violate the same incremental-and-tested discipline
-this project has followed since Phase 1.
+Covers PubMed, arXiv, five industry/agency RSS sources (STAT News,
+Fierce Healthcare, Healthcare IT News, ONC/ASTP's blog, CMS's newsroom),
+which share one generic RSS 2.0 parser since it's one format regardless
+of which outlet, medRxiv (api.medrxiv.org's JSON /details endpoint), FDA
+guidance documents, and regulations.gov. That's all 10 registered
+sources in config/sources.json.
 
 RSS feed verification status (config/sources.json's feed_url_verified,
 confirmed live via GitHub Actions — see the smoke test workflow,
@@ -39,7 +36,7 @@ confirmed live via GitHub Actions — see the smoke test workflow,
     (config/sources.json's feed_url_verified_note) rather than silently
     dropped or faked working; needs a different approach (headless
     browser, an alternate syndication endpoint) as a future follow-up.
-  - onc_astp: verified working (2026-09-02), the simplest of the four —
+  - onc_astp: verified working (2026-09-02), the simplest of the five —
     a standard WordPress RSS feed (healthit.gov/buzz-blog/feed) that
     this generic parser already handled correctly with zero code
     changes: real RFC-822 pubDates, no fierce_healthcare-style fallback
@@ -47,6 +44,25 @@ confirmed live via GitHub Actions — see the smoke test workflow,
     first URL a search turned up — one guessed slug (/buzz-blog/rss.xml)
     404'd, and the bare site-root /feed exists but is a different,
     much shorter, non-blog feed.
+  - cms: verified working (2026-09-02), but the messiest feed so far —
+    two real parser bugs found and fixed, not just a feed_url wired up.
+    (1) <link> is corrupted: it's a URL-percent-encoded copy of the
+    <title> field's own "<a href=...>...</a>" markup pasted in verbatim,
+    not a clean URL. _recover_link_from_corrupted_field() detects this
+    (a "%3c" marker) and rebuilds the real URL from the title's own href
+    plus the still-intact scheme+host prefix at the start of the
+    corrupted <link> value. (2) <pubDate> uses a third undocumented
+    format ("Tue, 09/01/2026 - 09:02" — day name, US MM/DD/YYYY, " - ",
+    24hr time, no timezone), beyond RFC 822 and fierce_healthcare's
+    format; _parse_rss_pubdate() gets a second fallback. Diagnosing this
+    also surfaced a real, general bug in _clean_html_text() unrelated to
+    either of those: cms.gov's <description> is HTML-entity-double-
+    encoded ("&lt;p&gt;...&lt;/p&gt;", not literal "<p>" like the other
+    sources' CDATA blocks), and stripping those (now-revealed) tags
+    outright glued adjacent paragraphs together with no space
+    ("...Hawaii" + "This federal..." -> "HawaiiThis"). Tags are now
+    replaced with a space (collapsed by the existing whitespace pass)
+    instead of deleted, and stripped both before and after unescaping.
 
 medRxiv (fetch_medrxiv) verification status: verified working, but only
 after a real bug was found and fixed via the same live-smoke-test loop.
@@ -275,29 +291,34 @@ def fetch_arxiv(query: str, max_results: int = 20) -> list[dict]:
 
 
 # ── RSS sources (STAT News, Fierce Healthcare, Healthcare IT News, ────────
-#    ONC/ASTP's blog) ────────────────────────────────────────────────────
+#    ONC/ASTP's blog, CMS's newsroom) ──────────────────────────────────────
 #
-# One generic RSS 2.0 parser shared by all four, regardless of category
-# (industry_press vs. regulatory) — since it's a single standard format,
-# the only per-outlet difference is which feed_url is passed in, which
-# lives in config/sources.json, not in code.
+# One generic RSS 2.0 parser shared by all five, regardless of category
+# (industry_press vs. regulatory) — since it's still a single format
+# underneath, the only per-outlet difference is the feed_url passed in
+# (config/sources.json, not code), plus a small set of accumulated
+# real-world fallbacks for feeds that don't quite follow spec.
 
 def _clean_html_text(raw: str) -> str:
     """RSS <description> content is routinely CDATA-wrapped, carries inline
     HTML tags, and uses HTML entities — strip all three down to plain text.
-    Tags are stripped both before AND after unescaping: stat_news/
-    fierce_healthcare's CDATA blocks carry literal tags, but cms.gov's
-    real feed (confirmed live, 2026-09-02) double-encodes its markup
+    Tags are replaced with a space, not deleted outright, and collapsed by
+    the final whitespace pass: cms.gov's real feed (confirmed live,
+    2026-09-02) packs multiple <p> paragraphs with no space between them
+    ("...Hawaii</p><p>This federal investment..."), and deleting the tags
+    outright would glue the words together ("HawaiiThis"). Tags are
+    stripped both before AND after unescaping: stat_news/fierce_healthcare's
+    CDATA blocks carry literal tags, but cms.gov double-encodes its markup
     instead ("&lt;p&gt;...&lt;/p&gt;" — HTML-entity-escaped tags, not
-    literal ones), which the first pass can't see until unescaping
-    reveals them."""
+    literal ones), which the first pass can't see until unescaping reveals
+    them."""
     text = raw.strip()
     cdata_match = re.match(r"^<!\[CDATA\[(.*)\]\]>$", text, re.DOTALL)
     if cdata_match:
         text = cdata_match.group(1)
-    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"<[^>]+>", " ", text)
     text = html.unescape(text)
-    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 

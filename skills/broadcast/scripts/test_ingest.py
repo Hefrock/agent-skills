@@ -320,6 +320,36 @@ RSS_FIXTURE_ONC_ASTP_SHAPE = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+RSS_FIXTURE_CMS_SHAPE = """<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" xml:base="https://www.cms.gov/">
+  <channel>
+    <title>Newsroom Feeds</title>
+    <link>https://www.cms.gov/</link>
+    <description/>
+    <language>en</language>
+    <item>
+  <title><a href="/newsroom/press-releases/example-cms-release" hreflang="en">CMS Prevents $1.6 Billion in Fraudulent Medicare Laboratory Payments</a></title>
+  <link>https://www.cms.gov/%3Ca%20href%3D%22/newsroom/press-releases/example-cms-release%22%20hreflang%3D%22en%22%3ECMS%20Prevents%20%241.6%20Billion%20in%20Fraudulent%20Medicare%20Laboratory%20Payments%3C/a%3E</link>
+  <description>&lt;p class="text-align-center"&gt;&lt;strong&gt;CMS Prevents $1.6 Billion&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;157 fraudulent lab providers revoked from Medicare program&lt;/p&gt;</description>
+  <pubDate>Fri, 08/28/2026 - 10:15</pubDate>
+    <dc:creator><time datetime="2026-08-28T10:15:00-04:00">Fri, 08/28/2026 - 10:15</time>
+</dc:creator>
+    <guid isPermaLink="true">https://www.cms.gov/2120872</guid>
+    </item>
+  </channel>
+</rss>
+"""
+
+RSS_FIXTURE_CMS_UNRECOVERABLE_LINK = """<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"><channel><item>
+  <title>A title with no anchor tag at all</title>
+  <link>https://www.cms.gov/%3Cbroken%3E</link>
+  <description>x</description>
+  <pubDate>Fri, 08/28/2026 - 10:15</pubDate>
+</item></channel></rss>
+"""
+
+
 class ParseRssXml(unittest.TestCase):
     def test_extracts_two_items(self):
         items = ingest.parse_rss_xml(RSS_FIXTURE, source_key="stat_news")
@@ -357,6 +387,41 @@ class ParseRssXml(unittest.TestCase):
             "https://healthit.gov/blog/interoperability/nine-teams-one-mission-meet-the-ehignite-phase-1-winners/",
         )
         self.assertIn("appeared first on ONC Blog", items[0]["summary"])
+
+    def test_cms_shaped_feed_produces_an_item(self):
+        # Regression coverage for the real, messy CMS shape confirmed live
+        # on 2026-09-02 (see config/sources.json's feed_url_verified_note
+        # for cms): a corrupted <link> (URL-encoded copy of the title's own
+        # markup, recovered from the title's <a href> instead) and a third
+        # pubDate format ("Fri, 08/28/2026 - 10:15") beyond RFC 822 and
+        # fierce_healthcare's.
+        items = ingest.parse_rss_xml(RSS_FIXTURE_CMS_SHAPE, source_key="cms")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["published_date"], "2026-08-28")
+        self.assertIn("Fraudulent Medicare", items[0]["title"])
+        self.assertEqual(
+            items[0]["url"],
+            "https://www.cms.gov/newsroom/press-releases/example-cms-release",
+        )
+
+    def test_cms_shaped_description_paragraphs_are_space_separated(self):
+        # Regression test: cms.gov's <description> HTML-entity-encodes its
+        # markup ("&lt;p&gt;...&lt;/p&gt;", not literal tags), and stripping
+        # those tags outright used to glue adjacent paragraphs together
+        # with no space in between.
+        items = ingest.parse_rss_xml(RSS_FIXTURE_CMS_SHAPE, source_key="cms")
+        summary = items[0]["summary"]
+        self.assertIn("Billion 157 fraudulent", summary)  # space between paragraphs
+        self.assertNotIn("Billion157", summary)
+        self.assertNotIn("<p", summary)
+        self.assertNotIn("&lt;", summary)
+
+    def test_cms_item_with_no_recoverable_title_href_is_skipped(self):
+        # If the <link> is corrupted AND the title has no <a href> to
+        # recover from, the item is unusable — skip rather than crash or
+        # emit a garbage URL.
+        items = ingest.parse_rss_xml(RSS_FIXTURE_CMS_UNRECOVERABLE_LINK, source_key="cms")
+        self.assertEqual(items, [])
 
     def test_cdata_wrapped_html_description_is_cleaned(self):
         items = ingest.parse_rss_xml(RSS_FIXTURE, source_key="stat_news")
@@ -417,6 +482,41 @@ class CleanHtmlText(unittest.TestCase):
     def test_combined_cdata_html_and_entities(self):
         raw = "<![CDATA[<p>Cancer &amp; <b>AI</b> research</p>]]>"
         self.assertEqual(ingest._clean_html_text(raw), "Cancer & AI research")
+
+    def test_adjacent_block_tags_are_space_separated_not_glued(self):
+        # Regression test: confirmed live against cms.gov's real feed
+        # (2026-09-02) — deleting tags outright (rather than replacing with
+        # a space) glued adjacent paragraphs together with no space.
+        self.assertEqual(ingest._clean_html_text("<p>Hello</p><p>world</p>"), "Hello world")
+
+    def test_entity_encoded_tags_are_stripped_after_unescaping(self):
+        # Regression test: cms.gov's real <description> double-encodes its
+        # markup ("&lt;p&gt;...&lt;/p&gt;", not literal "<p>...</p>") — the
+        # tag-strip pass has to run again after unescaping reveals them.
+        raw = "&lt;p&gt;Cancer &amp;amp; AI&lt;/p&gt;&lt;p&gt;research&lt;/p&gt;"
+        self.assertEqual(ingest._clean_html_text(raw), "Cancer &amp; AI research")
+
+
+class RecoverLinkFromCorruptedField(unittest.TestCase):
+    def test_recovers_relative_href_with_origin_from_corrupted_link(self):
+        link_raw = 'https://www.cms.gov/%3Ca%20href%3D%22/newsroom/press-releases/x%22%3ETitle%3C/a%3E'
+        title_raw = '<a href="/newsroom/press-releases/x" hreflang="en">Title</a>'
+        result = ingest._recover_link_from_corrupted_field(link_raw, title_raw)
+        self.assertEqual(result, "https://www.cms.gov/newsroom/press-releases/x")
+
+    def test_absolute_href_in_title_is_used_as_is(self):
+        link_raw = "https://www.cms.gov/%3Cbroken%3E"
+        title_raw = '<a href="https://example.com/elsewhere">Title</a>'
+        result = ingest._recover_link_from_corrupted_field(link_raw, title_raw)
+        self.assertEqual(result, "https://example.com/elsewhere")
+
+    def test_returns_none_when_title_has_no_href(self):
+        result = ingest._recover_link_from_corrupted_field("https://www.cms.gov/%3Cx%3E", "Plain title, no anchor")
+        self.assertIsNone(result)
+
+    def test_returns_none_when_link_has_no_recognizable_origin(self):
+        result = ingest._recover_link_from_corrupted_field("not a url at all", '<a href="/x">Title</a>')
+        self.assertIsNone(result)
 
 
 class ParseRssPubdate(unittest.TestCase):
@@ -931,6 +1031,29 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         item = ingest.parse_rss_xml(RSS_FIXTURE_ONC_ASTP_SHAPE, source_key="onc_astp")[0]
         canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
         self.assertTrue(canonical.startswith("url:"))  # no id_hint for blog posts, same as the other RSS sources
+
+    def test_cms_source_key_is_registered_in_the_real_config_as_regulatory_with_a_feed_url(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        source = self.source_registry.get_source(registry, "cms")
+        self.assertEqual(source["category"], "regulatory")
+        self.assertIn("feed_url", source)
+
+    def test_cms_item_scores_against_the_real_registry_regulatory_category(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_rss_xml(RSS_FIXTURE_CMS_SHAPE, source_key="cms")[0]
+        score = self.source_registry.score_source_item(registry, item["source_key"], age_days=0)
+        self.assertAlmostEqual(score, 1.0)  # regulatory: floor 0.9, half_life 30d -> 1.0 at age 0
+
+    def test_cms_item_canonicalizes_via_the_recovered_url(self):
+        item = ingest.parse_rss_xml(RSS_FIXTURE_CMS_SHAPE, source_key="cms")[0]
+        canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
+        self.assertTrue(canonical.startswith("url:"))  # no id_hint, but the recovered (not corrupted) URL is hashed
+
+    def test_all_five_rss_source_keys_are_registered_in_the_real_config(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news", "onc_astp", "cms"):
+            source = self.source_registry.get_source(registry, key)
+            self.assertIn("feed_url", source)
 
 
 if __name__ == "__main__":

@@ -21,9 +21,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: TEMP — diagnose CMS RSS feed URLs
-        run: python skills/broadcast/scripts/_diagnose_cms.py
-
       - name: broadcast — live smoke test (real network calls)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
