@@ -224,11 +224,22 @@ class RunEpisodeWiring(unittest.TestCase):
         pcm = b"\x01\x02" * 100
         return orchestrate.audio_synth._pcm_to_wav(pcm)
 
+    def _fake_narrate_fn(self, text, api_key):
+        # A generic fake generate_narration() that produces a genuinely
+        # grounded result for WHATEVER text it's given (unlike a single
+        # canned constant, which would only ground against one specific
+        # source string) — script_gen.py's real story text is
+        # "{title}. {summary} Source: {name}.", so the text before the
+        # first period (the title) is always a safe, real substring to
+        # cite as the supporting_span.
+        first_clause = text.split(".")[0]
+        return {"narration": f"{first_clause}, as reported.", "supporting_spans": [first_clause]}
+
     def test_full_wiring_produces_a_passing_gate_and_an_episode(self):
         client = FakeEvidenceClient()
         result = orchestrate.run_episode(
             "2026-09-02", self.registry, self.store, client, "fake-api-key",
-            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
         )
         self.assertEqual(result["ingest_failed"], [])
         self.assertEqual(result["embed_failed"], [])
@@ -242,7 +253,7 @@ class RunEpisodeWiring(unittest.TestCase):
         client = FakeEvidenceClient()
         result = orchestrate.run_episode(
             "2026-09-02", self.registry, self.store, client, "fake-api-key",
-            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
         )
         self.assertGreater(len(result["store"]["entries"]), 0)
 
@@ -250,7 +261,7 @@ class RunEpisodeWiring(unittest.TestCase):
         client = FakeEvidenceClient(flag_claims=True)
         result = orchestrate.run_episode(
             "2026-09-02", self.registry, self.store, client, "fake-api-key",
-            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
         )
         self.assertFalse(result["qa_result"]["passed"])
         self.assertIsNone(result["episode_audio"])
@@ -267,7 +278,7 @@ class RunEpisodeWiring(unittest.TestCase):
 
         result = orchestrate.run_episode(
             "2026-09-02", self.registry, self.store, client, "fake-api-key",
-            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=flaky_synth,
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=flaky_synth,
         )
         self.assertTrue(result["qa_result"]["passed"])
         self.assertIsNone(result["episode_audio"])
@@ -284,7 +295,7 @@ class RunEpisodeWiring(unittest.TestCase):
 
         result = orchestrate.run_episode(
             "2026-09-02", self.registry, self.store, client, "fake-api-key",
-            fetch_fn=partly_broken_fetch, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+            fetch_fn=partly_broken_fetch, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
         )
         self.assertEqual(len(result["ingest_failed"]), 1)
         self.assertEqual(result["ingest_failed"][0]["source_key"], "arxiv")
@@ -299,7 +310,7 @@ class RunEpisodeWiring(unittest.TestCase):
         with mock.patch.object(orchestrate.time, "sleep") as mock_sleep:
             orchestrate.run_episode(
                 "2026-09-02", self.registry, self.store, client, "fake-api-key",
-                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
             )
         mock_sleep.assert_not_called()
 
@@ -308,12 +319,85 @@ class RunEpisodeWiring(unittest.TestCase):
         with mock.patch.object(orchestrate.time, "sleep") as mock_sleep:
             result = orchestrate.run_episode(
                 "2026-09-02", self.registry, self.store, client, "fake-api-key",
-                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
                 synth_delay_seconds=3.0,
             )
         segment_count = len(result["script"]["segments"])
         self.assertEqual(mock_sleep.call_count, segment_count - 1)
         mock_sleep.assert_called_with(3.0)
+
+    # ── narration wiring — enable_narration/narrate_fn's own effect on
+    # run_episode(), on top of the full-pipeline proof above. ──────────
+
+    def test_narration_replaces_story_text_and_is_reported(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+        )
+        self.assertIsNotNone(result["narration_result"])
+        self.assertGreater(result["narration_result"]["narration_attempted"], 0)
+        self.assertEqual(result["narration_result"]["narration_succeeded"], result["narration_result"]["narration_attempted"])
+        self.assertFalse(result["narration_result"]["episode_level_fallback"])
+        story_segments = [s for s in result["script"]["segments"] if s["claim_id"] is not None]
+        self.assertTrue(all(s["text"].endswith(", as reported.") for s in story_segments))
+        # QA gate and episode production are unaffected by narration having run —
+        # qa_gate.py never compares segment text against the pinned claim verbatim.
+        self.assertTrue(result["qa_result"]["passed"], result["qa_result"]["checks"])
+        self.assertIsNotNone(result["episode_audio"])
+
+    def test_enable_narration_false_skips_narrate_fn_and_keeps_mechanical_text(self):
+        client = FakeEvidenceClient()
+        narrate_fn = mock.Mock(side_effect=AssertionError("narrate_fn should never be called when enable_narration=False"))
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=narrate_fn, synth_fn=self._fake_synth_fn,
+            enable_narration=False,
+        )
+        narrate_fn.assert_not_called()
+        self.assertIsNone(result["narration_result"])
+        story_segments = [s for s in result["script"]["segments"] if s["claim_id"] is not None]
+        self.assertTrue(all(not s["text"].endswith(", as reported.") for s in story_segments))
+        self.assertTrue(result["qa_result"]["passed"], result["qa_result"]["checks"])
+        self.assertIsNotNone(result["episode_audio"])
+
+    def test_narration_failure_falls_back_gracefully_and_still_produces_an_episode(self):
+        # generate_narration() failing outright (e.g. the Gemini text
+        # endpoint being down) should degrade prose quality only — the
+        # rest of the pipeline (grounding, QA gate, synthesis) must be
+        # completely unaffected, per narrate.py's own fallback design.
+        client = FakeEvidenceClient()
+
+        def broken_narrate(text, api_key):
+            raise TimeoutError("narration endpoint unreachable")
+
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=broken_narrate, synth_fn=self._fake_synth_fn,
+        )
+        self.assertEqual(result["narration_result"]["narration_succeeded"], 0)
+        self.assertTrue(result["narration_result"]["episode_level_fallback"])
+        self.assertTrue(result["qa_result"]["passed"], result["qa_result"]["checks"])
+        self.assertIsNotNone(result["episode_audio"])
+
+    def test_custom_narration_success_threshold_is_passed_through(self):
+        client = FakeEvidenceClient()
+        calls = {"n": 0}
+
+        def half_failing_narrate(text, api_key):
+            calls["n"] += 1
+            if calls["n"] % 2 == 0:
+                raise TimeoutError("simulated failure")
+            return self._fake_narrate_fn(text, api_key)
+
+        # A permissive threshold (0.0) should NOT trigger the episode-level
+        # fallback even though half the narration attempts fail.
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=half_failing_narrate, synth_fn=self._fake_synth_fn,
+            narration_success_threshold=0.0,
+        )
+        self.assertFalse(result["narration_result"]["episode_level_fallback"])
 
 
 if __name__ == "__main__":
