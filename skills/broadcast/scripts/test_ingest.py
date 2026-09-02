@@ -415,6 +415,90 @@ class ParseRssPubdate(unittest.TestCase):
         self.assertEqual(ingest._parse_rss_pubdate("Wed, 01 Jul 2026 00:00:00 GMT"), "2026-07-01")
 
 
+MEDRXIV_FIXTURE = {
+    "collection": [
+        {
+            "doi": "10.1101/2026.08.15.26000001",
+            "title": "Agentic clinical decision support for FHIR-based EHR workflows: a prospective cohort study",
+            "authors": "Doe, J.; Smith, A.",
+            "author_corresponding": "Doe, J.",
+            "date": "2026-08-15",
+            "category": "health informatics",
+            "abstract": "We evaluate an agentic CDS system integrated via FHIR against a matched cohort.",
+            "published": "NA",
+            "jatsxml": "https://api.medrxiv.org/content/10.1101/2026.08.15.26000001.full.xml",
+        },
+        {
+            "doi": "10.1101/2026.08.14.26000002",
+            "title": "A second unrelated preprint",
+            "authors": "Lee, K.",
+            "author_corresponding": "Lee, K.",
+            "date": "2026-08-14",
+            "category": "epidemiology",
+            "abstract": "An abstract about something else entirely.",
+            "published": "10.1056/example.2026",
+            "jatsxml": "https://api.medrxiv.org/content/10.1101/2026.08.14.26000002.full.xml",
+        },
+    ],
+    "messages": [{"status": "ok", "count": "2"}],
+}
+
+MEDRXIV_FIXTURE_MISSING_FIELDS = {
+    "collection": [
+        {"doi": "10.1101/2026.08.01.26000003", "title": "", "date": "2026-08-01", "abstract": "x"},  # empty title
+        {"doi": "", "title": "No DOI here", "date": "2026-08-01", "abstract": "x"},  # empty doi
+        {"doi": "10.1101/2026.08.01.26000004", "title": "No date here", "date": "", "abstract": "x"},  # empty date
+        {"doi": "10.1101/2026.08.01.26000005", "title": "Malformed date", "date": "08/01/2026", "abstract": "x"},  # not ISO
+    ],
+}
+
+MEDRXIV_FIXTURE_NO_ABSTRACT = {
+    "collection": [
+        {"doi": "10.1101/2026.07.01.26000006", "title": "No abstract field at all", "date": "2026-07-01"},
+    ],
+}
+
+
+class ParseMedrxivJson(unittest.TestCase):
+    def test_extracts_two_items(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)
+        self.assertEqual(len(items), 2)
+
+    def test_source_key_is_medrxiv(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)
+        self.assertTrue(all(i["source_key"] == "medrxiv" for i in items))
+
+    def test_url_is_built_from_doi(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)
+        self.assertEqual(items[0]["url"], "https://doi.org/10.1101/2026.08.15.26000001")
+
+    def test_id_hint_is_doi_prefixed(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)
+        self.assertEqual(items[0]["id_hint"], "doi:10.1101/2026.08.15.26000001")
+
+    def test_published_date_passes_through(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)
+        self.assertEqual(items[0]["published_date"], "2026-08-15")
+
+    def test_abstract_becomes_summary(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)
+        self.assertIn("agentic CDS system", items[0]["summary"])
+
+    def test_missing_abstract_field_becomes_empty_summary(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE_NO_ABSTRACT)
+        self.assertEqual(items[0]["summary"], "")
+
+    def test_records_missing_required_fields_are_skipped(self):
+        items = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE_MISSING_FIELDS)
+        self.assertEqual(items, [])
+
+    def test_empty_collection_returns_empty_list(self):
+        self.assertEqual(ingest.parse_medrxiv_json({"collection": []}), [])
+
+    def test_missing_collection_key_returns_empty_list(self):
+        self.assertEqual(ingest.parse_medrxiv_json({}), [])
+
+
 class IngestFeedsIntoDownstreamModules(unittest.TestCase):
     """Integration-shaped tests, still no network: confirms parsed items are
     actually consumable by source_registry.py and dedup_store.py without
@@ -464,6 +548,29 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
             source = self.source_registry.get_source(registry, key)
             self.assertEqual(source["category"], "industry_press")
             self.assertIn("feed_url", source)
+
+    def test_medrxiv_item_canonicalizes_via_its_doi_id_hint(self):
+        item = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)[0]
+        canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
+        self.assertEqual(canonical, "doi:10.1101/2026.08.15.26000001")
+
+    def test_medrxiv_item_scores_against_the_real_registry_preprint_category(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)[0]
+        score = self.source_registry.score_source_item(registry, item["source_key"], age_days=3)
+        # preprint: floor 0.4, half_life 3 days -> same curve as arxiv/industry_press at age=3.
+        self.assertAlmostEqual(score, 0.4 + 0.6 * 0.5)
+
+    def test_medrxiv_throughline_classification_on_a_real_parsed_title(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_medrxiv_json(MEDRXIV_FIXTURE)[0]
+        scope = self.source_registry.classify_topic_scope(item["title"], registry["throughline_keywords"])
+        self.assertEqual(scope, "throughline")  # title contains "agentic" and "FHIR-based"
+
+    def test_medrxiv_source_key_is_registered_in_the_real_config_as_preprint(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        source = self.source_registry.get_source(registry, "medrxiv")
+        self.assertEqual(source["category"], "preprint")
 
 
 if __name__ == "__main__":

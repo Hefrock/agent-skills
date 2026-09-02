@@ -80,6 +80,19 @@ def _arxiv():
 
 check("fetch_arxiv returns real results", _arxiv)
 
+print("\n── medRxiv ──────────────────────────────────────────────────")
+
+
+def _medrxiv():
+    items = ingest.fetch_medrxiv(days=14, max_results=5)
+    assert len(items) > 0, "no postings in the last 14 days (unlikely — check the API response shape)"
+    assert items[0]["title"], "first item has no title"
+    assert items[0]["id_hint"].startswith("doi:"), "first item has no doi id_hint"
+    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+
+
+check("fetch_medrxiv returns real results", _medrxiv)
+
 print("\n── Industry RSS feeds ──────────────────────────────────────")
 registry = source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
 for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):

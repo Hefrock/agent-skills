@@ -9,11 +9,12 @@ the fetch wrappers are simple enough (build a URL, GET it, hand the body to
 the parser) that they don't need their own logic tests beyond what a real
 pipeline run exercises.
 
-Covers PubMed, arXiv, and — as of this pass — the three industry-press RSS
-sources (STAT News, Fierce Healthcare, Healthcare IT News), which share one
-generic RSS 2.0 parser since it's one format regardless of which outlet.
-medRxiv, FDA guidance, regulations.gov, ONC/ASTP, and CMS are still
-follow-up adapters, not attempted here — each has a different enough
+Covers PubMed, arXiv, the three industry-press RSS sources (STAT News,
+Fierce Healthcare, Healthcare IT News), which share one generic RSS 2.0
+parser since it's one format regardless of which outlet, and — as of this
+pass — medRxiv (api.medrxiv.org's JSON /details endpoint). FDA guidance,
+regulations.gov, ONC/ASTP, and CMS (the entire "regulatory" category) are
+still follow-up adapters, not attempted here — each has a different enough
 response shape that bundling them all into one unverified pass would
 violate the same incremental-and-tested discipline this project has
 followed since Phase 1.
@@ -38,6 +39,15 @@ workflow, .github/workflows/broadcast-live-smoke-test.yml):
     dropped or faked working; needs a different approach (headless
     browser, an alternate syndication endpoint) as a future follow-up.
 
+medRxiv (fetch_medrxiv) verification status: verified working, but only
+after a real bug was found and fixed via the same live-smoke-test loop.
+api.medrxiv.org's documented "Nd" interval shorthand ("7d" = 7 most recent
+days) and a bare numeric count both return HTTP 200 with an EMPTY
+collection and {"status": "Both dates must be in yyyy-mm-dd format"} —
+silently zero results, not an error. Confirmed live (2026-09-01) that only
+an explicit start/end date range actually returns data; fetch_medrxiv()
+computes one from the days lookback rather than using the shorthand.
+
 Every adapter produces the same normalized item shape, which is what feeds
 directly into the rest of the pipeline: dedup_store.classify_story() (via
 canonical_id/title), source_registry.classify_topic_scope() (via title +
@@ -58,7 +68,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 
 FETCH_TIMEOUT_S = 15.0
@@ -293,3 +303,57 @@ def fetch_rss(feed_url: str, source_key: str) -> list[dict]:
     with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_S) as resp:
         xml = resp.read().decode("utf-8")
     return parse_rss_xml(xml, source_key)
+
+
+# ── medRxiv ──────────────────────────────────────────────────────────────
+#
+# api.medrxiv.org's /details endpoint, unauthenticated, JSON — a different
+# shape from PubMed/arXiv's XML but the same two-piece split: a pure parser
+# over the decoded JSON object, plus a thin wrapper that builds the URL and
+# reads it.
+
+def parse_medrxiv_json(payload: dict) -> list[dict]:
+    """payload is the parsed JSON body of a medRxiv /details response — a
+    dict with a "collection" list of posting records. Each record's "doi" is
+    used both as the id_hint (canonicalize_id() prefers a DOI over hashing
+    the URL, same as PubMed's pmid) and to build the article URL, since the
+    API itself doesn't return one. Records missing a doi, title, or date are
+    skipped rather than guessed at — same policy as the PubMed/arXiv/RSS
+    parsers above."""
+    items = []
+    for record in payload.get("collection", []):
+        doi = record.get("doi")
+        title = record.get("title")
+        published_date = record.get("date")
+        if not doi or not title or not published_date:
+            continue  # incomplete record — skip it rather than crash the whole batch
+        try:
+            date.fromisoformat(published_date)
+        except ValueError:
+            continue  # medRxiv dates are documented as YYYY-MM-DD; guard rather than trust blindly
+
+        items.append(normalize_item(
+            source_key="medrxiv",
+            title=title,
+            url=f"https://doi.org/{doi}",
+            published_date=published_date,
+            summary=record.get("abstract", ""),
+            id_hint=f"doi:{doi}",
+        ))
+    return items
+
+
+def fetch_medrxiv(days: int = 7, max_results: int = 20) -> list[dict]:
+    # The API's docs describe an "Nd" interval shorthand ("7d" = 7 most
+    # recent days), but confirmed live (2026-09-01, GitHub Actions): "7d",
+    # "14d", and a bare count ("5") all return HTTP 200 with an EMPTY
+    # collection and {"status": "Both dates must be in yyyy-mm-dd format"}
+    # — silently zero results rather than an error. Only an explicit
+    # start/end date range actually works, confirmed live with real
+    # postings returned. So the days lookback is computed into one here.
+    end = date.today()
+    start = end - timedelta(days=days)
+    url = f"https://api.medrxiv.org/details/medrxiv/{start.isoformat()}/{end.isoformat()}/0/json"
+    with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    return parse_medrxiv_json(payload)[:max_results]
