@@ -32,7 +32,7 @@ if not api_key:
     print("GEMINI_API_KEY not set — skipping narration diagnostic")
     sys.exit(0)
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.6-flash"
 url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={api_key}"
 
 source_text = (
