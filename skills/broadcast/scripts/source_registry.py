@@ -15,8 +15,8 @@ Two independent axes, deliberately kept separate:
     handoff's named portfolio focus) vs. "broad_industry" (everything else
     healthcare-AI-relevant). This maps onto the segment structure downstream
     — throughline stories anchor the top-three segment, broad_industry
-    populates quick hits — but computing that mapping is the ranking
-    stage's job, not this module's.
+    populates quick hits — but computing that mapping is rank.py's job
+    (Phase 3c), not this module's.
 
 The exact weighting numbers (authority floors, half-lives, the throughline
 keyword list) are a documented judgment call, not a validated measurement —

@@ -34,6 +34,20 @@ def vec(*values):
     return list(values)
 
 
+class StoryId(unittest.TestCase):
+    def test_deterministic(self):
+        self.assertEqual(dedup_store.story_id("doi:10.1/a"), dedup_store.story_id("doi:10.1/a"))
+
+    def test_different_ids_hash_differently(self):
+        self.assertNotEqual(dedup_store.story_id("doi:10.1/a"), dedup_store.story_id("doi:10.1/b"))
+
+    def test_matches_what_record_story_assigns(self):
+        # rank.py builds same_day_entries dicts with this before the item is
+        # persisted — must match record_story()'s own assignment exactly.
+        store = dedup_store.record_story({"entries": []}, "doi:10.1/a", "Title A", vec(1, 0, 0), "2026-09-01")
+        self.assertEqual(store["entries"][0]["story_id"], dedup_store.story_id("doi:10.1/a"))
+
+
 class CanonicalizeId(unittest.TestCase):
     def test_extracts_doi_from_url(self):
         self.assertEqual(dedup_store.canonicalize_id("https://doi.org/10.1000/xyz1"), "doi:10.1000/xyz1")

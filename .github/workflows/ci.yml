@@ -83,3 +83,6 @@ jobs:
 
       - name: broadcast — ingest.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_ingest.py
+
+      - name: broadcast — rank.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_rank.py
