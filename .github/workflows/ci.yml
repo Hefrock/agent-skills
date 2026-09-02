@@ -41,6 +41,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcp/evidence-pinning/package-lock.json
+
+      - name: broadcast — build evidence-pinning-mcp (needed by the evidence-pinning integration tests below)
+        working-directory: mcp/evidence-pinning
+        run: |
+          npm ci
+          npm run build
+
       - name: agent-eval — unit-test the scorer (stdlib unittest)
         run: python skills/agent-eval/scripts/test_score_eval.py
 
@@ -86,3 +98,9 @@ jobs:
 
       - name: broadcast — rank.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_rank.py
+
+      - name: broadcast — evidence_pinning_client.py regression suite (drives the real built MCP server, stdlib unittest)
+        run: python skills/broadcast/scripts/test_evidence_pinning_client.py
+
+      - name: broadcast — evidence.py regression suite (drives the real built MCP server, stdlib unittest)
+        run: python skills/broadcast/scripts/test_evidence.py
