@@ -104,3 +104,6 @@ jobs:
 
       - name: broadcast — evidence.py regression suite (drives the real built MCP server, stdlib unittest)
         run: python skills/broadcast/scripts/test_evidence.py
+
+      - name: broadcast — script_gen.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_script_gen.py
