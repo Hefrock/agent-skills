@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: TEMP — diagnose FDA guidance documents data source
+        run: python skills/broadcast/scripts/_diagnose_fda_guidance.py
+
       - name: broadcast — live smoke test (real network calls)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
