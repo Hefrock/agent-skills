@@ -106,7 +106,12 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 #   ]
 # }
 
-def _story_id(canonical_id: str) -> str:
+def story_id(canonical_id: str) -> str:
+    """Public since rank.py needs to build same_day_entries dicts (which
+    require a story_id, per classify_story's contract) for items it hasn't
+    persisted yet — record_story() also uses this internally so a
+    freshly-added entry's story_id always matches what a same-run caller
+    would compute for the same canonical_id."""
     return hashlib.sha256(canonical_id.encode("utf-8")).hexdigest()[:16]
 
 
@@ -202,15 +207,15 @@ def record_story(store: dict, canonical_id: str, title: str, embedding: list[flo
     """Add a new entry, or update last_seen_date/run_ids on an existing one
     (a rolling-window match, or a repeat call for the same story within a
     run). Returns the updated store; does not write to disk."""
-    story_id = _story_id(canonical_id)
+    sid = story_id(canonical_id)
     for entry in store["entries"]:
-        if entry["story_id"] == story_id:
+        if entry["story_id"] == sid:
             entry["last_seen_date"] = current_date
             if current_date not in entry["run_ids"]:
                 entry["run_ids"].append(current_date)
             return store
     store["entries"].append({
-        "story_id": story_id,
+        "story_id": sid,
         "canonical_id": canonical_id,
         "title": title,
         "embedding": embedding,
