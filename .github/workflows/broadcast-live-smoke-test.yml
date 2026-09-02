@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: TEMP — diagnose ONC/ASTP feed URL
+        run: python skills/broadcast/scripts/_diagnose_onc_astp.py
+
       - name: broadcast — live smoke test (real network calls)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
