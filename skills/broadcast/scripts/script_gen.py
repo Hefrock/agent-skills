@@ -25,11 +25,26 @@ failure buckets" pattern rank.py/evidence.py already use
 (dropped_duplicates, not_selected, skipped_no_summary, failed).
 
 Segment shape: {"segment_type", "text", "canonical_id", "claim_id",
-"source_id"}. Non-story segments (intro/transition/outro) carry text
-only — canonical_id/claim_id/source_id are None for those, so a
-downstream stage can always find "which pinned claim backs this line of
-narration" (or confirm there isn't one, for the connective segments) by
-checking claim_id.
+"source_id"}. Non-story segments (intro/disclosure/transition/outro)
+carry text only — canonical_id/claim_id/source_id are None for those, so
+a downstream stage can always find "which pinned claim backs this line
+of narration" (or confirm there isn't one, for the connective segments)
+by checking claim_id.
+
+Every episode carries a fixed "disclosure" segment right after the
+intro, unconditionally — not something a caller opts into per run. Major
+podcast platforms (Apple Podcasts, as of 2026) require prominent AI-use
+disclosure, both in the audio itself and in episode/show metadata,
+whenever AI delivers a material portion of a show's content — and this
+pipeline's audio is 100% synthesized speech (audio_synth.py), which
+already clears that bar regardless of whether any given segment's words
+came from a template or, later, an LLM rewrite. DEFAULT_DISCLOSURE_TEXT
+is deliberately a fixed, human-approved constant, never LLM-generated —
+the one sentence that has to be reliably accurate every single time
+shouldn't itself be something a model could get wrong. distribute.py
+reads this segment back out of the script to carry the same disclosure
+into episode/feed metadata too (see its own docstring), so the text
+lives in exactly one place.
 
 stdlib only, matching this repo's other reference tooling."""
 
@@ -40,6 +55,12 @@ from datetime import date
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import source_registry  # noqa: E402
+
+DEFAULT_DISCLOSURE_TEXT = (
+    "This is an automated healthcare AI news briefing. Stories are selected, "
+    "linked to their original sources, and narrated by an AI pipeline, and "
+    "this audio is synthesized speech, not a human voice."
+)
 
 
 def _format_date_for_speech(iso_date: str) -> str:
@@ -84,7 +105,14 @@ def _connective_segment(segment_type: str, text: str) -> dict:
     return {"segment_type": segment_type, "text": text, "canonical_id": None, "claim_id": None, "source_id": None}
 
 
-def generate_script(rank_result: dict, pinned: dict, registry: dict, run_date: str, show_name: str = "Healthcare AI Briefing") -> dict:
+def generate_script(
+    rank_result: dict,
+    pinned: dict,
+    registry: dict,
+    run_date: str,
+    show_name: str = "Healthcare AI Briefing",
+    disclosure_text: str = DEFAULT_DISCLOSURE_TEXT,
+) -> dict:
     """rank_result is rank_stories()'s return value (only top_three and
     quick_hits are read here — not_selected/dropped_duplicates/store are
     not this stage's concern). pinned is
@@ -103,10 +131,12 @@ def generate_script(rank_result: dict, pinned: dict, registry: dict, run_date: s
         "excluded_no_evidence": [item, ...],  # selected but never pinned — not read aloud
       }
 
-    segment_type is one of "intro", "top_three_item", "quick_hits_transition",
-    "quick_hits_item", "outro". "quick_hits_transition" is only emitted
-    when at least one quick-hit item survives grounding — an episode
-    shouldn't tease a segment that turns out to be empty."""
+    segment_type is one of "intro", "disclosure", "top_three_item",
+    "quick_hits_transition", "quick_hits_item", "outro". "disclosure"
+    always appears exactly once, right after "intro" — see this module's
+    docstring for why it's unconditional. "quick_hits_transition" is
+    only emitted when at least one quick-hit item survives grounding —
+    an episode shouldn't tease a segment that turns out to be empty."""
     claim_index = _build_claim_index(pinned)
 
     included_top_three = []
@@ -137,6 +167,7 @@ def generate_script(rank_result: dict, pinned: dict, registry: dict, run_date: s
         f"Today: {top_n} top {'story' if top_n == 1 else 'stories'} "
         f"and {quick_n} quick hit{'' if quick_n == 1 else 's'}.",
     ))
+    segments.append(_connective_segment("disclosure", disclosure_text))
 
     for item, claim in included_top_three:
         segments.append(_story_segment("top_three_item", item, registry, claim))
