@@ -25,3 +25,8 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
+
+      - name: TEMP — round 1 — diagnose Gemini TTS
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python skills/broadcast/scripts/_diagnose_tts.py
