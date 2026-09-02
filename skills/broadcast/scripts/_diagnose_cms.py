@@ -1,36 +1,19 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic — CMS.gov has an official "Newsroom Feeds" page
-(cms.gov/newsroom/rss-feeds) listing RSS feed URLs, per WebSearch. Fetches
-that page to extract the real feed URL(s) rather than guessing at a slug
-(FDA guidance's four 404s taught that lesson). Deleted before the real PR
-is finalized."""
-import re
-import urllib.request
+"""TEMP diagnostic round 2 — round 1 found that
+cms.gov/newsroom/rss-feeds ITSELF serves RSS XML directly
+(content-type application/rss+xml, not an HTML links page). This runs
+the existing fetch_rss/parse_rss_xml against it live to check whether it
+needs zero new code, like onc_astp, or a pubDate-format fix like
+fierce_healthcare. Deleted before the real PR is finalized."""
+import json
+import os
+import sys
 
-_UA = "Mozilla/5.0 (compatible; healthcare-ai-briefing/0.1; +https://github.com/Hefrock/agent-skills)"
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import ingest  # noqa: E402
 
-
-def _get(url, headers=None):
-    req = urllib.request.Request(url, headers=headers or {"User-Agent": _UA})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read()
-            return resp.status, resp.headers.get("Content-Type", ""), body
-    except Exception as e:
-        return None, None, f"{type(e).__name__}: {e}".encode()
-
-
-url = "https://www.cms.gov/newsroom/rss-feeds"
-status, ctype, body = _get(url)
-print(f"=== {url} ===")
-print(f"status={status} content-type={ctype!r} length={len(body)}")
-text = body.decode("utf-8", errors="replace") if status == 200 else ""
-if text:
-    # Look for any href containing "rss", "feed", or ending .xml
-    hrefs = re.findall(r'href="([^"]+)"', text)
-    candidates = [h for h in hrefs if any(k in h.lower() for k in ("rss", "feed", ".xml"))]
-    print(f"candidate hrefs ({len(candidates)}):")
-    for c in sorted(set(candidates)):
-        print(f"  {c}")
-else:
-    print(body[:500])
+items = ingest.fetch_rss("https://www.cms.gov/newsroom/rss-feeds", "cms")
+print(f"parsed {len(items)} items via the existing generic RSS parser")
+for item in items[:3]:
+    print(json.dumps(item, indent=2))
