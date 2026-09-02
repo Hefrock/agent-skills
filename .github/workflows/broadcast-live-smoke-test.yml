@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: TEMP — diagnose regulations.gov API response shape
+        run: python skills/broadcast/scripts/_diagnose_regulations_gov.py
+
       - name: broadcast — live smoke test (real network calls)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
