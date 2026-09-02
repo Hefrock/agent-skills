@@ -40,8 +40,19 @@ returned, which Google documents as always pointing at their current
 recommended flash model. This sidesteps the deprecation-churn problem
 this whole reconnaissance has been chasing (2.5-flash deprecated,
 3.6-flash's specific dated id possibly still ramping up capacity) by
-never hard-coding a dated id in the first place. If this pans out,
-narrate.py's DEFAULT_TEXT_MODEL should use this alias too."""
+never hard-coding a dated id in the first place.
+
+Round 5: gemini-flash-latest hit the SAME 503 "high demand" error as
+gemini-3.6-flash — real evidence the alias currently resolves to that
+same newest, still-overloaded model, not a routing fix. Rather than
+assume this is transient and keep re-triggering the newest tier, drop
+back to gemini-3.5-flash — an established, non-preview, non-"latest"
+mid-tier model one generation behind the currently-overloaded one, which
+should have mature provisioning. If this works, it's the pragmatic
+choice for narrate.py's DEFAULT_TEXT_MODEL; the deprecation-churn problem
+this reconnaissance ran into is a real, ongoing maintenance cost either
+way and worth flagging back to the user rather than solving by
+definition with an alias."""
 
 import json
 import os
@@ -69,7 +80,7 @@ try:
 except urllib.error.HTTPError as e:
     print(f"ListModels HTTPError {e.code}: {e.read().decode('utf-8', errors='replace')[:1000]}")
 
-MODEL = "gemini-flash-latest"
+MODEL = "gemini-3.5-flash"
 url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={api_key}"
 
 source_text = (
