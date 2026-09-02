@@ -122,3 +122,6 @@ jobs:
 
       - name: broadcast — distribute.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_distribute.py
+
+      - name: broadcast — narrate.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_narrate.py
