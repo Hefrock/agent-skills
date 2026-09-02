@@ -290,6 +290,31 @@ class RunEpisodeWiring(unittest.TestCase):
         self.assertEqual(result["ingest_failed"][0]["source_key"], "arxiv")
         self.assertIsNotNone(result["episode_audio"])
 
+    def test_default_synth_delay_is_zero_no_sleep_between_calls(self):
+        # run_episode()'s own default is 0.0 — the CLI is the one that
+        # opts into a nonzero delay (see DEFAULT_SYNTH_DELAY_SECONDS and
+        # main()'s argparse default) — so callers that don't ask for a
+        # delay, tests included, never pay for one.
+        client = FakeEvidenceClient()
+        with mock.patch.object(orchestrate.time, "sleep") as mock_sleep:
+            orchestrate.run_episode(
+                "2026-09-02", self.registry, self.store, client, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+            )
+        mock_sleep.assert_not_called()
+
+    def test_nonzero_synth_delay_sleeps_between_but_not_before_the_first_segment(self):
+        client = FakeEvidenceClient()
+        with mock.patch.object(orchestrate.time, "sleep") as mock_sleep:
+            result = orchestrate.run_episode(
+                "2026-09-02", self.registry, self.store, client, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, synth_fn=self._fake_synth_fn,
+                synth_delay_seconds=3.0,
+            )
+        segment_count = len(result["script"]["segments"])
+        self.assertEqual(mock_sleep.call_count, segment_count - 1)
+        mock_sleep.assert_called_with(3.0)
+
 
 if __name__ == "__main__":
     unittest.main()

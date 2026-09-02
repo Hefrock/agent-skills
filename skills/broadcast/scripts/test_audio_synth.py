@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Tests for audio_synth.py's pure logic (_pcm_to_wav, concatenate_wav_clips,
-assemble_episode_audio) — no network. synthesize_text() is deliberately NOT
-unit tested here, same treatment dedup_store.embed_text() gets: it's a thin
-network wrapper, verified live via live_smoke_test.py instead (see that
-file for the real, GitHub-Actions-confirmed request/response shape this
-module's docstring documents).
+assemble_episode_audio, _is_retryable) — no network. synthesize_text()
+itself is deliberately NOT unit tested here, same treatment
+dedup_store.embed_text() gets: it's a thin network wrapper, verified live
+via live_smoke_test.py instead (see that file, and orchestrate.py's real
+GitHub Actions run, for the real request/response/failure shapes this
+module's docstring documents — including the real 429/timeout rate-limit
+_is_retryable() exists to handle).
 
 Run: python test_audio_synth.py"""
 
@@ -12,6 +14,7 @@ import importlib.util
 import io
 import os
 import unittest
+import urllib.error
 import wave
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -164,6 +167,30 @@ class AssembleEpisodeAudio(unittest.TestCase):
         clips = [make_wav(1), make_wav(1), make_wav(1)]
         result = audio_synth.assemble_episode_audio(script, clips)
         self.assertEqual(len(result["segments"]), 3)
+
+
+class IsRetryable(unittest.TestCase):
+    def test_http_429_is_retryable(self):
+        exc = urllib.error.HTTPError(url="x", code=429, msg="Too Many Requests", hdrs=None, fp=None)
+        self.assertTrue(audio_synth._is_retryable(exc))
+
+    def test_http_500_is_not_retryable(self):
+        exc = urllib.error.HTTPError(url="x", code=500, msg="Internal Server Error", hdrs=None, fp=None)
+        self.assertFalse(audio_synth._is_retryable(exc))
+
+    def test_http_400_is_not_retryable(self):
+        # A malformed request retrying won't fix itself by waiting.
+        exc = urllib.error.HTTPError(url="x", code=400, msg="Bad Request", hdrs=None, fp=None)
+        self.assertFalse(audio_synth._is_retryable(exc))
+
+    def test_timeout_error_is_retryable(self):
+        # The exact exception type real synthesize_text() calls hit live
+        # (confirmed via orchestrate.py's first real end-to-end run).
+        self.assertTrue(audio_synth._is_retryable(TimeoutError("The read operation timed out")))
+
+    def test_unrelated_exception_is_not_retryable(self):
+        self.assertFalse(audio_synth._is_retryable(KeyError("candidates")))
+        self.assertFalse(audio_synth._is_retryable(ValueError("bad json")))
 
 
 if __name__ == "__main__":

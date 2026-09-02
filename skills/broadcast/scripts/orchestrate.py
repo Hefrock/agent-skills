@@ -39,6 +39,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,6 +55,7 @@ import qa_gate  # noqa: E402
 import audio_synth  # noqa: E402
 
 DEFAULT_MAX_RESULTS_PER_SOURCE = 10
+DEFAULT_SYNTH_DELAY_SECONDS = 2.0
 
 
 def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
@@ -138,6 +140,7 @@ def run_episode(
     embed_fn=dedup_store.embed_text,
     synth_fn=audio_synth.synthesize_text,
     show_name: str = "Healthcare AI Briefing",
+    synth_delay_seconds: float = 0.0,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
     -> embed -> rank -> pin evidence -> generate script -> QA gate ->
@@ -166,6 +169,20 @@ def run_episode(
     synthesized clips, so a partial batch can't be safely assembled at
     all, unlike every other stage's "drop the one bad item" policy.
 
+    synth_delay_seconds (default 0.0 here — see DEFAULT_SYNTH_DELAY_SECONDS
+    and the __main__ CLI below, which actually opts into a nonzero one)
+    is a real, live-confirmed necessity, not a defensive guess:
+    orchestrate.py's first real end-to-end GitHub Actions run synthesized
+    13 segments in a tight sequential loop with no delay and hit Gemini
+    TTS's real rate limit (3 HTTP 429s, 4 more read timeouts almost
+    certainly from the same throttling). A small delay between calls
+    here is the first line of defense; synth_fn's own retry-with-backoff
+    (see audio_synth.synthesize_text's _is_retryable()) is the second,
+    for whatever the delay alone doesn't prevent. Defaulting to 0.0 here
+    keeps run_episode() itself fast and predictable for callers that
+    don't need it (tests included) — the delay is an orchestration-time
+    policy choice, not something inherent to a single synthesis call.
+
     Returns:
       {
         "run_date", "ingest_failed", "embed_failed",
@@ -188,7 +205,9 @@ def run_episode(
     synth_failed = []
     if qa_result["passed"]:
         segment_audio = []
-        for segment in script["segments"]:
+        for i, segment in enumerate(script["segments"]):
+            if i > 0 and synth_delay_seconds > 0:
+                time.sleep(synth_delay_seconds)
             try:
                 segment_audio.append(synth_fn(segment["text"], api_key))
             except Exception as e:
@@ -245,6 +264,10 @@ def main() -> int:
     parser.add_argument("--data-dir", required=True, help="Directory for persistent state (dedup store, evidence store) and this run's output. Not inside the repo — this is runtime state, not source.")
     parser.add_argument("--date", default=date.today().isoformat(), help="Run date, ISO format (default: today).")
     parser.add_argument("--max-results-per-source", type=int, default=DEFAULT_MAX_RESULTS_PER_SOURCE)
+    parser.add_argument(
+        "--synth-delay-seconds", type=float, default=DEFAULT_SYNTH_DELAY_SECONDS,
+        help="Pause between synthesize_text() calls, to stay under Gemini TTS's real rate limit (confirmed live: a tight sequential loop with no delay hit HTTP 429s and read timeouts).",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -262,7 +285,10 @@ def main() -> int:
     store = dedup_store.load_store(store_path)  # already returns a fresh {"entries": []} store if store_path doesn't exist yet
 
     with evidence_pinning_client.EvidencePinningClient(store_path=evidence_store_path) as client:
-        result = run_episode(args.date, registry, store, client, api_key, max_results_per_source=args.max_results_per_source)
+        result = run_episode(
+            args.date, registry, store, client, api_key,
+            max_results_per_source=args.max_results_per_source, synth_delay_seconds=args.synth_delay_seconds,
+        )
 
     dedup_store.save_store(result["store"], store_path)
 
