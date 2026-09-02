@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Tests for distribute.py.
+
+Two suites, matching the module's own split:
+  - pure-logic tests (_rfc822_date, build_episode_metadata, build_feed_xml,
+    build_vault_note) — no disk I/O, no network.
+  - PublishEpisode — drives the real publish_episode() I/O function
+    against a real temp directory (genuine file reads/writes, no
+    network) — the one place in this module that isn't pure.
+
+Run: python test_distribute.py"""
+
+import importlib.util
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+import xml.etree.ElementTree as ET
+import json
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load(name):
+    # See test_evidence.py's load() docstring for why sys.modules
+    # registration matters here: distribute.py does its own plain
+    # `import qa_gate` internally.
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, f"{name}.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+qa_gate = load("qa_gate")
+distribute = load("distribute")
+
+
+def make_segment(segment_type, text="Some text.", canonical_id=None, claim_id=None, source_id=None):
+    return {"segment_type": segment_type, "text": text, "canonical_id": canonical_id, "claim_id": claim_id, "source_id": source_id}
+
+
+def make_story_segment(segment_type, canonical_id, text):
+    return make_segment(segment_type, text=text, canonical_id=canonical_id, claim_id=f"claim-{canonical_id}", source_id=f"src-{canonical_id}")
+
+
+def make_script(segments, run_date="2026-09-02", show_name="Healthcare AI Briefing", excluded_no_evidence=None):
+    return {"run_date": run_date, "show_name": show_name, "segments": segments, "excluded_no_evidence": excluded_no_evidence or []}
+
+
+class Rfc822Date(unittest.TestCase):
+    def test_formats_as_rfc822_gmt(self):
+        result = distribute._rfc822_date("2026-09-02")
+        self.assertEqual(result, "Wed, 02 Sep 2026 00:00:00 GMT")
+
+    def test_different_date_formats_correctly(self):
+        result = distribute._rfc822_date("2026-01-15")
+        self.assertEqual(result, "Thu, 15 Jan 2026 00:00:00 GMT")
+
+
+class BuildEpisodeMetadata(unittest.TestCase):
+    def test_title_includes_show_name_and_run_date(self):
+        script = make_script([make_segment("intro")], run_date="2026-09-02", show_name="My Show")
+        meta = distribute.build_episode_metadata(script, 12345, "https://example.com/2026-09-02.wav")
+        self.assertEqual(meta["title"], "My Show — 2026-09-02")
+
+    def test_description_joins_only_story_segment_texts(self):
+        segments = [
+            make_segment("intro", text="Welcome."),
+            make_story_segment("top_three_item", "c1", "Story one text."),
+            make_segment("quick_hits_transition", text="Now quick hits."),
+            make_story_segment("quick_hits_item", "c2", "Story two text."),
+            make_segment("outro", text="Goodbye."),
+        ]
+        script = make_script(segments)
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["description"], "Story one text. Story two text.")
+
+    def test_empty_story_segments_produces_empty_description(self):
+        script = make_script([make_segment("intro"), make_segment("outro")])
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["description"], "")
+
+    def test_guid_is_deterministic_from_show_name_and_run_date(self):
+        script = make_script([], run_date="2026-09-02", show_name="My Show")
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["guid"], "My Show-2026-09-02")
+
+    def test_carries_through_audio_url_length_and_mime_type(self):
+        script = make_script([])
+        meta = distribute.build_episode_metadata(script, 98765, "https://x/ep.wav", mime_type="audio/wav")
+        self.assertEqual(meta["audio_url"], "https://x/ep.wav")
+        self.assertEqual(meta["audio_byte_length"], 98765)
+        self.assertEqual(meta["mime_type"], "audio/wav")
+
+    def test_carries_through_run_date_for_sorting(self):
+        script = make_script([], run_date="2026-09-02")
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["run_date"], "2026-09-02")
+
+    def test_pub_date_matches_rfc822_date_helper(self):
+        script = make_script([], run_date="2026-09-02")
+        meta = distribute.build_episode_metadata(script, 100, "https://x/1.wav")
+        self.assertEqual(meta["pub_date_rfc822"], distribute._rfc822_date("2026-09-02"))
+
+
+FEED_CONFIG = {"title": "Test Feed", "link": "https://example.com", "description": "A test feed."}
+
+
+def make_episode(run_date, title="Ep", guid="guid-1", audio_url="https://x/ep.wav"):
+    return {
+        "title": title,
+        "description": "A description.",
+        "pub_date_rfc822": distribute._rfc822_date(run_date),
+        "guid": guid,
+        "audio_url": audio_url,
+        "audio_byte_length": 1000,
+        "mime_type": "audio/wav",
+        "run_date": run_date,
+    }
+
+
+class BuildFeedXml(unittest.TestCase):
+    def test_produces_parseable_xml(self):
+        xml_str = distribute.build_feed_xml([make_episode("2026-09-02")], FEED_CONFIG)
+        root = ET.fromstring(xml_str)  # raises if malformed
+        self.assertEqual(root.tag, "rss")
+
+    def test_channel_metadata_present(self):
+        xml_str = distribute.build_feed_xml([], FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        channel = root.find("channel")
+        self.assertEqual(channel.find("title").text, "Test Feed")
+        self.assertEqual(channel.find("link").text, "https://example.com")
+        self.assertEqual(channel.find("description").text, "A test feed.")
+        self.assertEqual(channel.find("language").text, distribute.DEFAULT_LANGUAGE)
+
+    def test_zero_episodes_produces_a_valid_empty_channel(self):
+        xml_str = distribute.build_feed_xml([], FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        items = root.find("channel").findall("item")
+        self.assertEqual(items, [])
+
+    def test_item_count_matches_episode_count(self):
+        episodes = [make_episode("2026-09-01"), make_episode("2026-09-02"), make_episode("2026-08-30")]
+        xml_str = distribute.build_feed_xml(episodes, FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        self.assertEqual(len(root.find("channel").findall("item")), 3)
+
+    def test_items_sorted_newest_first_regardless_of_input_order(self):
+        episodes = [make_episode("2026-08-30", guid="oldest"), make_episode("2026-09-02", guid="newest"), make_episode("2026-09-01", guid="middle")]
+        xml_str = distribute.build_feed_xml(episodes, FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        guids = [item.find("guid").text for item in root.find("channel").findall("item")]
+        self.assertEqual(guids, ["newest", "middle", "oldest"])
+
+    def test_enclosure_attributes_correct(self):
+        episode = make_episode("2026-09-02", audio_url="https://x/ep.wav")
+        episode["audio_byte_length"] = 55555
+        xml_str = distribute.build_feed_xml([episode], FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        enclosure = root.find("channel").find("item").find("enclosure")
+        self.assertEqual(enclosure.get("url"), "https://x/ep.wav")
+        self.assertEqual(enclosure.get("length"), "55555")
+        self.assertEqual(enclosure.get("type"), "audio/wav")
+
+    def test_guid_is_not_a_permalink(self):
+        xml_str = distribute.build_feed_xml([make_episode("2026-09-02")], FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        guid_el = root.find("channel").find("item").find("guid")
+        self.assertEqual(guid_el.get("isPermaLink"), "false")
+
+    def test_special_characters_in_title_are_escaped_correctly(self):
+        episode = make_episode("2026-09-02", title="FDA & CMS: A \"Update\"")
+        xml_str = distribute.build_feed_xml([episode], FEED_CONFIG)
+        root = ET.fromstring(xml_str)  # would raise on bad escaping
+        self.assertEqual(root.find("channel").find("item").find("title").text, "FDA & CMS: A \"Update\"")
+
+    def test_author_included_when_present_in_feed_config(self):
+        config = dict(FEED_CONFIG, author="Jane Doe")
+        xml_str = distribute.build_feed_xml([], config)
+        root = ET.fromstring(xml_str)
+        self.assertEqual(root.find("channel").find("author").text, "Jane Doe")
+
+    def test_author_omitted_when_absent_from_feed_config(self):
+        xml_str = distribute.build_feed_xml([], FEED_CONFIG)
+        root = ET.fromstring(xml_str)
+        self.assertIsNone(root.find("channel").find("author"))
+
+    def test_custom_language_overrides_default(self):
+        config = dict(FEED_CONFIG, language="en-gb")
+        xml_str = distribute.build_feed_xml([], config)
+        root = ET.fromstring(xml_str)
+        self.assertEqual(root.find("channel").find("language").text, "en-gb")
+
+
+class BuildVaultNote(unittest.TestCase):
+    def setUp(self):
+        segments = [
+            make_segment("intro", text="Welcome."),
+            make_story_segment("top_three_item", "c1", "Story one text."),
+            make_segment("outro", text="Goodbye."),
+        ]
+        self.script = make_script(segments, run_date="2026-09-02", show_name="My Show")
+        self.meta = distribute.build_episode_metadata(self.script, 100, "https://x/ep.wav")
+
+    def test_frontmatter_fields_present(self):
+        note = distribute.build_vault_note(self.script, self.meta)
+        self.assertIn("type: source", note)
+        self.assertIn("status: draft", note)
+        self.assertIn("confidence: high", note)
+        self.assertIn("updated: 2026-09-02", note)
+
+    def test_title_heading_matches_episode_title(self):
+        note = distribute.build_vault_note(self.script, self.meta)
+        self.assertIn(f"# {self.meta['title']}", note)
+
+    def test_author_and_link_fields_present(self):
+        note = distribute.build_vault_note(self.script, self.meta)
+        self.assertIn("**Author:** My Show", note)
+        self.assertIn("**Link / DOI:** https://x/ep.wav", note)
+
+    def test_story_text_appears_as_a_key_takeaway_bullet(self):
+        note = distribute.build_vault_note(self.script, self.meta)
+        self.assertIn("- Story one text.", note)
+
+    def test_connective_segment_text_does_not_appear_as_a_takeaway(self):
+        note = distribute.build_vault_note(self.script, self.meta)
+        self.assertNotIn("- Welcome.", note)
+        self.assertNotIn("- Goodbye.", note)
+
+    def test_placeholder_sections_present_for_a_human_or_wiki_operator_to_fill(self):
+        note = distribute.build_vault_note(self.script, self.meta)
+        self.assertIn("## Concepts referenced", note)
+        self.assertIn("## Quotes worth keeping", note)
+
+
+class PublishEpisode(unittest.TestCase):
+    def setUp(self):
+        self.data_dir = tempfile.mkdtemp(prefix="distribute-data-")
+        self.publish_dir = tempfile.mkdtemp(prefix="distribute-publish-")
+        self.run_date = "2026-09-02"
+        episode_dir = os.path.join(self.data_dir, "episodes", self.run_date)
+        os.makedirs(episode_dir)
+        self.script = make_script(
+            [make_segment("intro"), make_story_segment("top_three_item", "c1", "Story one."), make_segment("outro")],
+            run_date=self.run_date,
+        )
+        with open(os.path.join(episode_dir, "script.json"), "w", encoding="utf-8") as f:
+            json.dump(self.script, f)
+        with open(os.path.join(episode_dir, "episode.wav"), "wb") as f:
+            f.write(b"RIFF-fake-wav-bytes-for-testing")
+
+    def tearDown(self):
+        shutil.rmtree(self.data_dir, ignore_errors=True)
+        shutil.rmtree(self.publish_dir, ignore_errors=True)
+
+    def _publish(self):
+        return distribute.publish_episode(self.data_dir, self.run_date, self.publish_dir, "https://example.com/", FEED_CONFIG)
+
+    def test_copies_the_audio_file_into_publish_dir(self):
+        result = self._publish()
+        self.assertTrue(os.path.exists(result["audio_path"]))
+        with open(result["audio_path"], "rb") as f:
+            self.assertEqual(f.read(), b"RIFF-fake-wav-bytes-for-testing")
+
+    def test_writes_a_parseable_feed_xml(self):
+        result = self._publish()
+        with open(result["feed_path"], "r", encoding="utf-8") as f:
+            ET.fromstring(f.read())  # raises if malformed
+
+    def test_writes_a_vault_note_file(self):
+        result = self._publish()
+        self.assertTrue(os.path.exists(result["vault_note_path"]))
+        with open(result["vault_note_path"], "r", encoding="utf-8") as f:
+            self.assertIn("type: source", f.read())
+
+    def test_audio_url_strips_trailing_slash_from_base_url(self):
+        result = self._publish()
+        self.assertEqual(result["episode_metadata"]["audio_url"], "https://example.com/episodes/2026-09-02.wav")
+
+    def test_republishing_the_same_date_replaces_not_duplicates_the_feed_entry(self):
+        self._publish()
+        self._publish()
+        index_path = os.path.join(self.publish_dir, "feed-episodes.json")
+        with open(index_path, "r", encoding="utf-8") as f:
+            episodes = json.load(f)
+        self.assertEqual(len(episodes), 1)
+
+    def test_publishing_a_second_date_keeps_both_episodes_in_the_index(self):
+        self._publish()
+        second_dir = os.path.join(self.data_dir, "episodes", "2026-09-03")
+        os.makedirs(second_dir)
+        script2 = make_script([make_segment("intro"), make_segment("outro")], run_date="2026-09-03")
+        with open(os.path.join(second_dir, "script.json"), "w", encoding="utf-8") as f:
+            json.dump(script2, f)
+        with open(os.path.join(second_dir, "episode.wav"), "wb") as f:
+            f.write(b"more-fake-wav-bytes")
+        distribute.publish_episode(self.data_dir, "2026-09-03", self.publish_dir, "https://example.com/", FEED_CONFIG)
+        index_path = os.path.join(self.publish_dir, "feed-episodes.json")
+        with open(index_path, "r", encoding="utf-8") as f:
+            episodes = json.load(f)
+        self.assertEqual({e["run_date"] for e in episodes}, {"2026-09-02", "2026-09-03"})
+
+    def test_audio_byte_length_matches_the_actual_written_file_size(self):
+        result = self._publish()
+        self.assertEqual(result["episode_metadata"]["audio_byte_length"], os.path.getsize(result["audio_path"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

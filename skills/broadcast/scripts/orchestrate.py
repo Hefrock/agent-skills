@@ -304,6 +304,15 @@ def main() -> int:
     with open(os.path.join(episode_dir, "report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
+    # The full script (unlike report.json's counts-only summary) is what
+    # distribute.py (Phase 8b) needs to build a feed description and vault
+    # note from real story content — persisted here since script.json's
+    # segments are plain JSON-safe dicts (no raw audio bytes), the same
+    # "pure data out, caller decides what to persist" boundary every
+    # other stage already draws.
+    with open(os.path.join(episode_dir, "script.json"), "w", encoding="utf-8") as f:
+        json.dump(result["script"], f, indent=2)
+
     if result["episode_audio"] is not None:
         with open(os.path.join(episode_dir, "episode.wav"), "wb") as f:
             f.write(result["episode_audio"]["full_episode_wav"])
