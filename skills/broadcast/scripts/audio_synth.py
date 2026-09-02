@@ -40,20 +40,28 @@ constraint as embed_text(); will fail under a default-deny egress policy.
 Real rate limit confirmed live (not hypothetical) via orchestrate.py's
 first real end-to-end GitHub Actions run: synthesizing 13 segments in a
 tight sequential loop got 3 HTTP 429s and 4 read timeouts from Gemini
-TTS. synthesize_text() now retries transient failures (429s and
-timeouts specifically — see _is_retryable()) with exponential backoff
-rather than assuming a single call is always representative of the
-API's real behavior under a realistic call volume.
+TTS. synthesize_text() now retries transient failures via gemini_retry.py
+(429s and timeouts specifically, honoring the server's own Retry-After
+header when present) rather than assuming a single call is always
+representative of the API's real behavior under a realistic call volume
+— see gemini_retry.py's own docstring for the full live-testing
+narrative, including why blind retries made things WORSE on a second
+run before that module got its Retry-After handling.
 
 stdlib only, matching this repo's other reference tooling."""
 
 import base64
 import io
 import json
+import os
+import sys
 import time
-import urllib.error
 import urllib.request
 import wave
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import gemini_retry  # noqa: E402
 
 DEFAULT_MODEL = "gemini-2.5-flash-preview-tts"
 DEFAULT_VOICE = "Kore"
@@ -146,48 +154,6 @@ def assemble_episode_audio(script: dict, segment_audio: list[bytes]) -> dict:
     return {"full_episode_wav": concatenate_wav_clips(segment_audio), "segments": paired}
 
 
-def _is_retryable(exc: Exception) -> bool:
-    """True for a 429 (rate limited) or a read timeout — both confirmed
-    live, not hypothetical: a real GitHub Actions run of orchestrate.py
-    (13 sequential synthesize_text() calls, one per script segment) hit
-    Gemini TTS's real rate limit under that burst — 3 calls got HTTP 429,
-    4 more timed out (almost certainly the same underlying throttling,
-    not a separate problem) — and both are worth one retry rather than
-    losing that segment's audio outright. Anything else (malformed
-    request, auth failure, unexpected response shape) is NOT retried:
-    retrying those would just waste time before failing the same way
-    again, since the problem isn't transient."""
-    if isinstance(exc, urllib.error.HTTPError) and exc.code == 429:
-        return True
-    if isinstance(exc, TimeoutError):
-        return True
-    return False
-
-
-def _retry_delay_seconds(exc: Exception, attempt: int, backoff_base_seconds: float) -> float:
-    """Prefers the server's own Retry-After header (seconds) on a 429
-    response, when present, over a guessed backoff schedule — the server
-    knows its own rate-limit window better than any fixed schedule this
-    module could pick. Falls back to exponential backoff
-    (backoff_base_seconds * 2**attempt) when there's no Retry-After
-    header (or the exception isn't an HTTPError at all — e.g. a
-    timeout). This matters in practice, not just in theory: a live run
-    of orchestrate.py that retried blindly on a fixed backoff schedule
-    made a real rate-limit situation WORSE (more segments failed on the
-    second live run than the first) — each blind retry is itself another
-    request competing for the same exhausted quota, so honoring the
-    server's own stated wait time, when it gives one, is the more
-    correct behavior, not just a defensive nicety."""
-    if isinstance(exc, urllib.error.HTTPError) and exc.headers is not None:
-        retry_after = exc.headers.get("Retry-After")
-        if retry_after is not None:
-            try:
-                return float(retry_after)
-            except ValueError:
-                pass
-    return backoff_base_seconds * (2 ** attempt)
-
-
 # ── Network wrapper (not used by anything above) ────────────────────────
 
 def synthesize_text(
@@ -206,11 +172,11 @@ def synthesize_text(
     split as dedup_store.embed_text(). Requires outbound access to
     generativelanguage.googleapis.com.
 
-    Retries up to max_attempts times, for errors _is_retryable()
+    Retries up to max_attempts times, for errors gemini_retry.is_retryable()
     recognizes as transient only (see its docstring for why those two
     specific errors and not "any exception"). Each retry's wait comes
-    from _retry_delay_seconds() — the server's own Retry-After header
-    when a 429 response provides one, else backoff_base_seconds *
+    from gemini_retry.retry_delay_seconds() — the server's own Retry-After
+    header when a 429 response provides one, else backoff_base_seconds *
     2**attempt. max_attempts/backoff_base_seconds are deliberately
     conservative (kept low/high respectively, not tuned for speed): a
     live run of orchestrate.py that retried more aggressively on a fixed
@@ -239,6 +205,6 @@ def synthesize_text(
             pcm_bytes = base64.b64decode(inline_data["data"])
             return _pcm_to_wav(pcm_bytes)
         except Exception as e:
-            if attempt == max_attempts - 1 or not _is_retryable(e):
+            if attempt == max_attempts - 1 or not gemini_retry.is_retryable(e):
                 raise
-            time.sleep(_retry_delay_seconds(e, attempt, backoff_base_seconds))
+            time.sleep(gemini_retry.retry_delay_seconds(e, attempt, backoff_base_seconds))
