@@ -623,6 +623,137 @@ class ParseFdaGuidanceJson(unittest.TestCase):
         self.assertEqual(ingest.parse_fda_guidance_json([]), [])
 
 
+REGULATIONS_GOV_FIXTURE = {
+    # Real record shape, captured live from api.regulations.gov/v4/documents
+    # (2026-09-02) via the shared DEMO_KEY — see the module docstring.
+    "data": [
+        {
+            "type": "documents",
+            "id": "FDA-2026-N-10100-0001",
+            "attributes": {
+                "agencyId": "FDA",
+                "objectId": "09000064b94b538f",
+                "frDocNum": None,
+                "documentType": "Notice",
+                "withdrawn": False,
+                "highlightedContent": "",
+                "commentEndDate": "2026-11-23T04:59:59Z",
+                "commentStartDate": "2026-09-23T04:00:00Z",
+                "lastModifiedDate": "2026-08-31T22:10:19Z",
+                "openForComment": True,
+                "withinCommentPeriod": False,
+                "postedDate": "2026-08-31T04:00:00Z",
+                "title": "FDA Scientific Public Workshop: Clinical Decision Support Software Using Artificial Intelligence",
+                "docketId": "FDA-2026-N-10100",
+                "subtype": "Meeting",
+                "allowLateComments": False,
+            },
+        },
+        {
+            "type": "documents",
+            "id": "EPA-R05-OW-2026-1618-0106",
+            "attributes": {
+                "agencyId": "EPA",
+                "objectId": "09000064b94b66be",
+                "frDocNum": None,
+                "documentType": "Supporting & Related Material",
+                "withdrawn": False,
+                "highlightedContent": "",
+                "commentEndDate": None,
+                "commentStartDate": None,
+                "lastModifiedDate": "2026-09-01T00:25:38Z",
+                "openForComment": False,
+                "withinCommentPeriod": False,
+                "postedDate": "2026-08-31T04:00:00Z",
+                "title": "1.0 MPC Permit Class I Final 1-15-2015",
+                "docketId": "EPA-R05-OW-2026-1618",
+                "subtype": None,
+                "allowLateComments": False,
+            },
+        },
+    ],
+    "meta": {"hasNextPage": True, "totalElements": 47},
+}
+
+REGULATIONS_GOV_FIXTURE_MISSING_FIELDS = {
+    "data": [
+        {"id": "X-1", "attributes": {"title": "", "postedDate": "2026-08-31T04:00:00Z"}},  # empty title
+        {"id": "", "attributes": {"title": "No id", "postedDate": "2026-08-31T04:00:00Z"}},  # empty id
+        {"id": "X-2", "attributes": {"title": "No date"}},  # missing postedDate
+        {"id": "X-3", "attributes": {"title": "Bad date", "postedDate": "not-a-date"}},  # unparseable
+    ]
+}
+
+REGULATIONS_GOV_FIXTURE_NO_COMMENT_PERIOD = {
+    "data": [
+        {
+            "id": "X-4",
+            "attributes": {
+                "title": "Bare record",
+                "postedDate": "2026-01-15T00:00:00Z",
+                "documentType": "",
+                "agencyId": "",
+                "docketId": "",
+                "openForComment": False,
+                "commentEndDate": None,
+            },
+        },
+    ]
+}
+
+
+class ParseRegulationsGovJson(unittest.TestCase):
+    def test_extracts_two_records(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertEqual(len(items), 2)
+
+    def test_source_key_is_regulations_gov(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertTrue(all(i["source_key"] == "regulations_gov" for i in items))
+
+    def test_url_is_built_from_the_document_id(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertEqual(items[0]["url"], "https://www.regulations.gov/document/FDA-2026-N-10100-0001")
+
+    def test_posted_date_datetime_is_truncated_to_date(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertEqual(items[0]["published_date"], "2026-08-31")
+
+    def test_id_hint_is_docket_prefixed_document_id(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertEqual(items[0]["id_hint"], "docket:FDA-2026-N-10100-0001")
+
+    def test_summary_is_assembled_from_structured_attributes(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        summary = items[0]["summary"]
+        self.assertIn("Notice", summary)
+        self.assertIn("Agency: FDA", summary)
+        self.assertIn("Docket: FDA-2026-N-10100", summary)
+
+    def test_open_comment_period_is_included_in_summary_when_present(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertIn("Open for comment until 2026-11-23", items[0]["summary"])
+
+    def test_closed_comment_period_is_not_mentioned_in_summary(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)
+        self.assertNotIn("Open for comment", items[1]["summary"])
+
+    def test_records_missing_required_fields_are_skipped(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE_MISSING_FIELDS)
+        self.assertEqual(items, [])
+
+    def test_empty_structured_attributes_degrade_to_empty_summary(self):
+        items = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE_NO_COMMENT_PERIOD)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["summary"], "")
+
+    def test_missing_data_key_returns_empty_list(self):
+        self.assertEqual(ingest.parse_regulations_gov_json({}), [])
+
+    def test_empty_data_list_returns_empty_list(self):
+        self.assertEqual(ingest.parse_regulations_gov_json({"data": []}), [])
+
+
 class IngestFeedsIntoDownstreamModules(unittest.TestCase):
     """Integration-shaped tests, still no network: confirms parsed items are
     actually consumable by source_registry.py and dedup_store.py without
@@ -716,6 +847,28 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
     def test_fda_guidance_source_key_is_registered_in_the_real_config_as_regulatory(self):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
         source = self.source_registry.get_source(registry, "fda_guidance")
+        self.assertEqual(source["category"], "regulatory")
+
+    def test_regulations_gov_item_canonicalizes_via_its_docket_id_hint(self):
+        item = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)[0]
+        canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
+        self.assertEqual(canonical, "docket:FDA-2026-N-10100-0001")
+
+    def test_regulations_gov_item_scores_against_the_real_registry_regulatory_category(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)[0]
+        score = self.source_registry.score_source_item(registry, item["source_key"], age_days=0)
+        self.assertAlmostEqual(score, 1.0)  # regulatory: floor 0.9, half_life 30d -> 1.0 at age 0
+
+    def test_regulations_gov_throughline_classification_on_a_real_parsed_title(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        item = ingest.parse_regulations_gov_json(REGULATIONS_GOV_FIXTURE)[0]
+        scope = self.source_registry.classify_topic_scope(item["title"], registry["throughline_keywords"])
+        self.assertEqual(scope, "throughline")  # title contains "Clinical Decision Support" and "Artificial Intelligence"
+
+    def test_regulations_gov_source_key_is_registered_in_the_real_config_as_regulatory(self):
+        registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+        source = self.source_registry.get_source(registry, "regulations_gov")
         self.assertEqual(source["category"], "regulatory")
 
 

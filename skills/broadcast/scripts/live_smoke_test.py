@@ -105,6 +105,18 @@ def _fda_guidance():
 
 check("fetch_fda_guidance returns real results", _fda_guidance)
 
+print("\n── regulations.gov ──────────────────────────────────────────")
+
+
+def _regulations_gov():
+    items = ingest.fetch_regulations_gov("clinical decision support software", days=365, max_results=5)
+    assert len(items) > 0, "query returned zero documents (DEMO_KEY rate-limited? see the module docstring)"
+    assert items[0]["title"], "first item has no title"
+    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+
+
+check("fetch_regulations_gov returns real results", _regulations_gov)
+
 print("\n── Industry RSS feeds ──────────────────────────────────────")
 registry = source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
 for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
