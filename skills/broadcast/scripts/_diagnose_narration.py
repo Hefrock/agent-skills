@@ -29,7 +29,19 @@ attempt against a possibly-overloaded model, this round first calls
 ListModels — a cheap, non-generative metadata read that doesn't compete
 for the same generation capacity — to get authoritative confirmation of
 which model IDs actually exist and are usable right now, rather than
-guessing from error-message text alone."""
+guessing from error-message text alone. ListModels confirmed
+gemini-3.6-flash is real, but the generateContent call against it then
+hit a 30s client-side read timeout — consistent with sustained overload,
+not a wrong model id.
+
+Round 4: rather than keep retrying the specific dated model that's
+struggling, switch to gemini-flash-latest — an alias ListModels also
+returned, which Google documents as always pointing at their current
+recommended flash model. This sidesteps the deprecation-churn problem
+this whole reconnaissance has been chasing (2.5-flash deprecated,
+3.6-flash's specific dated id possibly still ramping up capacity) by
+never hard-coding a dated id in the first place. If this pans out,
+narrate.py's DEFAULT_TEXT_MODEL should use this alias too."""
 
 import json
 import os
@@ -57,7 +69,7 @@ try:
 except urllib.error.HTTPError as e:
     print(f"ListModels HTTPError {e.code}: {e.read().decode('utf-8', errors='replace')[:1000]}")
 
-MODEL = "gemini-3.6-flash"
+MODEL = "gemini-flash-latest"
 url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={api_key}"
 
 source_text = (
