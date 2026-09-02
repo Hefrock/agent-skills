@@ -116,3 +116,6 @@ jobs:
 
       - name: broadcast — orchestrate.py regression suite (fully faked wiring, stdlib unittest)
         run: python skills/broadcast/scripts/test_orchestrate.py
+
+      - name: broadcast — distribute.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_distribute.py
