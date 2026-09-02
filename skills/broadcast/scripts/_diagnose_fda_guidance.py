@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""TEMP diagnostic, round 4 — round 3 confirmed only the generic
-DataTables.js library files are loaded (no custom AJAX-init script found
-among external <script src> files). This means the DataTable is likely
-initialized inline with either a JS data array/object passed directly, or
-reads a hidden JSON blob elsewhere on the page. Searches inline <script>
-content and any application/json blocks for the real data source.
-Deleted before the real PR is finalized."""
+"""TEMP diagnostic, round 5 — round 4 found the page's Drupal node id
+(node/360135) and confirmed the DataTable init call isn't inline; it must
+be inside one of the four aggregated footer JS bundles
+(/files/js/js_*.js?scope=footer). Fetches each and searches for the
+DataTables config (ajax url, column defs) or any reference to
+"guidance"/"sfgd"/360135. Deleted before the real PR is finalized."""
 import re
 import urllib.request
 
@@ -25,26 +24,23 @@ def _get(url, headers=None):
 url = "https://www.fda.gov/regulatory-information/search-fda-guidance-documents"
 status, ctype, body = _get(url)
 text = body.decode("utf-8", errors="replace")
-print(f"page length={len(text)}")
 
-idx = text.find("DataTable(")
-print(f"'DataTable(' index: {idx}")
-if idx >= 0:
-    print(text[max(0, idx - 500):idx + 2500])
-else:
-    idx2 = text.find(".dataTable")
-    print(f"'.dataTable' index: {idx2}")
-    if idx2 >= 0:
-        print(text[max(0, idx2 - 500):idx2 + 2500])
+js_urls = sorted(set(re.findall(r'src="(/files/js/js_[^"]+)"', text)))
+print(f"found {len(js_urls)} footer JS bundle URLs")
 
-print()
-print("=== application/json script blocks ===")
-for m in re.finditer(r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>', text, re.DOTALL):
-    print(m.group(0)[:500])
-    print("---")
-
-print()
-print("=== all inline <script>...</script> blocks (no src), lengths ===")
-inline_scripts = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', text, re.DOTALL)
-for i, s in enumerate(inline_scripts):
-    print(f"  [{i}] length={len(s)} preview={s[:120]!r}")
+for rel in js_urls:
+    full = "https://www.fda.gov" + rel.replace("&amp;", "&")
+    status, ctype, jbody = _get(full)
+    jtext = jbody.decode("utf-8", errors="replace")
+    print(f"=== {full} ===")
+    print(f"status={status} length={len(jtext)}")
+    for marker in ("DataTable", "ajax", "sfgd", "360135", "guidance"):
+        count = jtext.lower().count(marker.lower())
+        print(f"  {marker!r}: {count}")
+    idx = jtext.find("sfgd")
+    if idx == -1:
+        idx = jtext.lower().find("datatable(")
+    if idx >= 0:
+        print("  --- context ---")
+        print("  " + jtext[max(0, idx - 300):idx + 1200].replace("\n", "\\n"))
+    print()
