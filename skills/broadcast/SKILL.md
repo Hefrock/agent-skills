@@ -21,7 +21,7 @@ Read this whole file before running anything live — several of the operational
 ## Running one episode
 
 ```bash
-python skills/broadcast/scripts/orchestrate.py --data-dir <dir> \
+python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
   [--date YYYY-MM-DD]                    # default: today
   [--max-results-per-source N]           # default: 10 — keep low for a quick/cheap test run
   [--synth-delay-seconds N]              # default: 6.0 — pacing between TTS calls, see risks below
@@ -29,7 +29,7 @@ python skills/broadcast/scripts/orchestrate.py --data-dir <dir> \
   [--narration-success-threshold N]      # default: 0.7 — episode-level narration fallback threshold
 ```
 
-`--data-dir` holds persistent state (`dedup_store.json`, `evidence_store/`) and this run's output (`episodes/<date>/{report.json,script.json,episode.wav}`). Use the same `--data-dir` across runs so deduplication and evidence provenance actually accumulate — a fresh directory every time defeats both.
+**Use `~/.broadcast-data` as the default `--data-dir` unless the user asks for somewhere else.** It holds persistent state (`dedup_store.json`, `evidence_store/`) and every run's output (`episodes/<date>/{report.json,script.json,episode.wav}`) — deduplication and evidence provenance only accumulate meaningfully if the *same* directory is reused run over run, and nothing else in this repo establishes a canonical location. Don't invent a different path per session; that silently defeats the whole story-continuity design. `orchestrate.py` creates the directory itself if it doesn't exist yet — no setup needed beforehand.
 
 There's also a manually-triggered GitHub Actions workflow, `.github/workflows/broadcast-live-smoke-test.yml` (`workflow_dispatch` only, never on push/PR — it makes real external API calls). It has two jobs: a smoke test of the ingest adapters + embeddings, and a full real episode run via `orchestrate.py`. Triggering it always runs *both* jobs — there is no way to trigger just one.
 
@@ -42,10 +42,19 @@ There's also a manually-triggered GitHub Actions workflow, `.github/workflows/br
 - **`narration_attempted` / `narration_succeeded` / `narration_success_rate` / `narration_episode_level_fallback` / `narration_failures`** — the AI narration layer's own results. A narration failure is **not a pipeline failure** — it's a best-effort enhancement with an automatic two-tier fallback (per-segment, then whole-episode) to the original mechanical text, by design. A low success rate or `episode_level_fallback: true` means that day's episode shipped with plainer prose, not that anything is broken. These fields are all `null` when `--no-narration` was passed (distinguishable from a real 0/0 result).
 - **`ingest_failed`** — per-source ingest failures. `healthcare_it_news` failing with `HTTP 403` is expected every run (see below), not a bug to chase.
 
+## Debugging a failed or partial episode
+
+Work through `report.json` in this order — nearly every failure traces to one of these, not a new regression:
+
+1. **`qa_passed: false`** — look at `qa_checks` for entries with `passed: false`; each one's `detail` names the exact structural problem (a missing intro/outro, a story segment missing `claim_id`, etc.). This should essentially never happen from an unmodified `orchestrate.py` run — `script_gen.py` already enforces these invariants when it builds the script, and `qa_gate.py` only re-checks them as defense in depth. A failure here points to a real upstream bug, not something to route around or re-run past.
+2. **`episode_produced: false` but `qa_passed: true`** — the script was fine; audio synthesis failed for at least one segment. Check `synth_failed`: if every entry reads `HTTP Error 429: Too Many Requests`, that's the known Gemini TTS rate limit (see Known operational risks below) — wait for quota to recover before doing anything else, don't immediately re-run. Any *other* error string is a real, new failure worth investigating on its own terms.
+3. **`ingest_failed` non-empty** — `healthcare_it_news` failing with `HTTP 403` is expected every run. Any *other* source failing is new: check the error string first — a previously-working source returning a *different* error than before usually means the feed URL or endpoint changed upstream, not a bug in this pipeline.
+4. **Low `narration_success_rate` or `narration_episode_level_fallback: true`** — not a failure at all. This is the narration layer's own designed circuit breaker, working as intended; `narration_failures` lists which stories fell back and the specific grounding-check reason (an ungrounded span, a dropped hedge, an out-of-range length ratio). The episode still ships — just with plainer prose for that story or that day.
+
 ## Publishing an episode
 
 ```bash
-python skills/broadcast/scripts/distribute.py --data-dir <dir> --date YYYY-MM-DD \
+python skills/broadcast/scripts/distribute.py --data-dir ~/.broadcast-data --date YYYY-MM-DD \
   --publish-dir <dir> --base-url <public-url> --feed-link <url> \
   [--feed-title "..."] [--feed-description "..."]
 ```
@@ -53,6 +62,16 @@ python skills/broadcast/scripts/distribute.py --data-dir <dir> --date YYYY-MM-DD
 This reads the episode `orchestrate.py` already produced and writes GitHub-Pages-ready files to `--publish-dir`: the audio file, an RSS `feed.xml`, and a matching Obsidian vault-note markdown file. **It does not push, host, or deploy anything** — that's a deliberate, separate, human-driven step. The RSS feed's URLs are only real once `--publish-dir`'s contents are actually deployed to `--base-url`.
 
 The vault note is markdown output only, not a vault write — landing it in a real Obsidian vault requires a live session with the `wiki-operator` skill's `/source` command and a connected `obsidian-vault` MCP server. `distribute.py` deliberately never writes to a vault directly.
+
+## Adding, removing, or tuning an ingest source
+
+Every source lives in `config/sources.json`, validated at load time by `source_registry.validate_registry()` — a malformed entry raises a specific `RegistryValidationError` there rather than surfacing as a confusing `KeyError` three stages downstream.
+
+- **Adding an RSS-backed source (no code changes needed):** add an entry with `"key"`, `"name"`, `"category"` (an existing category, or a new one under `"categories"` — see "tuning" below), and `"feed_url"`. Any source with a `feed_url` field is automatically dispatched by `orchestrate.py`'s `_fetch_for_source()` to `ingest.fetch_rss()`, the same generic parser already handling five different feeds' real-world quirks (non-RFC-822 `pubDate` formats, a corrupted `<link>` field, etc. — see `ingest.py`'s `_parse_rss_pubdate()` if a new feed's dates come back wrong). Leave `"feed_url_verified": false` until you've actually confirmed it live with `live_smoke_test.py` (see below) — every currently-verified source in this file was confirmed that way, never assumed correct from the URL alone; `healthcare_it_news`'s entry documents exactly what a real, permanent block looks like when verification fails.
+- **Adding a query-based or fixed-endpoint source** (like `pubmed`/`arxiv`/`regulations_gov`, or `medrxiv`/`fda_guidance`) needs real code, not just config: a new `fetch_*()` function in `ingest.py` (see those six functions for the two existing patterns) *and* a new dispatch branch in `orchestrate.py`'s `_fetch_for_source()` keyed on the source's `"key"`. Without both, that source raises `ValueError` at ingest time.
+- **Removing a source:** delete its entry from `"sources"` — nothing else references sources by a fixed list, `ingest_all()` just iterates whatever's currently in the registry.
+- **Tuning relevance scoring:** `authority_floor` (0–1) and `half_life_days` (>0) are set per-*category*, not per-source (see `source_registry.py`'s docstring for what they control — a higher floor and longer half-life age a story more slowly). Every category and query in `config/sources.json` already carries a `*_note` field marking it as "a working default, not a validated measurement" — change these against real episode output, not intuition, and update the note to record why.
+- **After any change**, run `python skills/broadcast/scripts/live_smoke_test.py` — it's cheap (real ingest + embedding calls, no TTS or narration spend) and will confirm the new or changed source actually returns real items before it's trusted in a full, expensive episode run.
 
 ## Known operational risks — read before running live
 
