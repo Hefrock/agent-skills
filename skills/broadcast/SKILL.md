@@ -102,10 +102,19 @@ Work through `report.json` in this order — nearly every failure traces to one 
 ```bash
 python skills/broadcast/scripts/distribute.py --data-dir ~/.broadcast-data --date YYYY-MM-DD \
   --publish-dir <dir> --base-url <public-url> --feed-link <url> \
-  [--feed-title "..."] [--feed-description "..."]
+  [--feed-title "..."] [--feed-description "..."] [--feed-author "..."] \
+  [--itunes-category "..."]        # default: Technology
+  [--itunes-explicit true|false]   # default: false
+  [--itunes-type episodic|serial]  # default: episodic
+  [--itunes-author "..."]          # overrides --feed-author for itunes:author specifically
+  [--itunes-subtitle "..."]
+  [--itunes-image-url <url>]       # square, 1400-3000px, JPEG/PNG, no transparency — see below
+  [--itunes-owner-name "..."] [--itunes-owner-email "..."]  # <itunes:owner> needs BOTH to appear
 ```
 
-This reads the episode `orchestrate.py` already produced and writes GitHub-Pages-ready files to `--publish-dir`: the audio file, an RSS `feed.xml`, and a matching Obsidian vault-note markdown file. **It does not push, host, or deploy anything** — that's a deliberate, separate, human-driven step. The RSS feed's URLs are only real once `--publish-dir`'s contents are actually deployed to `--base-url`.
+This reads the episode `orchestrate.py` already produced and writes GitHub-Pages-ready files to `--publish-dir`: the audio file, an RSS `feed.xml` (RSS 2.0 plus the `itunes:` namespace — category/explicit/type/author/duration/etc.), and a matching Obsidian vault-note markdown file. **It does not push, host, or deploy anything** — that's a deliberate, separate, human-driven step. The RSS feed's URLs are only real once `--publish-dir`'s contents are actually deployed to `--base-url`.
+
+**`--itunes-image-url` (cover art) is the one thing this can't produce itself** — this pipeline has no way to generate real artwork, and Apple Podcasts won't list a show without one (square, 1400–3000px, JPEG/PNG, no transparency). Every other `itunes:` tag works and is emitted correctly with sensible defaults even with no image set; add `--itunes-image-url` once real art exists, no other change needed.
 
 The vault note is markdown output only, not a vault write — landing it in a real Obsidian vault requires a live session with the `wiki-operator` skill's `/source` command and a connected `obsidian-vault` MCP server. `distribute.py` deliberately never writes to a vault directly.
 
@@ -157,7 +166,7 @@ Three different stores live under `--data-dir`, each retained (or deliberately n
 
 - **No scheduling.** Every run is manual — direct script invocation or a manually-triggered `workflow_dispatch`. Nothing produces an episode automatically on a cadence.
 - **No real hosting.** `distribute.py`'s output must be manually deployed (e.g. to GitHub Pages) for its feed to be reachable at `--base-url`.
-- **No `itunes:` RSS namespace tags** — no cover art, category, explicit flag, or subtitle. The feed is valid RSS 2.0 but likely won't display well in a real podcast app yet.
+- **No cover art.** `distribute.py` now emits the full `itunes:` namespace (category, explicit, type, author, subtitle, owner, per-episode duration) — see "Publishing an episode" above — but `itunes:image` is left for a human to supply once real artwork exists; this pipeline can't generate it. Apple Podcasts specifically won't list a show without one; every other podcast app and every other tag works fine in the meantime.
 - **No cross-story "digest" synthesis.** Narration is strictly per-story, isolated to that story's own text — a deliberate scope decision made after research into hallucination risk in broader-context AI summarization, not an oversight. See `narrate.py`'s docstring for the reasoning.
 - **No dollar-cost tracking.** `--dry-run` (see above) gives a pre-flight *call-count* estimate (exact for embeddings, a safe upper bound for narration/TTS), which is what actually would have prevented this project's own real quota-exhaustion incidents — but it doesn't know or report actual pricing, and there's still no cumulative spend tracking across runs.
 - **Retention for `episodes/<date>/` is opt-in, not automatic** — see the Retention section above; `prune_episodes.py` exists but has to be run deliberately, nothing calls it on a schedule.
