@@ -460,8 +460,8 @@ class ParseRssXml(unittest.TestCase):
         self.assertEqual(items, [])
 
     def test_generic_parser_works_for_any_source_key(self):
-        # Same parser, four different outlets — only source_key changes.
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news", "onc_astp"):
+        # Same parser, three different outlets — only source_key changes.
+        for key in ("stat_news", "fierce_healthcare", "onc_astp"):
             items = ingest.parse_rss_xml(RSS_FIXTURE, source_key=key)
             self.assertTrue(all(i["source_key"] == key for i in items))
 
@@ -932,9 +932,9 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         # industry_press: floor 0.4, half_life 3 days -> exactly the floor + half the remaining range at age=3.
         self.assertAlmostEqual(score, 0.4 + 0.6 * 0.5)
 
-    def test_all_three_rss_source_keys_are_registered_in_the_real_config(self):
+    def test_industry_press_rss_source_keys_are_registered_in_the_real_config(self):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
+        for key in ("stat_news", "fierce_healthcare"):
             source = self.source_registry.get_source(registry, key)
             self.assertEqual(source["category"], "industry_press")
             self.assertIn("feed_url", source)
@@ -1049,9 +1049,9 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
         self.assertTrue(canonical.startswith("url:"))  # no id_hint, but the recovered (not corrupted) URL is hashed
 
-    def test_all_five_rss_source_keys_are_registered_in_the_real_config(self):
+    def test_all_four_rss_source_keys_are_registered_in_the_real_config(self):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news", "onc_astp", "cms"):
+        for key in ("stat_news", "fierce_healthcare", "onc_astp", "cms"):
             source = self.source_registry.get_source(registry, key)
             self.assertIn("feed_url", source)
 

@@ -124,12 +124,15 @@ class ValidateRegistry(unittest.TestCase):
         # rather than at ingest-stage runtime.
         source_registry.load_registry(REAL_CONFIG_PATH)
 
-    def test_real_config_has_all_ten_handoff_sources(self):
+    def test_real_config_has_all_nine_handoff_sources(self):
+        # Was ten; healthcare_it_news was removed (permanently WAF-blocked,
+        # no viable RSS alternative found — see its removal commit) pending
+        # a careful, verified replacement.
         registry = source_registry.load_registry(REAL_CONFIG_PATH)
         keys = {s["key"] for s in registry["sources"]}
         expected = {
             "pubmed", "arxiv", "medrxiv", "fda_guidance", "regulations_gov",
-            "onc_astp", "cms", "stat_news", "fierce_healthcare", "healthcare_it_news",
+            "onc_astp", "cms", "stat_news", "fierce_healthcare",
         }
         self.assertEqual(keys, expected)
 

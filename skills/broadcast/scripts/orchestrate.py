@@ -112,9 +112,10 @@ def ingest_all(registry: dict, max_results_per_source: int = DEFAULT_MAX_RESULTS
     "skip the bad one, keep going, report it explicitly" policy every
     other batch stage in this pipeline already uses (rank.py's dropped
     duplicates, evidence.py's per-item catch, qa_gate's run-every-check).
-    This is also where healthcare_it_news's documented, permanent block
-    (config/sources.json's feed_url_verified: false) surfaces at runtime:
-    as one entry in "failed", not a crash.
+    This is also where a source documented in config/sources.json as
+    feed_url_verified: false (a known-broken feed, kept registered and
+    documented rather than silently dropped) surfaces at runtime: as one
+    entry in "failed", not a crash.
 
     Returns {"items": [...], "failed": [{"source_key", "error"}, ...]}."""
     items = []

@@ -84,14 +84,6 @@
       "feed_url": "https://www.fiercehealthcare.com/rss/xml",
       "feed_url_verified": true,
       "feed_url_verified_note": "Confirmed live (2026-09-01): 25 real items. The URL was fine on the first try; the real bug was that this feed's <pubDate> isn't RFC 822 ('Sep 1, 2026 2:08pm' — no day-of-week, 12hr+am/pm, no timezone), which silently zeroed every item until _parse_rss_pubdate() got a fallback format for it."
-    },
-    {
-      "key": "healthcare_it_news",
-      "name": "Healthcare IT News",
-      "category": "industry_press",
-      "feed_url": "https://www.healthcareitnews.com/home/feed",
-      "feed_url_verified": false,
-      "feed_url_verified_note": "Confirmed BLOCKED, not just unverified (2026-09-01): HTTP 403 on this URL and three other guessed variants (/rss.xml, /feed), even with a full Chrome-like header set (User-Agent, Accept, Accept-Language, Referer). Looks like WAF/Cloudflare-style bot protection a plain HTTP client can't pass — needs a different approach (headless browser, an alternate syndication endpoint, or a manual check for whether they offer one) before this source can actually be ingested. Left broken and documented rather than silently dropped or faked working."
     }
   ],
   "throughline_keywords": [
