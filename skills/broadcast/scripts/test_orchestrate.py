@@ -22,6 +22,7 @@ Three layers, matching the module's own split:
 Run: python test_orchestrate.py"""
 
 import array
+import hashlib
 import importlib.util
 import io
 import os
@@ -234,7 +235,21 @@ class RunEpisodeWiring(unittest.TestCase):
         return []
 
     def _fake_embed_fn(self, text, api_key):
-        return [float(len(text) % 7), 0.1, 0.2]
+        # Deterministic (no PYTHONHASHSEED dependency, unlike Python's
+        # built-in hash()) but genuinely non-collinear across different
+        # texts — three independent bytes from an md5 digest, not one
+        # varying component tacked onto fixed [0.1, 0.2] tail. That
+        # earlier version made ANY two different texts' embeddings
+        # cosine-similar to ~0.997+ regardless of content (a small
+        # varying first component barely changes the vector's direction
+        # against a much larger fixed tail), silently risking spurious
+        # same_day_duplicate classification in any test that fed it two
+        # genuinely different stories — exactly the kind of bug this
+        # pipeline's own tests are supposed to catch, caught here by
+        # ReportJson's test actually asserting on dedup/selection
+        # outcomes instead of just aggregate counts.
+        digest = hashlib.md5(text.encode("utf-8")).digest()
+        return [float(digest[0]) - 128.0, float(digest[1]) - 128.0, float(digest[2]) - 128.0]
 
     def _fake_synth_fn(self, text, api_key):
         pcm = b"\x01\x02" * 100
@@ -541,6 +556,41 @@ class RunEpisodeWiring(unittest.TestCase):
         self.assertEqual(result["embed_calls_estimate"], 0)
         self.assertEqual(result["narration_calls_estimate_max"], 0)
         self.assertEqual(result["synth_calls_estimate_max"], 4)  # intro/disclosure/(no transition)/outro — still a real script every time
+
+
+class ReportJson(RunEpisodeWiring):
+    """_report_json() itself had zero direct test coverage before this —
+    only exercised indirectly by whatever a real run happened to produce.
+    Reuses RunEpisodeWiring's exact setUp/fakes (one pubmed/throughline
+    item, one stat_news/broad_industry item) so this is checking the
+    real _report_json() output against a real run_episode() result, not
+    a hand-built fake shaped to match what the function expects."""
+
+    def test_source_utilization_reflects_the_real_run(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+        )
+        report = orchestrate._report_json(result)
+        util = report["source_utilization"]
+        self.assertIn("pubmed", util)
+        self.assertIn("stat_news", util)
+        self.assertEqual(util["pubmed"]["selected_top_three"], 1)
+        self.assertEqual(util["stat_news"]["selected_quick_hits"], 1)
+        # A source that never appeared in this run's fake_fetch_fn output
+        # (e.g. arxiv) has no entry at all — see summarize_source_utilization's
+        # own docstring for why this isn't faked as a zero-candidates row.
+        self.assertNotIn("arxiv", util)
+
+    def test_source_utilization_matches_rank_results_directly(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+        )
+        report = orchestrate._report_json(result)
+        self.assertEqual(report["source_utilization"], orchestrate.rank.summarize_source_utilization(result["rank_result"]))
 
 
 class MainApiKeyGate(unittest.TestCase):

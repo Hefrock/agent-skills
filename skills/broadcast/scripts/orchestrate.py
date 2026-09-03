@@ -366,7 +366,16 @@ def _report_json(result: dict) -> dict:
     the full ranked/store internals (already large, already implicit in
     the counts below). Kept separate from run_episode()'s own return
     value so that dict can stay the single source of truth for a caller
-    that wants the real data, not a lossy summary."""
+    that wants the real data, not a lossy summary.
+
+    source_utilization (rank.summarize_source_utilization()) is pure
+    observability, not a QA gate — nothing in it fails a run. A single
+    run's numbers are noisy on their own (a source having zero candidates
+    today might just mean nothing newsworthy happened, not that it's
+    being starved); the actionable version is comparing this field across
+    multiple days' episodes/<date>/report.json files, which is a
+    deliberately separate, not-yet-built next step, not something this
+    function or rank.py's summary tries to fake from one run."""
     qa = result["qa_result"]
     narration = result["narration_result"]
     return {
@@ -376,6 +385,7 @@ def _report_json(result: dict) -> dict:
         "top_three_count": len(result["rank_result"]["top_three"]),
         "quick_hits_count": len(result["rank_result"]["quick_hits"]),
         "dropped_duplicates_count": len(result["rank_result"]["dropped_duplicates"]),
+        "source_utilization": rank.summarize_source_utilization(result["rank_result"]),
         "pinned_count": len(result["pinned"]["pinned"]),
         "pinned_skipped_no_summary_count": len(result["pinned"]["skipped_no_summary"]),
         "pinned_failed_count": len(result["pinned"]["failed"]),

@@ -244,5 +244,85 @@ class RankStoriesRealConfig(unittest.TestCase):
         self.assertEqual(len(result["quick_hits"]), 1)
 
 
+class SummarizeSourceUtilization(unittest.TestCase):
+    def test_empty_rank_result_returns_empty_dict(self):
+        empty = rank.rank_stories([], [], TEST_REGISTRY, {"entries": []}, "2026-09-01")
+        self.assertEqual(rank.summarize_source_utilization(empty), {})
+
+    def test_top_three_item_counted_as_candidate_and_selected_top_three(self):
+        items = [make_item(source_key="fda_guidance", title="FHIR-based interoperability study", published_date="2026-09-01")]
+        result = rank.rank_stories(items, [vec(1, 0, 0)], TEST_REGISTRY, {"entries": []}, "2026-09-01")
+        util = rank.summarize_source_utilization(result)
+        self.assertEqual(util["fda_guidance"], {
+            "candidates": 1, "selected_top_three": 1, "selected_quick_hits": 0,
+            "selected_total": 1, "not_selected": 0, "dropped_duplicates": 0, "selection_rate": 1.0,
+        })
+
+    def test_quick_hits_item_counted_as_candidate_and_selected_quick_hits(self):
+        items = [make_item(source_key="stat_news", title="Hospital adopts new billing software", published_date="2026-09-01")]
+        result = rank.rank_stories(items, [vec(1, 0, 0)], TEST_REGISTRY, {"entries": []}, "2026-09-01")
+        util = rank.summarize_source_utilization(result)
+        self.assertEqual(util["stat_news"]["selected_quick_hits"], 1)
+        self.assertEqual(util["stat_news"]["selected_total"], 1)
+        self.assertEqual(util["stat_news"]["selection_rate"], 1.0)
+
+    def test_not_selected_item_counts_as_candidate_with_zero_selection_rate(self):
+        items = [make_item(source_key="stat_news", title="Billing software news", published_date="2026-09-01")]
+        result = rank.rank_stories(items, [vec(1, 0, 0)], TEST_REGISTRY, {"entries": []}, "2026-09-01", quick_hits_count=0)
+        util = rank.summarize_source_utilization(result)
+        self.assertEqual(util["stat_news"], {
+            "candidates": 1, "selected_top_three": 0, "selected_quick_hits": 0,
+            "selected_total": 0, "not_selected": 1, "dropped_duplicates": 0, "selection_rate": 0.0,
+        })
+
+    def test_dropped_duplicate_counted_separately_not_as_a_candidate(self):
+        items = [
+            make_item(title="Dupe A", url="https://a.com/1", published_date="2026-09-01"),
+            make_item(title="Dupe B", url="https://b.com/1", published_date="2026-09-01"),
+        ]
+        result = rank.rank_stories(items, [vec(1, 0, 0), vec(0.9999, 0.0001, 0)], TEST_REGISTRY, {"entries": []}, "2026-09-01")
+        util = rank.summarize_source_utilization(result)
+        self.assertEqual(util["stat_news"]["dropped_duplicates"], 1)
+        self.assertEqual(util["stat_news"]["candidates"], 1)  # only the survivor counts as a candidate
+
+    def test_source_with_zero_candidates_has_no_entry_at_all(self):
+        # fierce_healthcare never appears in this run's items — a source
+        # legitimately having nothing today looks the same as one being
+        # starved; this function doesn't try to distinguish that (see its
+        # docstring) and simply omits sources with no data this run,
+        # rather than fabricating a zero-candidates entry.
+        items = [make_item(source_key="stat_news", published_date="2026-09-01")]
+        result = rank.rank_stories(items, [vec(1, 0, 0)], TEST_REGISTRY, {"entries": []}, "2026-09-01")
+        util = rank.summarize_source_utilization(result)
+        self.assertNotIn("fierce_healthcare", util)
+
+    def test_multiple_sources_are_tracked_independently(self):
+        items = [
+            make_item(source_key="fda_guidance", title="FHIR interoperability update", url="https://x.com/1", published_date="2026-09-01"),
+            make_item(source_key="stat_news", title="Billing software news one", url="https://x.com/2", published_date="2026-09-01"),
+            make_item(source_key="stat_news", title="Billing software news two", url="https://x.com/3", published_date="2026-09-01"),
+        ]
+        result = rank.rank_stories(
+            items, [vec(1, 0, 0), vec(0, 1, 0), vec(0, 0, 1)], TEST_REGISTRY, {"entries": []}, "2026-09-01", quick_hits_count=1,
+        )
+        util = rank.summarize_source_utilization(result)
+        self.assertEqual(util["fda_guidance"]["candidates"], 1)
+        self.assertEqual(util["stat_news"]["candidates"], 2)
+        self.assertEqual(util["stat_news"]["selected_total"] + util["stat_news"]["not_selected"], 2)
+
+    def test_selection_rate_reflects_a_partial_hit_rate(self):
+        items = [
+            make_item(source_key="stat_news", title="Story one", url="https://x.com/1", published_date="2026-09-01"),
+            make_item(source_key="stat_news", title="Story two", url="https://x.com/2", published_date="2026-09-01"),
+        ]
+        result = rank.rank_stories(
+            items, [vec(1, 0, 0), vec(0, 1, 0)], TEST_REGISTRY, {"entries": []}, "2026-09-01", quick_hits_count=1,
+        )
+        util = rank.summarize_source_utilization(result)
+        self.assertEqual(util["stat_news"]["candidates"], 2)
+        self.assertEqual(util["stat_news"]["selected_total"], 1)
+        self.assertAlmostEqual(util["stat_news"]["selection_rate"], 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()
