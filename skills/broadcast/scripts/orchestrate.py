@@ -409,12 +409,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Ingest only (spends zero Gemini API quota — ingest never calls Gemini), then print an estimate of how many embedding/narration/TTS calls a real run with this exact config would make. Nothing is persisted, no evidence-pinning-mcp server is spawned. Run this before a real episode if you're unsure how expensive it would be.",
+        help="Ingest only (spends zero Gemini API quota — ingest never calls Gemini), then print an estimate of how many embedding/narration/TTS calls a real run with this exact config would make. Nothing is persisted, no evidence-pinning-mcp server is spawned. Does not require GEMINI_API_KEY. Run this before a real episode if you're unsure how expensive it would be.",
     )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    if not api_key and not args.dry_run:
         print("GEMINI_API_KEY must be set — embeddings, narration, and audio synthesis all require it.", file=sys.stderr)
         return 2
 
