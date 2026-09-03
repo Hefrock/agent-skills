@@ -1,0 +1,97 @@
+name: broadcast scheduled episode
+
+# The recurring-cadence capability from the broadcast gap analysis —
+# built, but DISABLED BY DEFAULT per an explicit decision made in
+# conversation: "build it, leave it off, turn it on once real cost
+# numbers (via orchestrate.py --dry-run) and a cadence have been
+# decided." A `schedule:` trigger alone can't express "off" in YAML —
+# GitHub Actions has no such switch — so the job itself is gated on a
+# repository variable instead:
+#
+#   Settings -> Secrets and variables -> Actions -> Variables ->
+#   New repository variable: BROADCAST_SCHEDULE_ENABLED = true
+#
+# Until that variable is set, every scheduled firing shows as SKIPPED in
+# the Actions UI (visible, not silently absent) and spends zero Gemini
+# quota. workflow_dispatch (manual trigger) always runs regardless of
+# the variable — a human manually triggering this is already an
+# explicit decision; the gate exists specifically to keep the
+# UNATTENDED cron trigger inert until opted into.
+#
+# Cadence below (daily, 12:00 UTC) is a placeholder matching this show's
+# own "daily briefing" concept, not a validated choice — change the cron
+# expression to whatever cadence gets decided once --dry-run's real
+# numbers are in hand.
+#
+# --data-dir persistence: GitHub Actions runners are ephemeral, so
+# dedup_store.json/evidence_store's continuity across runs depends on
+# actions/cache, restored under a fixed key prefix and saved under a
+# fresh per-run key (the standard "rolling cache" pattern, since a cache
+# entry can't be overwritten once created). This is BEST-EFFORT, not a
+# durable store — GitHub evicts unused cache entries after ~7 days and
+# caps total repo cache size at 10GB. A real durable --data-dir (most
+# likely living in the dedicated hosting repo once that's built — see
+# the broadcast gap analysis) is the real fix; this is what's honestly
+# achievable without that dependency existing yet.
+#
+# distribute.py is NOT run here yet — publishing needs a real --base-url
+# a hosting target actually serves, which hasn't been decided/built.
+# This workflow only produces the episode (orchestrate.py); wiring in
+# real publishing is a follow-up once hosting exists.
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+jobs:
+  scheduled-episode:
+    name: Run the scheduled episode (skipped unless BROADCAST_SCHEDULE_ENABLED=true, or manually triggered)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.BROADCAST_SCHEDULE_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcp/evidence-pinning/package-lock.json
+
+      - name: Build evidence-pinning-mcp (orchestrate.py spawns it as a real subprocess)
+        working-directory: mcp/evidence-pinning
+        run: |
+          npm ci
+          npm run build
+
+      - name: Restore broadcast --data-dir (best-effort cache — see workflow header)
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.broadcast-data
+          key: broadcast-data-${{ github.run_id }}
+          restore-keys: |
+            broadcast-data-
+
+      - name: broadcast — run the scheduled episode
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data --max-results-per-source 10
+
+      - name: Save updated broadcast --data-dir
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.broadcast-data
+          key: broadcast-data-${{ github.run_id }}
+
+      - name: Upload episode + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broadcast-scheduled-episode-${{ github.run_id }}
+          path: ~/.broadcast-data/episodes/**
+          retention-days: 14
