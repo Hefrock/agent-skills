@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Live network smoke test for broadcast's ingest adapters,
-dedup_store.embed_text(), and audio_synth.synthesize_text().
+dedup_store.embed_text(), narrate.generate_narration(), and
+audio_synth.synthesize_text().
 
 NOT part of the regular test suite (test_ingest.py, test_dedup_store.py,
 etc. stay hermetic and network-free by design) — this is a separate,
@@ -8,10 +9,21 @@ manually-triggered check that exercises the real external APIs. It exists
 to close specific verification gaps: fetch_pubmed/fetch_arxiv/fetch_rss
 had only ever been confirmed to correctly SURFACE a blocked-network error
 (this dev sandbox's egress policy), never to return a real successful
-response; embed_text() and synthesize_text() had never been executed
-against the live Gemini API at all. Passing here is the actual close of
-those gaps — not an inference by analogy from a different code path
-succeeding elsewhere.
+response; embed_text(), generate_narration(), and synthesize_text() had
+never been executed against the live Gemini API at all. Passing here is
+the actual close of those gaps — not an inference by analogy from a
+different code path succeeding elsewhere.
+
+The narration check is a real end-to-end proof, not just "didn't throw":
+it feeds generate_narration() a real source sentence containing a hedge
+marker, then runs the actual result through check_narration_grounded()
+(the same grounding check narrate_segment() uses in a real episode) —
+confirming the live model's output actually passes this pipeline's own
+grounding bar, not merely that the API call succeeded. Before this check
+existed, generate_narration() was only ever exercised live as a side
+effect of a full orchestrate.py episode run — there was no cheap,
+dedicated way to confirm it works without also paying for a full TTS
+run.
 
 Also doubles as the real verification for the three RSS feed_url values,
 which config/sources.json marks feed_url_verified: false — a wrong URL
@@ -22,8 +34,9 @@ Run manually via the "broadcast live smoke test" GitHub Actions workflow
 egress: python live_smoke_test.py
 
 Exits non-zero if any check that should be reachable fails. The Gemini
-embeddings check is SKIPPED (not failed) if GEMINI_API_KEY isn't set in
-the environment, since that secret is configured separately and its
+embeddings/narration/TTS checks are SKIPPED (not failed) if GEMINI_API_KEY
+isn't set in the environment, since that secret is configured separately
+and its
 absence isn't itself a failure of this script."""
 
 import os
@@ -34,6 +47,7 @@ sys.path.insert(0, HERE)
 import ingest  # noqa: E402
 import dedup_store  # noqa: E402
 import source_registry  # noqa: E402
+import narrate  # noqa: E402
 import audio_synth  # noqa: E402
 
 passed = 0
@@ -171,6 +185,24 @@ else:
         return f"{len(vec)}-dim vector, first values: {[round(v, 4) for v in vec[:3]]}"
 
     check("embed_text returns a real embedding vector", _embed)
+
+print("\n── Gemini narration ─────────────────────────────────────────")
+if not api_key:
+    skip("generate_narration returns grounded narration", "GEMINI_API_KEY not set in environment")
+else:
+    def _narrate():
+        source_text = (
+            "A new FDA guidance document suggests that AI-based clinical decision "
+            "support tools may require additional premarket review starting next year."
+        )
+        result = narrate.generate_narration(source_text, api_key)
+        assert result.get("narration"), "narration is empty"
+        assert isinstance(result.get("supporting_spans"), list), "supporting_spans missing or not a list"
+        check_result = narrate.check_narration_grounded(result["narration"], result["supporting_spans"], source_text)
+        assert check_result["passed"], f"live narration failed this pipeline's own grounding check: {check_result['reasons']}"
+        return f"'{result['narration'][:80]}...' — {len(result['supporting_spans'])} supporting span(s), grounding check passed"
+
+    check("generate_narration returns grounded narration", _narrate)
 
 print("\n── Gemini TTS ───────────────────────────────────────────────")
 if not api_key:
