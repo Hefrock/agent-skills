@@ -79,6 +79,7 @@ jobs:
       - name: broadcast — run the scheduled episode
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REGULATIONS_GOV_API_KEY: ${{ secrets.REGULATIONS_GOV_API_KEY }}
         run: python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data --max-results-per-source 10
 
       - name: Save updated broadcast --data-dir

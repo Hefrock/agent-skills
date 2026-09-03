@@ -25,6 +25,7 @@ jobs:
       - name: broadcast — live smoke test (real network calls)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REGULATIONS_GOV_API_KEY: ${{ secrets.REGULATIONS_GOV_API_KEY }}
         run: python skills/broadcast/scripts/live_smoke_test.py
 
   run-episode:
@@ -60,6 +61,7 @@ jobs:
       - name: broadcast — run one real episode end-to-end
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REGULATIONS_GOV_API_KEY: ${{ secrets.REGULATIONS_GOV_API_KEY }}
         run: python skills/broadcast/scripts/orchestrate.py --data-dir "$RUNNER_TEMP/broadcast-data" --max-results-per-source 5
 
       - name: Upload episode + report
