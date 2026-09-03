@@ -29,6 +29,7 @@ python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
   [--narration-success-threshold N]      # default: 0.7 — episode-level narration fallback threshold
   [--no-audio-normalize]                 # skip per-segment peak normalization in the assembled episode
   [--inter-segment-silence-ms N]         # default: 400.0 — silence gap between segments (0 to disable)
+  [--dry-run]                            # ingest only, print a Gemini call estimate, spend zero quota — see below
 ```
 
 **Use `~/.broadcast-data` as the default `--data-dir` unless the user asks for somewhere else.** It holds persistent state (`dedup_store.json`, `evidence_store/`) and every run's output (`episodes/<date>/{report.json,script.json,episode.wav}`) — deduplication and evidence provenance only accumulate meaningfully if the *same* directory is reused run over run, and nothing else in this repo establishes a canonical location. Don't invent a different path per session; that silently defeats the whole story-continuity design. `orchestrate.py` creates the directory itself if it doesn't exist yet — no setup needed beforehand.
@@ -36,6 +37,18 @@ python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
 There's also a manually-triggered GitHub Actions workflow, `.github/workflows/broadcast-live-smoke-test.yml` (`workflow_dispatch` only, never on push/PR — it makes real external API calls). It has two jobs: a smoke test of the ingest adapters + embeddings, and a full real episode run via `orchestrate.py`. Triggering it always runs *both* jobs — there is no way to trigger just one.
 
 **Prefer running `orchestrate.py` directly in-session over triggering that workflow**, whenever the session can (i.e. it has `GEMINI_API_KEY` and can reach the network directly): direct invocation lets you run exactly one thing — e.g. just `live_smoke_test.py` to check ingest health, or one `orchestrate.py` call with a low `--max-results-per-source` — while `workflow_dispatch` always fires *both* jobs together, including the TTS-quota-heavy full episode run, whether you wanted that or not. That mismatch is exactly how this project has burned Gemini TTS quota before: a reconnaissance trigger meant to check one small thing also silently re-ran a full episode in the background. Reach for `workflow_dispatch` only when the session itself can't execute Python/reach the network, or when you specifically need to confirm behavior in the CI environment rather than locally.
+
+## Estimating cost before a real run
+
+`--dry-run` runs real ingestion (free — no `fetch_fn` call ever touches Gemini) and then stops, printing an estimate of how many Gemini calls a real run with this exact config would make, instead of spending any of that quota to find out:
+
+```json
+{"run_date": "2026-09-03", "dry_run": true, "ingest_failed": [...], "items_ingested": 23, "embed_calls_estimate": 23, "narration_calls_estimate_max": 10, "synth_calls_estimate_max": 14}
+```
+
+`embed_calls_estimate` is exact — every ingested item gets exactly one embedding call. `narration_calls_estimate_max`/`synth_calls_estimate_max` are genuine upper bounds, not predictions: computing the real, smaller number requires ranking, which itself needs embeddings (the one cost `--dry-run` exists to avoid paying for) — so these are capped at this pipeline's real, fixed selection ceiling (`rank.DEFAULT_TOP_THREE_COUNT + rank.DEFAULT_QUICK_HITS_COUNT` story segments, plus intro/disclosure/quick_hits_transition/outro), which same-day/rolling-window dedup can only ever shrink, never exceed. No `evidence-pinning-mcp` server is spawned and nothing is persisted to `--data-dir` in this mode.
+
+Run this before a real episode whenever you're unsure how expensive it would be, or whenever a source's `feed_url` has recently changed (an RSS feed's real item count is uncapped by `--max-results-per-source` — see "Adding, removing, or tuning an ingest source" below — so its true embedding-call cost can only be known by actually checking, not by reading config).
 
 ## Reading the result — what "success" actually looks like
 
@@ -146,7 +159,7 @@ Three different stores live under `--data-dir`, each retained (or deliberately n
 - **No real hosting.** `distribute.py`'s output must be manually deployed (e.g. to GitHub Pages) for its feed to be reachable at `--base-url`.
 - **No `itunes:` RSS namespace tags** — no cover art, category, explicit flag, or subtitle. The feed is valid RSS 2.0 but likely won't display well in a real podcast app yet.
 - **No cross-story "digest" synthesis.** Narration is strictly per-story, isolated to that story's own text — a deliberate scope decision made after research into hallucination risk in broader-context AI summarization, not an oversight. See `narrate.py`'s docstring for the reasoning.
-- **No cost/budget tracking** on Gemini API usage across embeddings, narration, and TTS.
+- **No dollar-cost tracking.** `--dry-run` (see above) gives a pre-flight *call-count* estimate (exact for embeddings, a safe upper bound for narration/TTS), which is what actually would have prevented this project's own real quota-exhaustion incidents — but it doesn't know or report actual pricing, and there's still no cumulative spend tracking across runs.
 - **Retention for `episodes/<date>/` is opt-in, not automatic** — see the Retention section above; `prune_episodes.py` exists but has to be run deliberately, nothing calls it on a schedule.
 
 ## Output discipline

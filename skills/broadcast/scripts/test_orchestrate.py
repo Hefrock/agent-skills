@@ -463,6 +463,72 @@ class RunEpisodeWiring(unittest.TestCase):
         with wave.open(io.BytesIO(result["episode_audio"]["full_episode_wav"]), "rb") as wf:
             self.assertEqual(wf.getnframes(), expected_frames)
 
+    # ── dry_run — the budget-guardrail estimate mode. Fake embed_fn/
+    # narrate_fn/synth_fn all raise if called, so any of these tests
+    # failing to raise would itself prove dry_run leaked past ingest and
+    # spent real (fake, but supposedly-unreachable) Gemini quota. ────────
+
+    def _forbidden_fn(self, *args, **kwargs):
+        raise AssertionError("dry_run must never call this — it would mean Gemini quota was spent")
+
+    def test_dry_run_reports_exact_embed_estimate_and_capped_narration_synth_estimates(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._forbidden_fn, narrate_fn=self._forbidden_fn, synth_fn=self._forbidden_fn,
+            dry_run=True,
+        )
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["items_ingested"], 2)  # _fake_fetch_fn: 1 pubmed + 1 stat_news
+        self.assertEqual(result["embed_calls_estimate"], 2)  # exact, not capped — only 2 items exist
+        self.assertEqual(result["narration_calls_estimate_max"], 2)
+        self.assertEqual(result["synth_calls_estimate_max"], 2 + 4)
+
+    def test_dry_run_caps_narration_and_synth_estimates_at_the_real_selection_ceiling(self):
+        def many_items_fetch(source, max_results):
+            if source["key"] == "pubmed":
+                return [make_item("pubmed", f"https://doi.org/10.1000/x{i}", f"Story {i}") for i in range(15)]
+            return []
+
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=many_items_fetch, embed_fn=self._forbidden_fn, narrate_fn=self._forbidden_fn, synth_fn=self._forbidden_fn,
+            dry_run=True,
+        )
+        ceiling = orchestrate.rank.DEFAULT_TOP_THREE_COUNT + orchestrate.rank.DEFAULT_QUICK_HITS_COUNT
+        self.assertEqual(result["items_ingested"], 15)
+        self.assertEqual(result["embed_calls_estimate"], 15)  # exact, uncapped — this IS how many embed calls a real run makes
+        self.assertEqual(result["narration_calls_estimate_max"], ceiling)  # capped — real selection can never exceed this
+        self.assertEqual(result["synth_calls_estimate_max"], ceiling + 4)
+
+    def test_dry_run_still_reports_real_ingest_failures(self):
+        def partly_broken_fetch(source, max_results):
+            if source["key"] == "arxiv":
+                raise RuntimeError("arxiv down")
+            return self._fake_fetch_fn(source, max_results)
+
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=partly_broken_fetch, embed_fn=self._forbidden_fn, narrate_fn=self._forbidden_fn, synth_fn=self._forbidden_fn,
+            dry_run=True,
+        )
+        self.assertEqual(len(result["ingest_failed"]), 1)
+        self.assertEqual(result["ingest_failed"][0]["source_key"], "arxiv")
+
+    def test_dry_run_with_zero_ingested_items_estimates_zero_story_calls(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=lambda source, max_results: [], embed_fn=self._forbidden_fn, narrate_fn=self._forbidden_fn, synth_fn=self._forbidden_fn,
+            dry_run=True,
+        )
+        self.assertEqual(result["items_ingested"], 0)
+        self.assertEqual(result["embed_calls_estimate"], 0)
+        self.assertEqual(result["narration_calls_estimate_max"], 0)
+        self.assertEqual(result["synth_calls_estimate_max"], 4)  # intro/disclosure/(no transition)/outro — still a real script every time
+
 
 if __name__ == "__main__":
     unittest.main()
