@@ -50,6 +50,23 @@ There's also a manually-triggered GitHub Actions workflow, `.github/workflows/br
 
 Run this before a real episode whenever you're unsure how expensive it would be, or whenever a source's `feed_url` has recently changed (an RSS feed's real item count is uncapped by `--max-results-per-source` — see "Adding, removing, or tuning an ingest source" below — so its true embedding-call cost can only be known by actually checking, not by reading config).
 
+## Scheduling
+
+`.github/workflows/broadcast-scheduled.yml` runs `orchestrate.py` on a cron cadence (daily at 12:00 UTC by default — a placeholder, change the cron expression to whatever cadence gets decided). **It's disabled by default on purpose** — a `schedule:` trigger has no native "off" switch in GitHub Actions, so the job itself is gated on a repository variable:
+
+```
+Settings -> Secrets and variables -> Actions -> Variables -> New repository variable:
+BROADCAST_SCHEDULE_ENABLED = true
+```
+
+Until that variable is set, every scheduled firing shows as **skipped** in the Actions UI (visibly, not silently absent) and spends zero Gemini quota. Run `--dry-run` (see above) with a realistic `--max-results-per-source` first to know the real per-run cost before setting this variable — that's the whole reason `--dry-run` exists.
+
+`workflow_dispatch` (manual trigger) always runs regardless of the variable — a human manually triggering this is already an explicit decision; the gate exists specifically to keep the *unattended* cron trigger inert until opted into.
+
+**`--data-dir` persistence in this workflow is best-effort, not durable.** GitHub Actions runners are ephemeral, so `dedup_store.json`/`evidence_store` continuity across scheduled runs depends on `actions/cache` (a rolling per-run-id cache key with a prefix restore, since a cache entry can't be overwritten once created) — GitHub evicts unused cache entries after roughly 7 days and caps total repo cache size at 10GB. A real durable `--data-dir` most likely belongs in whatever repo ends up hosting distribution (see "No real hosting" below) once that exists.
+
+This workflow **does not run `distribute.py`** — publishing needs a real `--base-url` a hosting target actually serves, which doesn't exist yet. It only produces the episode; wiring in real publishing is a follow-up once hosting is decided.
+
 ## Reading the result — what "success" actually looks like
 
 `report.json` (also printed to stdout) is the thing to read, not just the process exit code (which is 1 whenever `episode_produced` is `false`, even though everything upstream may have worked correctly):
@@ -164,7 +181,7 @@ Three different stores live under `--data-dir`, each retained (or deliberately n
 
 ## What this skill does not do yet
 
-- **No scheduling.** Every run is manual — direct script invocation or a manually-triggered `workflow_dispatch`. Nothing produces an episode automatically on a cadence.
+- **Scheduling exists but is off by default.** `.github/workflows/broadcast-scheduled.yml` (see "Scheduling" above) will run `orchestrate.py` on a cron cadence once `BROADCAST_SCHEDULE_ENABLED` is set — until then, every firing is a visible no-op. It doesn't publish (`distribute.py`) yet either way, pending a hosting decision.
 - **No real hosting.** `distribute.py`'s output must be manually deployed (e.g. to GitHub Pages) for its feed to be reachable at `--base-url`.
 - **No cover art.** `distribute.py` now emits the full `itunes:` namespace (category, explicit, type, author, subtitle, owner, per-episode duration) — see "Publishing an episode" above — but `itunes:image` is left for a human to supply once real artwork exists; this pipeline can't generate it. Apple Podcasts specifically won't list a show without one; every other podcast app and every other tag works fine in the meantime.
 - **No cross-story "digest" synthesis.** Narration is strictly per-story, isolated to that story's own text — a deliberate scope decision made after research into hallucination risk in broader-context AI summarization, not an oversight. See `narrate.py`'s docstring for the reasoning.
