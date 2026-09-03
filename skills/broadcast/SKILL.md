@@ -122,6 +122,18 @@ cd mcp/evidence-pinning && npm ci && npm run build
 
 `ci.yml` already runs the full suite (server built) on every push/PR — this is what to run locally *before* pushing, to catch a failure before CI does, not a substitute for it.
 
+## Retention
+
+Three different stores live under `--data-dir`, each retained (or deliberately not) on purpose — check this before assuming any of them just grows forever:
+
+- **`dedup_store.json`**'s rolling-window entries are already pruned automatically on every `orchestrate.py` run (`dedup_store.prune_old_entries()`, wired in via `rank.py`, default 14-day window) — no action needed here, this one never grows unbounded.
+- **`episodes/<date>/`** (the actual per-episode script/audio output) is *not* pruned automatically — a human may not have run `distribute.py` against a given episode yet, may want it kept as their own archive, or may be actively debugging it, so silent automatic deletion felt like the wrong default here. Use `prune_episodes.py` explicitly instead:
+  ```bash
+  python skills/broadcast/scripts/prune_episodes.py --data-dir ~/.broadcast-data [--retention-days N]  # default: 90
+  ```
+  Dry-run by default — it only *prints* what would be deleted and changes nothing on disk. Pass `--apply` to actually remove stale episode directories.
+- **`evidence_store/`** (evidence-pinning-mcp's own state) is deliberately never pruned by anything in this pipeline — it's an append-only provenance log by design (see `mcp/evidence-pinning/README.md`), meant to keep a claim's full history queryable indefinitely. Pruning it would defeat its actual purpose, not just free disk space.
+
 ## Known operational risks — read before running live
 
 - **Gemini TTS rate-limits under realistic call volume**, confirmed live more than once. Never retrigger a failed or in-flight run back-to-back — wait for it to fully finish first. A blind retry is itself another request competing for the same already-exhausted quota; this made a real rate-limit situation *worse* in this project's own history, not better. `synthesize_text()`'s retry policy (`gemini_retry.py`) already honors the server's `Retry-After` header; `--synth-delay-seconds` adds further pacing. If you see a wall of `HTTP 429` in `synth_failed`, wait — don't immediately re-run.
@@ -135,7 +147,7 @@ cd mcp/evidence-pinning && npm ci && npm run build
 - **No `itunes:` RSS namespace tags** — no cover art, category, explicit flag, or subtitle. The feed is valid RSS 2.0 but likely won't display well in a real podcast app yet.
 - **No cross-story "digest" synthesis.** Narration is strictly per-story, isolated to that story's own text — a deliberate scope decision made after research into hallucination risk in broader-context AI summarization, not an oversight. See `narrate.py`'s docstring for the reasoning.
 - **No cost/budget tracking** on Gemini API usage across embeddings, narration, and TTS.
-- **No retention policy** — `dedup_store.json` and `episodes/<date>/` accumulate indefinitely in `--data-dir`.
+- **Retention for `episodes/<date>/` is opt-in, not automatic** — see the Retention section above; `prune_episodes.py` exists but has to be run deliberately, nothing calls it on a schedule.
 
 ## Output discipline
 
