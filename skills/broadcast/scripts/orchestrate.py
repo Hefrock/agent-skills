@@ -152,6 +152,8 @@ def run_episode(
     synth_delay_seconds: float = 0.0,
     enable_narration: bool = True,
     narration_success_threshold: float = narrate.DEFAULT_SUCCESS_THRESHOLD,
+    normalize_audio: bool = True,
+    inter_segment_silence_ms: float = audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
     -> embed -> rank -> pin evidence -> generate script -> narrate (best-
@@ -217,6 +219,18 @@ def run_episode(
     don't need it (tests included) — the delay is an orchestration-time
     policy choice, not something inherent to a single synthesis call.
 
+    normalize_audio/inter_segment_silence_ms default to ON here (unlike
+    synth_delay_seconds above) — audio_synth.concatenate_wav_clips() and
+    assemble_episode_audio() themselves still default both off, staying
+    neutral raw-concatenation primitives for their own unit tests, but
+    there's no equivalent "keep tests fast" reason to gate these off at
+    this level too: unlike a real time.sleep(), normalizing peak volume
+    and inserting a silence gap add no wall-clock cost and no network
+    call, so a real episode should always get consistent segment-to-
+    segment loudness and an audible gap between stories by default. Pass
+    normalize_audio=False / inter_segment_silence_ms=0.0 to reproduce the
+    old raw-concatenation behavior exactly.
+
     Returns:
       {
         "run_date", "ingest_failed", "embed_failed",
@@ -260,7 +274,9 @@ def run_episode(
             except Exception as e:
                 synth_failed.append({"segment_type": segment["segment_type"], "canonical_id": segment["canonical_id"], "error": f"{type(e).__name__}: {e}"})
         if not synth_failed:
-            episode_audio = audio_synth.assemble_episode_audio(script, segment_audio)
+            episode_audio = audio_synth.assemble_episode_audio(
+                script, segment_audio, normalize=normalize_audio, inter_segment_silence_ms=inter_segment_silence_ms,
+            )
 
     return {
         "run_date": run_date,
@@ -334,6 +350,14 @@ def main() -> int:
         "--narration-success-threshold", type=float, default=narrate.DEFAULT_SUCCESS_THRESHOLD,
         help="Fraction of attempted per-story narrations that must pass grounding for the episode to keep any of them — see narrate.py's docstring for why this is an episode-level, not just per-segment, threshold.",
     )
+    parser.add_argument(
+        "--no-audio-normalize", dest="normalize_audio", action="store_false",
+        help="Skip per-segment peak normalization when assembling the full episode WAV (audio_synth.py's default target: 90%% of full scale). Default: normalization is enabled, so segments synthesized by separate Gemini TTS calls don't vary wildly in loudness.",
+    )
+    parser.add_argument(
+        "--inter-segment-silence-ms", type=float, default=audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS,
+        help="Milliseconds of true silence inserted between consecutive segments in the assembled episode WAV (0 to disable). Default matches audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -355,6 +379,7 @@ def main() -> int:
             args.date, registry, store, client, api_key,
             max_results_per_source=args.max_results_per_source, synth_delay_seconds=args.synth_delay_seconds,
             enable_narration=args.enable_narration, narration_success_threshold=args.narration_success_threshold,
+            normalize_audio=args.normalize_audio, inter_segment_silence_ms=args.inter_segment_silence_ms,
         )
 
     dedup_store.save_store(result["store"], store_path)

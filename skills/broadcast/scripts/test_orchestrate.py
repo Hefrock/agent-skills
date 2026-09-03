@@ -21,10 +21,13 @@ Three layers, matching the module's own split:
 
 Run: python test_orchestrate.py"""
 
+import array
 import importlib.util
+import io
 import os
 import sys
 import unittest
+import wave
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -398,6 +401,67 @@ class RunEpisodeWiring(unittest.TestCase):
             narration_success_threshold=0.0,
         )
         self.assertFalse(result["narration_result"]["episode_level_fallback"])
+
+    # ── audio quality wiring — normalize_audio/inter_segment_silence_ms's
+    # own effect on run_episode(), on top of the full-pipeline proof above.
+    # audio_synth.py's own test suite proves the underlying math; these
+    # prove run_episode() actually wires its real, default-on values
+    # through to assemble_episode_audio(), the same "prove the wiring,
+    # not just the units" discipline every other stage here already gets. ─
+
+    def _full_episode_peak(self, result):
+        with wave.open(io.BytesIO(result["episode_audio"]["full_episode_wav"]), "rb") as wf:
+            frames = wf.readframes(wf.getnframes())
+        samples = array.array("h")
+        samples.frombytes(frames)
+        return max(abs(s) for s in samples)
+
+    def test_defaults_normalize_and_silence_pad_the_assembled_episode(self):
+        # _fake_synth_fn's clip is a quiet, constant b"\x01\x02" fill
+        # (int16 peak 513) — well below the default normalization target,
+        # so a real end-to-end run through run_episode()'s own defaults
+        # should visibly raise it, and the assembled WAV should be longer
+        # than the raw sum of segment clips once silence gaps are counted.
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+        )
+        segment_count = len(result["script"]["segments"])
+        raw_clip_frames = 100  # _fake_synth_fn always returns a 100-frame clip
+        gap_frames = round(24000 * orchestrate.audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS / 1000.0)
+        expected_frames = segment_count * raw_clip_frames + (segment_count - 1) * gap_frames
+
+        with wave.open(io.BytesIO(result["episode_audio"]["full_episode_wav"]), "rb") as wf:
+            self.assertEqual(wf.getnframes(), expected_frames)
+
+        expected_peak = int(32767 * orchestrate.audio_synth.DEFAULT_NORMALIZE_TARGET_PEAK_RATIO)
+        self.assertEqual(self._full_episode_peak(result), expected_peak)
+
+    def test_disabling_both_reproduces_raw_concatenation(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+            normalize_audio=False, inter_segment_silence_ms=0.0,
+        )
+        segment_count = len(result["script"]["segments"])
+        with wave.open(io.BytesIO(result["episode_audio"]["full_episode_wav"]), "rb") as wf:
+            self.assertEqual(wf.getnframes(), segment_count * 100)  # no silence gaps
+        self.assertEqual(self._full_episode_peak(result), 513)  # unnormalized — _fake_synth_fn's own real peak
+
+    def test_custom_inter_segment_silence_ms_is_used(self):
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+            inter_segment_silence_ms=50.0,
+        )
+        segment_count = len(result["script"]["segments"])
+        gap_frames = round(24000 * 50.0 / 1000.0)
+        expected_frames = segment_count * 100 + (segment_count - 1) * gap_frames
+        with wave.open(io.BytesIO(result["episode_audio"]["full_episode_wav"]), "rb") as wf:
+            self.assertEqual(wf.getnframes(), expected_frames)
 
 
 if __name__ == "__main__":
