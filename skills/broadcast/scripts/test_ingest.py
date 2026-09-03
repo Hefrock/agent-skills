@@ -877,6 +877,103 @@ REGULATIONS_GOV_FIXTURE_NO_COMMENT_PERIOD = {
     ]
 }
 
+FDA_MAUDE_FIXTURE = {
+    # Field names match openFDA's own long-documented schema (see
+    # ingest.py's FDA MAUDE section header) — NOT captured from a real
+    # live response the way every other fixture in this file was; this
+    # sandbox's network egress is blocked to api.fda.gov. Pins the
+    # parser's behavior against the documented shape pending real
+    # live verification.
+    "meta": {"results": {"total": 2}},
+    "results": [
+        {
+            "mdr_report_key": "12345678",
+            "date_received": "20260815",
+            "event_type": ["Malfunction"],
+            "device": [
+                {"brand_name": "Acme AI Triage Software", "generic_name": "SOFTWARE, MEDICAL DEVICE DATA SYSTEM", "manufacturer_d_name": "Acme Health Inc."},
+            ],
+            "mdr_text": [
+                {"text_type_code": "Additional Manufacturer Narrative", "text": "Manufacturer confirmed patch deployed."},
+                {"text_type_code": "Description of Event or Problem", "text": "The AI triage algorithm flagged a low-risk case as high-risk due to a data formatting error, delaying no actual care."},
+            ],
+            "product_problems": ["Software Issue"],
+        },
+        {
+            "mdr_report_key": "87654321",
+            "date_received": "20260810",
+            "event_type": ["Injury"],
+            "device": [
+                {"generic_name": "SOFTWARE, MEDICAL DEVICE DATA SYSTEM", "manufacturer_d_name": "Beta Diagnostics LLC"},
+            ],
+            "mdr_text": [],
+            "product_problems": ["Diagnostic/Prognostic Software Issue", "Device Difficult to Program or Calibrate"],
+        },
+    ],
+}
+
+FDA_MAUDE_FIXTURE_MISSING_FIELDS = {
+    "results": [
+        {"mdr_report_key": "1", "date_received": None, "device": [], "mdr_text": [], "product_problems": []},  # missing date
+        {"mdr_report_key": None, "date_received": "20260815", "device": [], "mdr_text": [], "product_problems": []},  # missing report key
+        {"mdr_report_key": "2", "date_received": "not-a-date", "device": [], "mdr_text": [], "product_problems": []},  # unparseable date
+        {"mdr_report_key": "3", "date_received": "20260815", "device": [], "mdr_text": [], "product_problems": []},  # nothing to summarize
+    ]
+}
+
+
+class ParseFdaMaudeJson(unittest.TestCase):
+    def test_extracts_two_records(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(len(items), 2)
+
+    def test_source_key_is_fda_maude(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertTrue(all(i["source_key"] == "fda_maude" for i in items))
+
+    def test_title_combines_device_brand_name_and_event_type(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(items[0]["title"], "Acme AI Triage Software — Malfunction")
+
+    def test_title_falls_back_to_generic_name_when_no_brand_name(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(items[1]["title"], "SOFTWARE, MEDICAL DEVICE DATA SYSTEM — Injury")
+
+    def test_date_received_yyyymmdd_is_converted_to_iso(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(items[0]["published_date"], "2026-08-15")
+        self.assertEqual(items[1]["published_date"], "2026-08-10")
+
+    def test_id_hint_is_mdr_prefixed_report_key(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(items[0]["id_hint"], "mdr:12345678")
+
+    def test_url_is_built_from_the_report_key(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(
+            items[0]["url"],
+            "https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfmaude/detail.cfm?mdrfoi__id=12345678",
+        )
+
+    def test_summary_prefers_description_of_event_narrative_over_product_problems(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertIn("flagged a low-risk case as high-risk", items[0]["summary"])
+        self.assertNotIn("Additional Manufacturer Narrative", items[0]["summary"])
+
+    def test_summary_falls_back_to_product_problems_when_no_narrative_text(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE)
+        self.assertEqual(items[1]["summary"], "Diagnostic/Prognostic Software Issue, Device Difficult to Program or Calibrate")
+
+    def test_records_missing_required_fields_or_summary_are_skipped(self):
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE_MISSING_FIELDS)
+        self.assertEqual(items, [])
+
+    def test_missing_results_key_returns_empty_list(self):
+        self.assertEqual(ingest.parse_fda_maude_json({}), [])
+
+    def test_empty_results_list_returns_empty_list(self):
+        self.assertEqual(ingest.parse_fda_maude_json({"results": []}), [])
+
 
 class ParseRegulationsGovJson(unittest.TestCase):
     def test_extracts_two_records(self):

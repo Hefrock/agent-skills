@@ -73,10 +73,10 @@ def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
     RSS sources already share one generic parser) goes through
     ingest.fetch_rss, which has no max_results param of its own (a feed
     returns whatever it returns; rank.py's own selection does the
-    down-selecting). The three query-based sources read their query from
-    the source's own "query" field. medRxiv and FDA guidance need
-    neither a feed_url nor a query — they're each a single fixed
-    endpoint.
+    down-selecting). The four query-based sources (pubmed, arxiv,
+    regulations_gov, fda_maude) read their query from the source's own
+    "query" field. medRxiv and FDA guidance need neither a feed_url nor a
+    query — they're each a single fixed endpoint.
 
     regulations_gov additionally reads REGULATIONS_GOV_API_KEY from the
     environment and passes it through (optional; fetch_regulations_gov()
@@ -102,6 +102,8 @@ def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
         return ingest.fetch_regulations_gov(
             source["query"], max_results=max_results, api_key=os.environ.get("REGULATIONS_GOV_API_KEY"),
         )
+    if key == "fda_maude":
+        return ingest.fetch_fda_maude(source["query"], max_results=max_results)
     raise ValueError(f"no fetch dispatch registered for source '{key}' (no feed_url, and not one of the known query-based/fixed sources)")
 
 
@@ -364,7 +366,16 @@ def _report_json(result: dict) -> dict:
     the full ranked/store internals (already large, already implicit in
     the counts below). Kept separate from run_episode()'s own return
     value so that dict can stay the single source of truth for a caller
-    that wants the real data, not a lossy summary."""
+    that wants the real data, not a lossy summary.
+
+    source_utilization (rank.summarize_source_utilization()) is pure
+    observability, not a QA gate — nothing in it fails a run. A single
+    run's numbers are noisy on their own (a source having zero candidates
+    today might just mean nothing newsworthy happened, not that it's
+    being starved); the actionable version is comparing this field across
+    multiple days' episodes/<date>/report.json files, which is a
+    deliberately separate, not-yet-built next step, not something this
+    function or rank.py's summary tries to fake from one run."""
     qa = result["qa_result"]
     narration = result["narration_result"]
     return {
@@ -374,6 +385,7 @@ def _report_json(result: dict) -> dict:
         "top_three_count": len(result["rank_result"]["top_three"]),
         "quick_hits_count": len(result["rank_result"]["quick_hits"]),
         "dropped_duplicates_count": len(result["rank_result"]["dropped_duplicates"]),
+        "source_utilization": rank.summarize_source_utilization(result["rank_result"]),
         "pinned_count": len(result["pinned"]["pinned"]),
         "pinned_skipped_no_summary_count": len(result["pinned"]["skipped_no_summary"]),
         "pinned_failed_count": len(result["pinned"]["failed"]),

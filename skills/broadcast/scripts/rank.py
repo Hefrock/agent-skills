@@ -156,3 +156,70 @@ def rank_stories(
         "dropped_duplicates": dropped_duplicates,
         "store": store,
     }
+
+
+def summarize_source_utilization(rank_result: dict) -> dict:
+    """Per-source breakdown of what happened to every candidate this run —
+    not a hardcoded "expected vendors" checklist (that kind of list goes
+    stale and only ever catches gaps someone already thought to define,
+    see this project's own broadcast-coverage-review discussion), just an
+    honest summary of data rank_stories() already computed. Pure
+    observability, not a QA gate: nothing here fails a run or blocks
+    episode_produced — a source legitimately having zero candidates on a
+    given day (nothing newsworthy happened) looks identical in this
+    summary to a source being structurally starved by scoring, and only a
+    human looking at the trend across multiple days' report.json files
+    (this function only ever sees one run) can tell those apart. That
+    rolling view is a deliberately separate, not-yet-built next step, not
+    something this function tries to fake from a single run's data.
+
+    Takes rank_stories()'s own return dict directly, so it always reflects
+    exactly what that run's selection actually did — no separate pass
+    over the original items list, no chance of drifting out of sync with
+    the real selection logic.
+
+    "candidates" here means everything that survived same-day-duplicate
+    filtering and was actually scored/classified (top_three + quick_hits
+    + not_selected) — dropped_duplicates is reported separately since a
+    same-day duplicate was never an independent candidate in the first
+    place, just a repeat of a story another item (possibly from the same
+    source, possibly from a different one) already represented that day.
+
+    Returns {source_key: {"candidates", "selected_top_three",
+    "selected_quick_hits", "selected_total", "not_selected",
+    "dropped_duplicates", "selection_rate"}, ...} — selection_rate is
+    selected_total / candidates, or None when candidates is 0 (avoids a
+    misleading 0.0 that looks like "every candidate lost" rather than
+    "there were no candidates to begin with")."""
+    by_source: dict = {}
+
+    def bucket(source_key: str) -> dict:
+        return by_source.setdefault(source_key, {
+            "candidates": 0, "selected_top_three": 0, "selected_quick_hits": 0,
+            "selected_total": 0, "not_selected": 0, "dropped_duplicates": 0,
+        })
+
+    for item in rank_result["top_three"]:
+        b = bucket(item["source_key"])
+        b["candidates"] += 1
+        b["selected_top_three"] += 1
+        b["selected_total"] += 1
+
+    for item in rank_result["quick_hits"]:
+        b = bucket(item["source_key"])
+        b["candidates"] += 1
+        b["selected_quick_hits"] += 1
+        b["selected_total"] += 1
+
+    for item in rank_result["not_selected"]:
+        b = bucket(item["source_key"])
+        b["candidates"] += 1
+        b["not_selected"] += 1
+
+    for item in rank_result["dropped_duplicates"]:
+        bucket(item["source_key"])["dropped_duplicates"] += 1
+
+    for stats in by_source.values():
+        stats["selection_rate"] = (stats["selected_total"] / stats["candidates"]) if stats["candidates"] else None
+
+    return by_source
