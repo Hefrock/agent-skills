@@ -154,6 +154,7 @@ def run_episode(
     narration_success_threshold: float = narrate.DEFAULT_SUCCESS_THRESHOLD,
     normalize_audio: bool = True,
     inter_segment_silence_ms: float = audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS,
+    dry_run: bool = False,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
     -> embed -> rank -> pin evidence -> generate script -> narrate (best-
@@ -231,7 +232,36 @@ def run_episode(
     normalize_audio=False / inter_segment_silence_ms=0.0 to reproduce the
     old raw-concatenation behavior exactly.
 
-    Returns:
+    dry_run (default False): if True, stops immediately after ingest —
+    the one pipeline stage that spends no Gemini API quota at all (every
+    fetch_fn call hits a source's own free API/RSS feed, never Gemini) —
+    and returns an ESTIMATE of how many Gemini calls a real run with this
+    exact config would make, without spending any of that quota to find
+    out. A real, live-motivated need: this project's own history includes
+    several rounds of live-testing that exhausted a shared Gemini TTS
+    quota with no way to have known the cost beforehand.
+
+    embed_calls_estimate is exact — embed_items() calls embed_fn() exactly
+    once per successfully-ingested item, so this count is not an
+    approximation. narration_calls_estimate_max and synth_calls_estimate_
+    max are genuine upper bounds, not exact counts: computing the real
+    number requires rank.rank_stories()'s same-day/rolling-window dedup,
+    which itself needs embeddings to run — the one thing dry_run is
+    specifically trying to avoid paying for. Since dedup only ever REMOVES
+    candidates, never adds them, capping the selected-story count at
+    rank.DEFAULT_TOP_THREE_COUNT + rank.DEFAULT_QUICK_HITS_COUNT (this
+    pipeline's actual, unconfigurable-from-here selection ceiling) is
+    always a safe overestimate, never an underestimate — budget against
+    these numbers as a ceiling, not a prediction.
+
+    Returns (dry_run=True):
+      {
+        "run_date", "dry_run": True, "ingest_failed",
+        "items_ingested", "embed_calls_estimate",
+        "narration_calls_estimate_max", "synth_calls_estimate_max",
+      }
+
+    Returns (dry_run=False, the normal case):
       {
         "run_date", "ingest_failed", "embed_failed",
         "rank_result", "pinned", "script", "narration_result", "qa_result", "synth_failed",
@@ -246,6 +276,25 @@ def run_episode(
       truth, not the pre- and post- versions both floating around" policy
       the rest of this pipeline already follows."""
     ingest_result = ingest_all(registry, max_results_per_source, fetch_fn)
+
+    if dry_run:
+        items_ingested = len(ingest_result["items"])
+        max_selected_stories = min(items_ingested, rank.DEFAULT_TOP_THREE_COUNT + rank.DEFAULT_QUICK_HITS_COUNT)
+        return {
+            "run_date": run_date,
+            "dry_run": True,
+            "ingest_failed": ingest_result["failed"],
+            "items_ingested": items_ingested,
+            "embed_calls_estimate": items_ingested,
+            "narration_calls_estimate_max": max_selected_stories,
+            # +4: intro/disclosure/quick_hits_transition/outro — the fixed
+            # connective segments every real script can carry (quick_hits_
+            # transition is skipped when there are zero quick hits, so this
+            # over-counts by at most 1 in that edge case; a small, stated,
+            # deliberate overestimate, not a precision claim).
+            "synth_calls_estimate_max": max_selected_stories + 4,
+        }
+
     embed_result = embed_items(ingest_result["items"], api_key, embed_fn)
 
     rank_result = rank.rank_stories(embed_result["items"], embed_result["embeddings"], registry, store, current_date=run_date)
@@ -358,6 +407,10 @@ def main() -> int:
         "--inter-segment-silence-ms", type=float, default=audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS,
         help="Milliseconds of true silence inserted between consecutive segments in the assembled episode WAV (0 to disable). Default matches audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS.",
     )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Ingest only (spends zero Gemini API quota — ingest never calls Gemini), then print an estimate of how many embedding/narration/TTS calls a real run with this exact config would make. Nothing is persisted, no evidence-pinning-mcp server is spawned. Run this before a real episode if you're unsure how expensive it would be.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -373,6 +426,17 @@ def main() -> int:
 
     registry = source_registry.load_registry(registry_path)
     store = dedup_store.load_store(store_path)  # already returns a fresh {"entries": []} store if store_path doesn't exist yet
+
+    if args.dry_run:
+        # No evidence_client needed: dry_run=True returns before run_episode()
+        # ever touches it, so there's no reason to spawn (or require built)
+        # the evidence-pinning-mcp subprocess just to answer a cost question.
+        result = run_episode(
+            args.date, registry, store, None, api_key,
+            max_results_per_source=args.max_results_per_source, dry_run=True,
+        )
+        print(json.dumps(result, indent=2))
+        return 0
 
     with evidence_pinning_client.EvidencePinningClient(store_path=evidence_store_path) as client:
         result = run_episode(
