@@ -26,8 +26,8 @@
       "key": "pubmed",
       "name": "PubMed / NCBI E-utilities",
       "category": "peer_reviewed",
-      "query": "FHIR AND clinical decision support",
-      "query_note": "A documented judgment call, not a validated one (same status as the authority floors/half-lives above) — reused as-is from the query that live_smoke_test.py already confirmed returns real, on-topic results. Revisit once a real run's story mix can be judged against actual episodes, same as the other hand-tuned rubric values in this file."
+      "query": "(FHIR OR interoperability OR clinical decision support OR clinical workflow) AND (artificial intelligence OR machine learning OR large language model OR agentic)",
+      "query_note": "Widened from the original 'FHIR AND clinical decision support' (still live_smoke_test.py-confirmed, still a documented judgment call, not a validated one, same status as the authority floors/half-lives above): the original query never required an AI/ML term at all, so it could only ever return non-AI health-IT papers — a real gap against this show's own topic. This version keeps the interoperability/CDS anchor (that's still the intended lens, not a random general-AI-in-healthcare feed) but now requires an explicit AI/ML/agentic term, and adds 'agentic' since that's a throughline_keywords entry the old query never touched. Revisit once a real run's story mix can be judged against actual episodes, same as the other hand-tuned rubric values in this file."
     },
     {
       "key": "arxiv",
@@ -86,12 +86,12 @@
       "feed_url_verified_note": "Confirmed live (2026-09-01): 25 real items. The URL was fine on the first try; the real bug was that this feed's <pubDate> isn't RFC 822 ('Sep 1, 2026 2:08pm' — no day-of-week, 12hr+am/pm, no timezone), which silently zeroed every item until _parse_rss_pubdate() got a fallback format for it."
     },
     {
-      "key": "healthcare_it_news",
-      "name": "Healthcare IT News",
+      "key": "hit_consultant",
+      "name": "HIT Consultant",
       "category": "industry_press",
-      "feed_url": "https://www.healthcareitnews.com/home/feed",
-      "feed_url_verified": false,
-      "feed_url_verified_note": "Confirmed BLOCKED, not just unverified (2026-09-01): HTTP 403 on this URL and three other guessed variants (/rss.xml, /feed), even with a full Chrome-like header set (User-Agent, Accept, Accept-Language, Referer). Looks like WAF/Cloudflare-style bot protection a plain HTTP client can't pass — needs a different approach (headless browser, an alternate syndication endpoint, or a manual check for whether they offer one) before this source can actually be ingested. Left broken and documented rather than silently dropped or faked working."
+      "feed_url": "https://hitconsultant.net/feed",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Replacement for healthcare_it_news (removed — permanently WAF-blocked, no viable RSS alternative found). Picked via a SWOT comparison against Healthcare Dive: closest scope match to what Healthcare IT News actually covered, and a smaller independent site, matching this registry's own empirical pattern (onc_astp, the simplest WordPress feed, worked with zero code changes; larger publisher-network properties have needed real fixes or failed outright). Healthcare Dive was passed over because a third-party scraping guide names healthcaredive.com as an example of a Cloudflare-protected site. Verified 2026-09-03: the user fetched https://hitconsultant.net/feed directly and supplied the real response, run through ingest.parse_rss_xml() here — 4/4 items parsed cleanly: correct HTML-entity decoding ('M&#038;A' -> 'M&A'), clean HTML-stripped summaries (the description CDATA's '<a>...Read More</a>' anchor correctly reduced to plain text), uncorrupted URLs, and standard RFC-822 pubDates parsed with zero special-casing needed (as clean as onc_astp; unlike fierce_healthcare/cms, which both needed real date-format fixes). Confirms this pipeline's own parser handles this feed correctly. The one thing this doesn't confirm is fetch_rss()'s own live HTTP call (with its browser-like User-Agent) succeeding end-to-end from this pipeline's actual runtime — worth a real live_smoke_test.py/orchestrate.py run to close that last gap, but the content-correctness risk this flag exists to track is real and satisfied."
     }
   ],
   "throughline_keywords": [

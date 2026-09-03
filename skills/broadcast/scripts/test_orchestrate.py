@@ -117,10 +117,17 @@ class FetchForSourceDispatch(unittest.TestCase):
             orchestrate._fetch_for_source({"key": "arxiv", "query": "cat:cs.AI AND abs:clinical"}, 7)
         m.assert_called_once_with("cat:cs.AI AND abs:clinical", max_results=7)
 
-    def test_regulations_gov_dispatches_with_its_configured_query(self):
-        with mock.patch.object(orchestrate.ingest, "fetch_regulations_gov", return_value=[]) as m:
+    def test_regulations_gov_dispatches_with_its_configured_query_and_no_env_key(self):
+        with mock.patch.object(orchestrate.ingest, "fetch_regulations_gov", return_value=[]) as m, \
+             mock.patch.dict(os.environ, {}, clear=True):
             orchestrate._fetch_for_source({"key": "regulations_gov", "query": "clinical decision support software"}, 7)
-        m.assert_called_once_with("clinical decision support software", max_results=7)
+        m.assert_called_once_with("clinical decision support software", max_results=7, api_key=None)
+
+    def test_regulations_gov_passes_through_a_real_api_key_from_the_environment(self):
+        with mock.patch.object(orchestrate.ingest, "fetch_regulations_gov", return_value=[]) as m, \
+             mock.patch.dict(os.environ, {"REGULATIONS_GOV_API_KEY": "a-real-key"}, clear=True):
+            orchestrate._fetch_for_source({"key": "regulations_gov", "query": "clinical decision support software"}, 7)
+        m.assert_called_once_with("clinical decision support software", max_results=7, api_key="a-real-key")
 
     def test_medrxiv_dispatches_with_no_query(self):
         with mock.patch.object(orchestrate.ingest, "fetch_medrxiv", return_value=[]) as m:

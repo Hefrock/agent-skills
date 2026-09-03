@@ -72,11 +72,14 @@ def skip(label, reason):
     skipped += 1
 
 
+registry = source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
+
 print("── PubMed ──────────────────────────────────────────────────")
+pubmed_source = source_registry.get_source(registry, "pubmed")
 
 
 def _pubmed():
-    items = ingest.fetch_pubmed("FHIR AND clinical decision support", max_results=3)
+    items = ingest.fetch_pubmed(pubmed_source["query"], max_results=3)
     assert len(items) > 0, "query returned zero items"
     assert items[0]["title"], "first item has no title"
     return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
@@ -85,10 +88,11 @@ def _pubmed():
 check("fetch_pubmed returns real results", _pubmed)
 
 print("\n── arXiv ────────────────────────────────────────────────────")
+arxiv_source = source_registry.get_source(registry, "arxiv")
 
 
 def _arxiv():
-    items = ingest.fetch_arxiv("cat:cs.AI AND abs:clinical", max_results=3)
+    items = ingest.fetch_arxiv(arxiv_source["query"], max_results=3)
     assert len(items) > 0, "query returned zero items"
     assert items[0]["title"], "first item has no title"
     return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
@@ -122,19 +126,23 @@ def _fda_guidance():
 check("fetch_fda_guidance returns real results", _fda_guidance)
 
 print("\n── regulations.gov ──────────────────────────────────────────")
+regulations_gov_source = source_registry.get_source(registry, "regulations_gov")
 
 
 def _regulations_gov():
-    items = ingest.fetch_regulations_gov("clinical decision support software", days=365, max_results=5)
-    assert len(items) > 0, "query returned zero documents (DEMO_KEY rate-limited? see the module docstring)"
+    regulations_gov_api_key = os.environ.get("REGULATIONS_GOV_API_KEY")
+    items = ingest.fetch_regulations_gov(
+        regulations_gov_source["query"], days=365, max_results=5, api_key=regulations_gov_api_key,
+    )
+    assert len(items) > 0, "query returned zero documents (DEMO_KEY rate-limited? see the module docstring — set REGULATIONS_GOV_API_KEY for a real key)"
     assert items[0]["title"], "first item has no title"
-    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+    key_label = "a real REGULATIONS_GOV_API_KEY" if regulations_gov_api_key else "the shared DEMO_KEY (set REGULATIONS_GOV_API_KEY for a real one)"
+    return f"{len(items)} items via {key_label}, e.g. '{items[0]['title'][:60]}'"
 
 
 check("fetch_regulations_gov returns real results", _regulations_gov)
 
 print("\n── ONC/ASTP blog ────────────────────────────────────────────")
-registry = source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
 onc_astp_source = source_registry.get_source(registry, "onc_astp")
 
 
@@ -162,7 +170,7 @@ def _cms():
 check("fetch_rss(cms) returns real results", _cms)
 
 print("\n── Industry RSS feeds ──────────────────────────────────────")
-for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
+for key in ("stat_news", "fierce_healthcare", "hit_consultant"):
     source = source_registry.get_source(registry, key)
 
     def _rss(feed_url=source["feed_url"], source_key=key):

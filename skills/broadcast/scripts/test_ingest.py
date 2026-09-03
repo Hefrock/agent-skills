@@ -320,6 +320,27 @@ RSS_FIXTURE_ONC_ASTP_SHAPE = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+RSS_FIXTURE_HIT_CONSULTANT_SHAPE = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"
+	xmlns:content="http://purl.org/rss/1.0/modules/content/"
+	xmlns:dc="http://purl.org/dc/elements/1.1/"
+	xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+	<title></title>
+	<link>https://hitconsultant.net/</link>
+	<item>
+		<title>M&#038;A: Cureety Acquires Reimagine Care to Expand Precision Oncology Platform</title>
+		<link>https://hitconsultant.net/2026/09/02/cureety-acquires-reimagine-care/</link>
+		<dc:creator><![CDATA[Fred Pennic]]></dc:creator>
+		<pubDate>Wed, 02 Sep 2026 15:11:00 +0000</pubDate>
+		<category><![CDATA[Digital Health]]></category>
+		<guid isPermaLink="false">https://hitconsultant.net/?p=97760</guid>
+		<description><![CDATA[What You Should Know Paris-based precision oncology company Cureety has acquired Nashville-based Reimagine Care. <a class="more-posts-link" href="https://hitconsultant.net/2026/09/02/cureety-acquires-reimagine-care/">... Read More</a>]]></description>
+	</item>
+</channel>
+</rss>
+"""
+
+
 RSS_FIXTURE_CMS_SHAPE = """<?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" xml:base="https://www.cms.gov/">
   <channel>
@@ -387,6 +408,26 @@ class ParseRssXml(unittest.TestCase):
             "https://healthit.gov/blog/interoperability/nine-teams-one-mission-meet-the-ehignite-phase-1-winners/",
         )
         self.assertIn("appeared first on ONC Blog", items[0]["summary"])
+
+    def test_hit_consultant_shaped_feed_produces_an_item(self):
+        # Regression coverage for the real WordPress shape confirmed on
+        # 2026-09-03 (see config/sources.json's feed_url_verified_note for
+        # hit_consultant) — verified against the actual live feed response
+        # (supplied by the user, this pipeline's own network egress being
+        # blocked), not a guess: standard RFC 822 pubDate, HTML-entity-
+        # encoded title ("M&#038;A" -> "M&A"), CDATA description with a
+        # trailing "... Read More" anchor that this parser correctly
+        # reduces to plain text rather than leaking markup. No parser
+        # changes needed — as clean as onc_astp, unlike fierce_healthcare
+        # and cms.
+        items = ingest.parse_rss_xml(RSS_FIXTURE_HIT_CONSULTANT_SHAPE, source_key="hit_consultant")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["published_date"], "2026-09-02")
+        self.assertEqual(items[0]["title"], "M&A: Cureety Acquires Reimagine Care to Expand Precision Oncology Platform")
+        self.assertEqual(items[0]["url"], "https://hitconsultant.net/2026/09/02/cureety-acquires-reimagine-care/")
+        self.assertIn("Cureety has acquired Nashville-based Reimagine Care", items[0]["summary"])
+        self.assertIn("Read More", items[0]["summary"])
+        self.assertNotIn("<a ", items[0]["summary"])
 
     def test_cms_shaped_feed_produces_an_item(self):
         # Regression coverage for the real, messy CMS shape confirmed live
@@ -460,8 +501,8 @@ class ParseRssXml(unittest.TestCase):
         self.assertEqual(items, [])
 
     def test_generic_parser_works_for_any_source_key(self):
-        # Same parser, four different outlets — only source_key changes.
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news", "onc_astp"):
+        # Same parser, three different outlets — only source_key changes.
+        for key in ("stat_news", "fierce_healthcare", "onc_astp"):
             items = ingest.parse_rss_xml(RSS_FIXTURE, source_key=key)
             self.assertTrue(all(i["source_key"] == key for i in items))
 
@@ -932,9 +973,9 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         # industry_press: floor 0.4, half_life 3 days -> exactly the floor + half the remaining range at age=3.
         self.assertAlmostEqual(score, 0.4 + 0.6 * 0.5)
 
-    def test_all_three_rss_source_keys_are_registered_in_the_real_config(self):
+    def test_industry_press_rss_source_keys_are_registered_in_the_real_config(self):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news"):
+        for key in ("stat_news", "fierce_healthcare"):
             source = self.source_registry.get_source(registry, key)
             self.assertEqual(source["category"], "industry_press")
             self.assertIn("feed_url", source)
@@ -1049,9 +1090,9 @@ class IngestFeedsIntoDownstreamModules(unittest.TestCase):
         canonical = self.dedup_store.canonicalize_id(item["url"], item["id_hint"])
         self.assertTrue(canonical.startswith("url:"))  # no id_hint, but the recovered (not corrupted) URL is hashed
 
-    def test_all_five_rss_source_keys_are_registered_in_the_real_config(self):
+    def test_all_four_rss_source_keys_are_registered_in_the_real_config(self):
         registry = self.source_registry.load_registry(os.path.join(HERE, "..", "config", "sources.json"))
-        for key in ("stat_news", "fierce_healthcare", "healthcare_it_news", "onc_astp", "cms"):
+        for key in ("stat_news", "fierce_healthcare", "onc_astp", "cms"):
             source = self.source_registry.get_source(registry, key)
             self.assertIn("feed_url", source)
 
