@@ -84,6 +84,14 @@
       "feed_url": "https://www.fiercehealthcare.com/rss/xml",
       "feed_url_verified": true,
       "feed_url_verified_note": "Confirmed live (2026-09-01): 25 real items. The URL was fine on the first try; the real bug was that this feed's <pubDate> isn't RFC 822 ('Sep 1, 2026 2:08pm' — no day-of-week, 12hr+am/pm, no timezone), which silently zeroed every item until _parse_rss_pubdate() got a fallback format for it."
+    },
+    {
+      "key": "hit_consultant",
+      "name": "HIT Consultant",
+      "category": "industry_press",
+      "feed_url": "https://hitconsultant.net/feed",
+      "feed_url_verified": false,
+      "feed_url_verified_note": "Replacement for healthcare_it_news (removed — permanently WAF-blocked, no viable RSS alternative found). Picked via a SWOT comparison against Healthcare Dive: closest scope match to what Healthcare IT News actually covered (health IT/EHRs/digital health/telehealth), and a smaller independent site — matching this registry's own empirical pattern so far (onc_astp, the simplest WordPress feed, worked with zero code changes; larger publisher-network properties have needed real fixes or failed outright). Healthcare Dive was the runner-up but a third-party scraping guide names healthcaredive.com explicitly as an example of a Cloudflare-protected site — real bot management fetch_rss()'s plain browser-like User-Agent is unlikely to pass, the same failure mode that killed healthcare_it_news. Not yet live-verified — this URL was found via web search, not confirmed live (this sandbox's network egress, including WebFetch, is blocked to external hosts). Needs a real live_smoke_test.py run before flipping to true."
     }
   ],
   "throughline_keywords": [

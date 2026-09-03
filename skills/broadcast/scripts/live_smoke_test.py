@@ -170,7 +170,7 @@ def _cms():
 check("fetch_rss(cms) returns real results", _cms)
 
 print("\n── Industry RSS feeds ──────────────────────────────────────")
-for key in ("stat_news", "fierce_healthcare"):
+for key in ("stat_news", "fierce_healthcare", "hit_consultant"):
     source = source_registry.get_source(registry, key)
 
     def _rss(feed_url=source["feed_url"], source_key=key):
