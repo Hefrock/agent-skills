@@ -27,6 +27,8 @@ python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
   [--synth-delay-seconds N]              # default: 6.0 — pacing between TTS calls, see risks below
   [--no-narration]                       # skip AI narration, ship plain mechanical text
   [--narration-success-threshold N]      # default: 0.7 — episode-level narration fallback threshold
+  [--no-audio-normalize]                 # skip per-segment peak normalization in the assembled episode
+  [--inter-segment-silence-ms N]         # default: 400.0 — silence gap between segments (0 to disable)
 ```
 
 **Use `~/.broadcast-data` as the default `--data-dir` unless the user asks for somewhere else.** It holds persistent state (`dedup_store.json`, `evidence_store/`) and every run's output (`episodes/<date>/{report.json,script.json,episode.wav}`) — deduplication and evidence provenance only accumulate meaningfully if the *same* directory is reused run over run, and nothing else in this repo establishes a canonical location. Don't invent a different path per session; that silently defeats the whole story-continuity design. `orchestrate.py` creates the directory itself if it doesn't exist yet — no setup needed beforehand.
