@@ -26,8 +26,8 @@
       "key": "pubmed",
       "name": "PubMed / NCBI E-utilities",
       "category": "peer_reviewed",
-      "query": "FHIR AND clinical decision support",
-      "query_note": "A documented judgment call, not a validated one (same status as the authority floors/half-lives above) — reused as-is from the query that live_smoke_test.py already confirmed returns real, on-topic results. Revisit once a real run's story mix can be judged against actual episodes, same as the other hand-tuned rubric values in this file."
+      "query": "(FHIR OR interoperability OR clinical decision support OR clinical workflow) AND (artificial intelligence OR machine learning OR large language model OR agentic)",
+      "query_note": "Widened from the original 'FHIR AND clinical decision support' (still live_smoke_test.py-confirmed, still a documented judgment call, not a validated one, same status as the authority floors/half-lives above): the original query never required an AI/ML term at all, so it could only ever return non-AI health-IT papers — a real gap against this show's own topic. This version keeps the interoperability/CDS anchor (that's still the intended lens, not a random general-AI-in-healthcare feed) but now requires an explicit AI/ML/agentic term, and adds 'agentic' since that's a throughline_keywords entry the old query never touched. Revisit once a real run's story mix can be judged against actual episodes, same as the other hand-tuned rubric values in this file."
     },
     {
       "key": "arxiv",
