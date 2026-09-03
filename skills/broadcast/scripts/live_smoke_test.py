@@ -130,10 +130,14 @@ regulations_gov_source = source_registry.get_source(registry, "regulations_gov")
 
 
 def _regulations_gov():
-    items = ingest.fetch_regulations_gov(regulations_gov_source["query"], days=365, max_results=5)
-    assert len(items) > 0, "query returned zero documents (DEMO_KEY rate-limited? see the module docstring)"
+    regulations_gov_api_key = os.environ.get("REGULATIONS_GOV_API_KEY")
+    items = ingest.fetch_regulations_gov(
+        regulations_gov_source["query"], days=365, max_results=5, api_key=regulations_gov_api_key,
+    )
+    assert len(items) > 0, "query returned zero documents (DEMO_KEY rate-limited? see the module docstring — set REGULATIONS_GOV_API_KEY for a real key)"
     assert items[0]["title"], "first item has no title"
-    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+    key_label = "a real REGULATIONS_GOV_API_KEY" if regulations_gov_api_key else "the shared DEMO_KEY (set REGULATIONS_GOV_API_KEY for a real one)"
+    return f"{len(items)} items via {key_label}, e.g. '{items[0]['title'][:60]}'"
 
 
 check("fetch_regulations_gov returns real results", _regulations_gov)

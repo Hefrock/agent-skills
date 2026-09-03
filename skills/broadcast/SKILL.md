@@ -17,6 +17,7 @@ Read this whole file before running anything live — several of the operational
   cd mcp/evidence-pinning && npm ci && npm run build
   ```
 - `GEMINI_API_KEY` set in the environment. Used for embeddings (dedup/ranking), AI narration, and text-to-speech — all three stages fail without it.
+- `REGULATIONS_GOV_API_KEY` (optional). Without it, `regulations_gov` ingest uses the shared `DEMO_KEY` (10 req/hr, no registration) — that quota is shared with every other `DEMO_KEY` caller globally, not scoped to this pipeline, so it can be exhausted by unrelated traffic regardless of how often this pipeline actually runs. A free key from [api.data.gov](https://api.data.gov/signup/) raises that to 1000 req/hr, scoped to just this pipeline. Get one and set this env var whenever `regulations_gov` — a `regulatory`-category, highest-authority-floor source — matters enough that you don't want its reliability depending on an unrelated party's request volume.
 
 ## Running one episode
 

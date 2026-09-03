@@ -76,7 +76,17 @@ def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
     down-selecting). The three query-based sources read their query from
     the source's own "query" field. medRxiv and FDA guidance need
     neither a feed_url nor a query — they're each a single fixed
-    endpoint."""
+    endpoint.
+
+    regulations_gov additionally reads REGULATIONS_GOV_API_KEY from the
+    environment and passes it through (optional; fetch_regulations_gov()
+    already falls back to the shared DEMO_KEY, 10 req/hr, no
+    registration, when this is unset — unchanged default behavior). The
+    DEMO_KEY is a real reliability risk specifically for a "regulatory"
+    category source: it's one quota shared with every other DEMO_KEY
+    caller globally, not scoped to this pipeline, so it can be exhausted
+    by unrelated traffic. A free api.data.gov key (1000 req/hr,
+    registered to just this pipeline) removes that."""
     key = source["key"]
     if "feed_url" in source:
         return ingest.fetch_rss(source["feed_url"], key)
@@ -89,7 +99,9 @@ def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
     if key == "fda_guidance":
         return ingest.fetch_fda_guidance(max_results=max_results)
     if key == "regulations_gov":
-        return ingest.fetch_regulations_gov(source["query"], max_results=max_results)
+        return ingest.fetch_regulations_gov(
+            source["query"], max_results=max_results, api_key=os.environ.get("REGULATIONS_GOV_API_KEY"),
+        )
     raise ValueError(f"no fetch dispatch registered for source '{key}' (no feed_url, and not one of the known query-based/fixed sources)")
 
 
