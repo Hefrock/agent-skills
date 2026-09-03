@@ -40,7 +40,7 @@ There's also a manually-triggered GitHub Actions workflow, `.github/workflows/br
 
 ## Estimating cost before a real run
 
-`--dry-run` runs real ingestion (free — no `fetch_fn` call ever touches Gemini) and then stops, printing an estimate of how many Gemini calls a real run with this exact config would make, instead of spending any of that quota to find out:
+`--dry-run` runs real ingestion (free — no `fetch_fn` call ever touches Gemini) and then stops, printing an estimate of how many Gemini calls a real run with this exact config would make, instead of spending any of that quota to find out. **`GEMINI_API_KEY` does not need to be set to use `--dry-run`** — this is the one CLI mode that doesn't require it, precisely so it can answer "is this worth it" before you've committed to getting a key at all:
 
 ```json
 {"run_date": "2026-09-03", "dry_run": true, "ingest_failed": [...], "items_ingested": 23, "embed_calls_estimate": 23, "narration_calls_estimate_max": 10, "synth_calls_estimate_max": 14}

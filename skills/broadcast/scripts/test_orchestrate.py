@@ -26,6 +26,7 @@ import importlib.util
 import io
 import os
 import sys
+import tempfile
 import unittest
 import wave
 from unittest import mock
@@ -528,6 +529,56 @@ class RunEpisodeWiring(unittest.TestCase):
         self.assertEqual(result["embed_calls_estimate"], 0)
         self.assertEqual(result["narration_calls_estimate_max"], 0)
         self.assertEqual(result["synth_calls_estimate_max"], 4)  # intro/disclosure/(no transition)/outro — still a real script every time
+
+
+class MainApiKeyGate(unittest.TestCase):
+    """main()'s own GEMINI_API_KEY gate — the CLI wiring layer, distinct
+    from run_episode()'s dry_run branch (already proven above, via the
+    ForbiddenFn tests, to never touch api_key at all). This class exists
+    because that distinction is exactly where the bug was: main() used to
+    require GEMINI_API_KEY unconditionally, before ever checking
+    args.dry_run, even though dry_run's whole point is answering a cost
+    question for someone who may not have a key yet. run_episode() is
+    patched out so this never spawns a real subprocess or hits the
+    network — main() otherwise always uses the real fetch_fn default,
+    unlike RunEpisodeWiring's tests above."""
+
+    def _run_main(self, argv, gemini_api_key):
+        env = {} if gemini_api_key is None else {"GEMINI_API_KEY": gemini_api_key}
+        fake_result = {
+            "run_date": "2026-09-02", "dry_run": True, "ingest_failed": [],
+            "items_ingested": 0, "embed_calls_estimate": 0,
+            "narration_calls_estimate_max": 0, "synth_calls_estimate_max": 4,
+        }
+        stderr = io.StringIO()
+        with mock.patch.object(sys, "argv", ["orchestrate.py"] + argv), \
+             mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(orchestrate, "run_episode", return_value=fake_result) as fake_run_episode, \
+             mock.patch.object(sys, "stderr", stderr), \
+             mock.patch.object(sys, "stdout", io.StringIO()):
+            exit_code = orchestrate.main()
+        return exit_code, stderr.getvalue(), fake_run_episode
+
+    def test_dry_run_proceeds_without_gemini_api_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exit_code, stderr, fake_run_episode = self._run_main(["--data-dir", tmp, "--dry-run"], gemini_api_key=None)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("GEMINI_API_KEY", stderr)
+        fake_run_episode.assert_called_once()
+        self.assertTrue(fake_run_episode.call_args.kwargs["dry_run"])
+
+    def test_real_run_still_requires_gemini_api_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exit_code, stderr, fake_run_episode = self._run_main(["--data-dir", tmp], gemini_api_key=None)
+        self.assertEqual(exit_code, 2)
+        self.assertIn("GEMINI_API_KEY", stderr)
+        fake_run_episode.assert_not_called()
+
+    def test_dry_run_also_works_fine_when_a_key_is_actually_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exit_code, _, fake_run_episode = self._run_main(["--data-dir", tmp, "--dry-run"], gemini_api_key="fake-api-key")
+        self.assertEqual(exit_code, 0)
+        fake_run_episode.assert_called_once()
 
 
 if __name__ == "__main__":
