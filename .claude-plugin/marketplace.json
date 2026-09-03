@@ -5,12 +5,12 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, knowledge management, and content automation.",
-    "version": "0.7.3"
+    "version": "0.8.0"
   },
   "plugins": [
     {
       "name": "broadcast",
-      "description": "Produces a daily healthcare AI news audio briefing — ingests from ten registered sources, dedupes and ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a spoken script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires GEMINI_API_KEY and a locally-built evidence-pinning-mcp server.",
+      "description": "Produces a daily healthcare AI news audio briefing — ingests from eleven registered sources, dedupes and ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a spoken script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires GEMINI_API_KEY and a locally-built evidence-pinning-mcp server.",
       "author": { "name": "Hefrock" },
       "category": "content-automation",
       "source": "./skills",

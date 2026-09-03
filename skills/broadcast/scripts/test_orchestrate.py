@@ -129,6 +129,11 @@ class FetchForSourceDispatch(unittest.TestCase):
             orchestrate._fetch_for_source({"key": "regulations_gov", "query": "clinical decision support software"}, 7)
         m.assert_called_once_with("clinical decision support software", max_results=7, api_key="a-real-key")
 
+    def test_fda_maude_dispatches_with_its_configured_query(self):
+        with mock.patch.object(orchestrate.ingest, "fetch_fda_maude", return_value=[]) as m:
+            orchestrate._fetch_for_source({"key": "fda_maude", "query": 'device.generic_name:(software OR algorithm)'}, 7)
+        m.assert_called_once_with('device.generic_name:(software OR algorithm)', max_results=7)
+
     def test_medrxiv_dispatches_with_no_query(self):
         with mock.patch.object(orchestrate.ingest, "fetch_medrxiv", return_value=[]) as m:
             orchestrate._fetch_for_source({"key": "medrxiv"}, 7)

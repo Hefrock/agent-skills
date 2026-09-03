@@ -124,15 +124,18 @@ class ValidateRegistry(unittest.TestCase):
         # rather than at ingest-stage runtime.
         source_registry.load_registry(REAL_CONFIG_PATH)
 
-    def test_real_config_has_all_ten_handoff_sources(self):
+    def test_real_config_has_all_eleven_handoff_sources(self):
         # healthcare_it_news (permanently WAF-blocked, no viable RSS
         # alternative found) was removed and replaced with hit_consultant
-        # (feed_url_verified: false pending a real live_smoke_test.py run —
-        # see its feed_url_verified_note for why it was picked).
+        # (verified against a real fetched response — see its
+        # feed_url_verified_note). fda_maude was added afterward to close
+        # a real coverage gap (throughline_keywords' "clinical ai
+        # assurance" had no source backing it) — not yet live-verified,
+        # see its query_note.
         registry = source_registry.load_registry(REAL_CONFIG_PATH)
         keys = {s["key"] for s in registry["sources"]}
         expected = {
-            "pubmed", "arxiv", "medrxiv", "fda_guidance", "regulations_gov",
+            "pubmed", "arxiv", "medrxiv", "fda_guidance", "regulations_gov", "fda_maude",
             "onc_astp", "cms", "stat_news", "fierce_healthcare", "hit_consultant",
         }
         self.assertEqual(keys, expected)

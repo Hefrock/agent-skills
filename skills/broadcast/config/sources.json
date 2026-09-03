@@ -54,6 +54,13 @@
       "query_note": "Same status as pubmed's query above — reused from live_smoke_test.py, a documented judgment call open to revision."
     },
     {
+      "key": "fda_maude",
+      "name": "FDA MAUDE (device adverse events)",
+      "category": "regulatory",
+      "query": "device.generic_name:(software OR algorithm OR \"artificial intelligence\" OR \"machine learning\" OR \"clinical decision support\")",
+      "query_note": "Added to close a real, named gap: 'clinical ai assurance' is a throughline_keywords entry this registry had no source backing at all until now. Scoped to AI/software-relevant device terms deliberately — MAUDE covers every medical device (hip implants, insulin pumps, everything), and left unscoped would be almost entirely off-topic noise for a healthcare-AI show. A documented judgment call, not a validated one (same status as pubmed's query) — device.generic_name is FDA's own controlled vocabulary, not free text, so this needs checking against real results, not just intuition, once live-verified. Placed in 'regulatory' since it's official FDA data, though note a single adverse-event report is arguably more time-sensitive breaking news than a guidance document that governs ongoing conduct — this category's slow-decay assumption is a real, open question, not a settled one, unlike fda_guidance/regulations_gov/onc_astp/cms. NOT yet live-verified at all (unlike hit_consultant, which was checked against a real fetched response) — this sandbox's network egress is blocked to api.fda.gov same as everywhere else. ingest.py's field names (mdr_report_key, date_received, device[].generic_name/brand_name, mdr_text[].text_type_code/text, event_type, product_problems) come from openFDA's own long-documented, stable schema, not a guess, but 'documented' isn't 'confirmed against this exact parser' — the bar every other source here was actually held to. The public per-report URL pattern (accessdata.fda.gov/scripts/cdrh/cfdocs/cfmaude/detail.cfm?mdrfoi__id=) is well-known but also unconfirmed. Needs a real live_smoke_test.py run (or a user-supplied real response, the same path that verified hit_consultant) before this is trusted."
+    },
+    {
       "key": "onc_astp",
       "name": "ONC/ASTP",
       "category": "regulatory",

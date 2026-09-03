@@ -73,10 +73,10 @@ def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
     RSS sources already share one generic parser) goes through
     ingest.fetch_rss, which has no max_results param of its own (a feed
     returns whatever it returns; rank.py's own selection does the
-    down-selecting). The three query-based sources read their query from
-    the source's own "query" field. medRxiv and FDA guidance need
-    neither a feed_url nor a query — they're each a single fixed
-    endpoint.
+    down-selecting). The four query-based sources (pubmed, arxiv,
+    regulations_gov, fda_maude) read their query from the source's own
+    "query" field. medRxiv and FDA guidance need neither a feed_url nor a
+    query — they're each a single fixed endpoint.
 
     regulations_gov additionally reads REGULATIONS_GOV_API_KEY from the
     environment and passes it through (optional; fetch_regulations_gov()
@@ -102,6 +102,8 @@ def _fetch_for_source(source: dict, max_results: int) -> list[dict]:
         return ingest.fetch_regulations_gov(
             source["query"], max_results=max_results, api_key=os.environ.get("REGULATIONS_GOV_API_KEY"),
         )
+    if key == "fda_maude":
+        return ingest.fetch_fda_maude(source["query"], max_results=max_results)
     raise ValueError(f"no fetch dispatch registered for source '{key}' (no feed_url, and not one of the known query-based/fixed sources)")
 
 

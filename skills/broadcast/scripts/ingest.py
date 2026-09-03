@@ -10,11 +10,12 @@ the parser) that they don't need their own logic tests beyond what a real
 pipeline run exercises.
 
 Covers PubMed, arXiv, five industry/agency RSS sources (STAT News,
-Fierce Healthcare, Healthcare IT News, ONC/ASTP's blog, CMS's newsroom),
+Fierce Healthcare, HIT Consultant, ONC/ASTP's blog, CMS's newsroom),
 which share one generic RSS 2.0 parser since it's one format regardless
 of which outlet, medRxiv (api.medrxiv.org's JSON /details endpoint), FDA
-guidance documents, and regulations.gov. That's all 10 registered
-sources in config/sources.json.
+guidance documents, regulations.gov, and FDA MAUDE device adverse events
+(api.fda.gov/device/event.json). That's all 11 registered sources in
+config/sources.json.
 
 RSS feed verification status (config/sources.json's feed_url_verified,
 confirmed live via GitHub Actions — see the smoke test workflow,
@@ -290,7 +291,7 @@ def fetch_arxiv(query: str, max_results: int = 20) -> list[dict]:
     return parse_arxiv_atom_xml(xml)
 
 
-# ── RSS sources (STAT News, Fierce Healthcare, Healthcare IT News, ────────
+# ── RSS sources (STAT News, Fierce Healthcare, HIT Consultant, ────────────
 #    ONC/ASTP's blog, CMS's newsroom) ──────────────────────────────────────
 #
 # One generic RSS 2.0 parser shared by all five, regardless of category
@@ -638,3 +639,107 @@ def fetch_regulations_gov(query: str, days: int = 30, max_results: int = 20, api
     with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_S) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     return parse_regulations_gov_json(payload)
+
+
+# ── FDA MAUDE (device adverse events) ──────────────────────────────────────
+#
+# api.fda.gov/device/event.json — openFDA's Device Adverse Event API, a
+# real, documented, mature government API (in production since ~2014,
+# weekly-updated MAUDE data back to ~1992), unlike FDA guidance's
+# reverse-engineered static file. UNLIKE every other adapter in this
+# module, this one has NOT been confirmed live yet (this sandbox's network
+# egress is blocked to every external host, api.fda.gov included — same
+# constraint that applied to hit_consultant before the user supplied a
+# real fetched response to verify the parser against). Field names below
+# (mdr_report_key, date_received, device[].generic_name/brand_name/
+# manufacturer_d_name, mdr_text[].text_type_code/text, event_type,
+# product_problems) are openFDA's own long-documented, stable schema, not
+# a guess — but "documented" isn't "confirmed against this exact parser,"
+# the bar every other source here was actually held to. Needs a real
+# live_smoke_test.py check (or a user-supplied real response, the same
+# path that verified hit_consultant) before this is trusted the way the
+# other nine sources are.
+#
+# Added specifically to close a real, named gap: "clinical ai assurance"
+# is a config/sources.json throughline_keyword with no source backing it
+# at all until now — this pipeline had regulatory/guidance coverage and
+# industry-press coverage, but nothing on device safety/adverse-event
+# reporting. MAUDE covers every medical device (hip implants, insulin
+# pumps, everything) — scoped down to AI/software-relevant terms via the
+# query below, on purpose, or this would be almost entirely off-topic
+# noise for a healthcare-AI show.
+
+def parse_fda_maude_json(payload: dict) -> list[dict]:
+    """payload is the parsed JSON body of a /device/event.json response —
+    {"meta": {...}, "results": [...]}, each result one MAUDE adverse
+    event report. Records missing a report key, date, or any usable
+    device/narrative text are skipped rather than guessed at, same policy
+    as every other parser here.
+
+    No single canonical "title" field exists on a MAUDE report (unlike a
+    guidance document or a docket), so the title is assembled from the
+    first device's brand_name (falling back to generic_name) plus the
+    report's event_type(s) — e.g. "Acme AI Triage Software — Malfunction".
+    The summary prefers the narrative "Description of Event or Problem"
+    mdr_text entry (the actual free-text account of what happened) over
+    the terser product_problems list, falling back to product_problems
+    only when no narrative text entry exists.
+
+    There's no stable public per-report URL in openFDA's own response (no
+    "link" field, unlike regulations.gov) — the FDA's public MAUDE detail
+    page pattern used here is well-known but, like the field names above,
+    not live-confirmed by this codebase yet."""
+    items = []
+    for record in payload.get("results", []):
+        report_key = record.get("mdr_report_key")
+        date_received_raw = record.get("date_received")
+        if not report_key or not date_received_raw:
+            continue  # incomplete record — skip it rather than crash the whole batch
+
+        try:
+            published = date(int(date_received_raw[:4]), int(date_received_raw[4:6]), int(date_received_raw[6:8])).isoformat()
+        except (ValueError, IndexError):
+            continue  # not the documented YYYYMMDD shape — skip rather than mis-parse
+
+        devices = record.get("device") or []
+        device_name = None
+        if devices:
+            device_name = devices[0].get("brand_name") or devices[0].get("generic_name")
+        event_types = record.get("event_type") or []
+        title_parts = [device_name or "Unnamed device", " / ".join(event_types) or "Adverse event"]
+        title = " — ".join(title_parts)
+
+        narrative = ""
+        for text_entry in record.get("mdr_text") or []:
+            if (text_entry.get("text_type_code") or "").strip().lower() == "description of event or problem":
+                narrative = text_entry.get("text") or ""
+                break
+        if not narrative:
+            narrative = ", ".join(record.get("product_problems") or [])
+        if not narrative:
+            continue  # nothing to actually summarize — skip rather than ship an empty story
+
+        items.append(normalize_item(
+            source_key="fda_maude",
+            title=title,
+            url=f"https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfmaude/detail.cfm?mdrfoi__id={report_key}",
+            published_date=published,
+            summary=narrative,
+            id_hint=f"mdr:{report_key}",
+        ))
+    return items
+
+
+def fetch_fda_maude(query: str, days: int = 30, max_results: int = 20) -> list[dict]:
+    since = (date.today() - timedelta(days=days)).strftime("%Y%m%d")
+    today = date.today().strftime("%Y%m%d")
+    params = {
+        "search": f"({query}) AND date_received:[{since} TO {today}]",
+        "sort": "date_received:desc",
+        "limit": str(max_results),
+    }
+    url = f"https://api.fda.gov/device/event.json?{urllib.parse.urlencode(params)}"
+    request = urllib.request.Request(url)
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_S) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    return parse_fda_maude_json(payload)

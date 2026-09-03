@@ -142,6 +142,19 @@ def _regulations_gov():
 
 check("fetch_regulations_gov returns real results", _regulations_gov)
 
+print("\n── FDA MAUDE (device adverse events) ────────────────────────")
+fda_maude_source = source_registry.get_source(registry, "fda_maude")
+
+
+def _fda_maude():
+    items = ingest.fetch_fda_maude(fda_maude_source["query"], days=365, max_results=5)
+    assert len(items) > 0, "query returned zero reports — see config/sources.json's fda_maude query_note (NOT yet live-verified)"
+    assert items[0]["title"], "first item has no title"
+    return f"{len(items)} items, e.g. '{items[0]['title'][:60]}'"
+
+
+check("fetch_fda_maude returns real results — NOT previously live-verified, this is the real first check", _fda_maude)
+
 print("\n── ONC/ASTP blog ────────────────────────────────────────────")
 onc_astp_source = source_registry.get_source(registry, "onc_astp")
 
