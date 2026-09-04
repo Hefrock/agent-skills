@@ -706,6 +706,15 @@ def parse_fda_maude_json(payload: dict) -> list[dict]:
         if devices:
             device_name = devices[0].get("brand_name") or devices[0].get("generic_name")
         event_types = record.get("event_type") or []
+        if isinstance(event_types, str):
+            # Confirmed live (2026-09-03): openFDA returns event_type as a
+            # single string ("Other"), not always the list the field name
+            # implies — " / ".join() on a bare string iterates its
+            # characters ("O / t / h / e / r"), which is exactly the
+            # broken title a real live_smoke_test.py run produced before
+            # this fix. Normalize to a one-item list rather than assuming
+            # the documented shape always holds.
+            event_types = [event_types]
         title_parts = [device_name or "Unnamed device", " / ".join(event_types) or "Adverse event"]
         title = " — ".join(title_parts)
 
