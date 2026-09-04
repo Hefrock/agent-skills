@@ -879,11 +879,12 @@ REGULATIONS_GOV_FIXTURE_NO_COMMENT_PERIOD = {
 
 FDA_MAUDE_FIXTURE = {
     # Field names match openFDA's own long-documented schema (see
-    # ingest.py's FDA MAUDE section header) — NOT captured from a real
-    # live response the way every other fixture in this file was; this
-    # sandbox's network egress is blocked to api.fda.gov. Pins the
-    # parser's behavior against the documented shape pending real
-    # live verification.
+    # ingest.py's FDA MAUDE section header). Since live-verified
+    # (2026-09-03, via live_smoke_test.py) — with one real surprise: see
+    # FDA_MAUDE_FIXTURE_STRING_EVENT_TYPE below for the shape that
+    # verification actually caught, event_type coming back as a bare
+    # string rather than the list assumed here and in openFDA's own
+    # documented field description.
     "meta": {"results": {"total": 2}},
     "results": [
         {
@@ -908,6 +909,25 @@ FDA_MAUDE_FIXTURE = {
             ],
             "mdr_text": [],
             "product_problems": ["Diagnostic/Prognostic Software Issue", "Device Difficult to Program or Calibrate"],
+        },
+    ],
+}
+
+FDA_MAUDE_FIXTURE_STRING_EVENT_TYPE = {
+    # The real shape confirmed live (2026-09-03): event_type came back as
+    # a bare string ("Other"), not the list openFDA's own docs and this
+    # module's original assumption both implied. " / ".join() on a
+    # string iterates its characters — "O / t / h / e / r" — which is
+    # exactly the broken title a real live_smoke_test.py run produced
+    # before this was fixed.
+    "results": [
+        {
+            "mdr_report_key": "99988877",
+            "date_received": "20260901",
+            "event_type": "Other",
+            "device": [{"brand_name": "DREAM BAND/ OXI BAND ENSO SLEEP PPG", "generic_name": "SOFTWARE, MEDICAL DEVICE DATA SYSTEM"}],
+            "mdr_text": [{"text_type_code": "Description of Event or Problem", "text": "Device reported inconsistent readings overnight."}],
+            "product_problems": [],
         },
     ],
 }
@@ -973,6 +993,14 @@ class ParseFdaMaudeJson(unittest.TestCase):
 
     def test_empty_results_list_returns_empty_list(self):
         self.assertEqual(ingest.parse_fda_maude_json({"results": []}), [])
+
+    def test_string_event_type_is_normalized_not_iterated_as_characters(self):
+        # Regression test for a real bug caught live: event_type as a
+        # bare string ("Other") used to produce "O / t / h / e / r" in
+        # the title (str.join() iterating characters), not "Other".
+        items = ingest.parse_fda_maude_json(FDA_MAUDE_FIXTURE_STRING_EVENT_TYPE)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["title"], "DREAM BAND/ OXI BAND ENSO SLEEP PPG — Other")
 
 
 class ParseRegulationsGovJson(unittest.TestCase):
