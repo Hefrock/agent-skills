@@ -81,6 +81,12 @@ This workflow **does not run `distribute.py`** — publishing needs a real `--ba
 - **`ingest_failed`** — per-source ingest failures. A source documented in `config/sources.json` as `feed_url_verified: false` failing is expected every run (see below), not a bug to chase — check the registry entry first before investigating.
 - **`source_utilization`** — per-source breakdown of what happened to that run's candidates: `candidates` (survived same-day-dedup and got scored), `selected_top_three` / `selected_quick_hits` / `selected_total`, `not_selected` (considered, lost on relevance score), `dropped_duplicates` (same-day duplicate, never independently considered), and `selection_rate` (`selected_total / candidates`, `null` when `candidates` is 0). Pure observability, not a QA gate — nothing here fails a run, and a source with zero candidates today might just mean nothing newsworthy happened, not that it's being starved. A single run's numbers are noisy on their own; the useful read is comparing this field across several days' `episodes/<date>/report.json` files to spot a source that's *never* winning a slot, not any one day's snapshot. Sources with zero candidates this run don't appear in this dict at all, rather than a fabricated zero-row.
 
+That rolling, multi-day view is `source_health_report.py`:
+```bash
+python skills/broadcast/scripts/source_health_report.py --data-dir ~/.broadcast-data [--days N]  # default: 30
+```
+Sums `source_utilization` across every `episodes/<date>/report.json` in the window, prints a table sorted by pooled `selection_rate` (most-starved first), and separately flags any registered source with *zero* candidates anywhere in the whole window — the clearest "worth asking a human about" signal it can produce. Same discipline as the field it aggregates: nothing here is a QA gate, and it can't tell a genuinely-starved source apart from one that's just legitimately quiet that month — it's a diagnostic to prompt a question, not a verdict. Read-only, standalone, never called automatically.
+
 A real, unedited (trimmed for length) example from an actual live run, captured before `healthcare_it_news` was removed from the registry (permanently WAF-blocked, no viable RSS alternative found — see "Adding, removing, or tuning an ingest source" below) and before `source_utilization` existed — `qa_passed: true` and narration mostly succeeded, but `episode_produced` is `false` purely because of a TTS rate limit, not a script problem:
 
 ```json
