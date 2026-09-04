@@ -31,9 +31,12 @@ python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
   [--no-audio-normalize]                 # skip per-segment peak normalization in the assembled episode
   [--inter-segment-silence-ms N]         # default: 400.0 — silence gap between segments (0 to disable)
   [--dry-run]                            # ingest only, print a Gemini call estimate, spend zero quota — see below
+  [--no-audio-cache]                     # disable the per-segment synthesized-audio cache — see below
 ```
 
-**Use `~/.broadcast-data` as the default `--data-dir` unless the user asks for somewhere else.** It holds persistent state (`dedup_store.json`, `evidence_store/`) and every run's output (`episodes/<date>/{report.json,script.json,episode.wav}`) — deduplication and evidence provenance only accumulate meaningfully if the *same* directory is reused run over run, and nothing else in this repo establishes a canonical location. Don't invent a different path per session; that silently defeats the whole story-continuity design. `orchestrate.py` creates the directory itself if it doesn't exist yet — no setup needed beforehand.
+**Use `~/.broadcast-data` as the default `--data-dir` unless the user asks for somewhere else.** It holds persistent state (`dedup_store.json`, `evidence_store/`, `audio_cache/`) and every run's output (`episodes/<date>/{report.json,script.json,episode.wav}`) — deduplication and evidence provenance only accumulate meaningfully if the *same* directory is reused run over run, and nothing else in this repo establishes a canonical location. Don't invent a different path per session; that silently defeats the whole story-continuity design. `orchestrate.py` creates the directory itself if it doesn't exist yet — no setup needed beforehand.
+
+**The per-segment audio cache (`<data-dir>/audio_cache/`, enabled by default)** exists because a real run has seen 11 of 14 segments fail to a Gemini TTS rate limit — twice. Each segment's synthesized audio is cached by a hash of its own exact text, so a retry after waiting for quota to recover only re-synthesizes segments that actually failed last time, not the whole episode from scratch — and a truly fixed segment (like the disclosure text, identical every day) only ever needs synthesizing once, ever, shared across every future episode. It's content-addressed by text only, not text+voice+model — if the pinned voice or TTS model ever changes, clear `<data-dir>/audio_cache/` manually first, or a retried episode could end up with an inconsistent voice across segments. Not auto-pruned — same status `episodes/<date>/` was in before `prune_episodes.py` existed.
 
 There's also a manually-triggered GitHub Actions workflow, `.github/workflows/broadcast-live-smoke-test.yml` (`workflow_dispatch` only, never on push/PR — it makes real external API calls). It has two jobs: a smoke test of the ingest adapters + embeddings, and a full real episode run via `orchestrate.py`. Triggering it always runs *both* jobs — there is no way to trigger just one.
 
@@ -165,7 +168,7 @@ cd mcp/evidence-pinning && npm ci && npm run build
 
 ## Retention
 
-Three different stores live under `--data-dir`, each retained (or deliberately not) on purpose — check this before assuming any of them just grows forever:
+Four different stores live under `--data-dir`, each retained (or deliberately not) on purpose — check this before assuming any of them just grows forever:
 
 - **`dedup_store.json`**'s rolling-window entries are already pruned automatically on every `orchestrate.py` run (`dedup_store.prune_old_entries()`, wired in via `rank.py`, default 14-day window) — no action needed here, this one never grows unbounded.
 - **`episodes/<date>/`** (the actual per-episode script/audio output) is *not* pruned automatically — a human may not have run `distribute.py` against a given episode yet, may want it kept as their own archive, or may be actively debugging it, so silent automatic deletion felt like the wrong default here. Use `prune_episodes.py` explicitly instead:
@@ -174,10 +177,11 @@ Three different stores live under `--data-dir`, each retained (or deliberately n
   ```
   Dry-run by default — it only *prints* what would be deleted and changes nothing on disk. Pass `--apply` to actually remove stale episode directories.
 - **`evidence_store/`** (evidence-pinning-mcp's own state) is deliberately never pruned by anything in this pipeline — it's an append-only provenance log by design (see `mcp/evidence-pinning/README.md`), meant to keep a claim's full history queryable indefinitely. Pruning it would defeat its actual purpose, not just free disk space.
+- **`audio_cache/`** (per-segment synthesized-audio cache, see "Running one episode" above) is *not* pruned automatically — no tool exists for this yet, an accepted gap for now rather than something silently ignored. It grows slowly: most of it is genuinely per-day (each story's own text is new), but fixed boilerplate (the disclosure segment) permanently dedupes to a single entry across every episode ever run.
 
 ## Known operational risks — read before running live
 
-- **Gemini TTS rate-limits under realistic call volume**, confirmed live more than once. Never retrigger a failed or in-flight run back-to-back — wait for it to fully finish first. A blind retry is itself another request competing for the same already-exhausted quota; this made a real rate-limit situation *worse* in this project's own history, not better. `synthesize_text()`'s retry policy (`gemini_retry.py`) already honors the server's `Retry-After` header; `--synth-delay-seconds` adds further pacing. If you see a wall of `HTTP 429` in `synth_failed`, wait — don't immediately re-run.
+- **Gemini TTS rate-limits under realistic call volume**, confirmed live more than once — most recently 11 of 14 segments failing to `HTTP 429`, twice on separate real runs. Never retrigger a failed or in-flight run back-to-back — wait for it to fully finish first. A blind retry is itself another request competing for the same already-exhausted quota; this made a real rate-limit situation *worse* in this project's own history, not better. `synthesize_text()`'s retry policy (`gemini_retry.py`) already honors the server's `Retry-After` header; `--synth-delay-seconds` adds further pacing; the per-segment `audio_cache/` (see "Running one episode" above) means a retry, once you do run one, only re-synthesizes segments that actually failed last time, not the whole episode. If you see a wall of `HTTP 429` in `synth_failed`, wait — don't immediately re-run.
 - **`narrate.py`'s pinned model was chosen from live reconnaissance**, not assumed — see its module docstring for the full account (a deprecated model, two overloaded newer ones, then a working one). If narration starts failing broadly, check whether that model id is still available/healthy before assuming a code regression.
 
 ## What this skill does not do yet

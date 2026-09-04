@@ -170,6 +170,7 @@ def run_episode(
     normalize_audio: bool = True,
     inter_segment_silence_ms: float = audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS,
     dry_run: bool = False,
+    synth_cache_dir: str | None = None,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
     -> embed -> rank -> pin evidence -> generate script -> narrate (best-
@@ -269,6 +270,23 @@ def run_episode(
     always a safe overestimate, never an underestimate — budget against
     these numbers as a ceiling, not a prediction.
 
+    synth_cache_dir (default None, meaning caching is off — identical to
+    this function's behavior before this parameter existed): when set,
+    each segment's audio is looked up in audio_synth.load_cached_segment()
+    before calling synth_fn at all, and saved via save_cached_segment()
+    after a real success. A cache hit skips both the network call AND
+    the synth_delay_seconds pacing sleep before it — there is nothing to
+    pace against if no real call is being made. Pacing still applies
+    between consecutive REAL calls only, tracked independently of the
+    segment loop's own index (a run with 11 cache hits and 3 real calls
+    paces twice, not thirteen times). Real, live-motivated: a real run of
+    this pipeline has seen 11 of 14 segments fail to a TTS rate limit —
+    twice — meaning a retry after waiting for quota to recover previously
+    had to re-synthesize every segment again, including ones that already
+    succeeded. See audio_synth.py's cache section for the full rationale,
+    including its one real simplification (the cache key is text-only,
+    not text+voice+model).
+
     Returns (dry_run=True):
       {
         "run_date", "dry_run": True, "ingest_failed",
@@ -330,12 +348,22 @@ def run_episode(
     synth_failed = []
     if qa_result["passed"]:
         segment_audio = []
-        for i, segment in enumerate(script["segments"]):
-            if i > 0 and synth_delay_seconds > 0:
+        made_a_real_synth_call = False
+        for segment in script["segments"]:
+            cached = audio_synth.load_cached_segment(synth_cache_dir, segment["text"]) if synth_cache_dir else None
+            if cached is not None:
+                segment_audio.append(cached)
+                continue
+            if made_a_real_synth_call and synth_delay_seconds > 0:
                 time.sleep(synth_delay_seconds)
             try:
-                segment_audio.append(synth_fn(segment["text"], api_key))
+                wav = synth_fn(segment["text"], api_key)
+                segment_audio.append(wav)
+                made_a_real_synth_call = True
+                if synth_cache_dir:
+                    audio_synth.save_cached_segment(synth_cache_dir, segment["text"], wav)
             except Exception as e:
+                made_a_real_synth_call = True
                 synth_failed.append({"segment_type": segment["segment_type"], "canonical_id": segment["canonical_id"], "error": f"{type(e).__name__}: {e}"})
         if not synth_failed:
             episode_audio = audio_synth.assemble_episode_audio(
@@ -436,6 +464,10 @@ def main() -> int:
         "--dry-run", action="store_true",
         help="Ingest only (spends zero Gemini API quota — ingest never calls Gemini), then print an estimate of how many embedding/narration/TTS calls a real run with this exact config would make. Nothing is persisted, no evidence-pinning-mcp server is spawned. Does not require GEMINI_API_KEY. Run this before a real episode if you're unsure how expensive it would be.",
     )
+    parser.add_argument(
+        "--no-audio-cache", dest="audio_cache", action="store_false",
+        help="Disable the per-segment synthesized-audio cache (<data-dir>/audio_cache). Default: enabled — a segment already successfully synthesized (by exact text, e.g. on an earlier failed run) is served from disk instead of spending Gemini TTS quota again. Not auto-pruned; see audio_synth.py's cache section.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -463,12 +495,15 @@ def main() -> int:
         print(json.dumps(result, indent=2))
         return 0
 
+    synth_cache_dir = os.path.join(args.data_dir, "audio_cache") if args.audio_cache else None
+
     with evidence_pinning_client.EvidencePinningClient(store_path=evidence_store_path) as client:
         result = run_episode(
             args.date, registry, store, client, api_key,
             max_results_per_source=args.max_results_per_source, synth_delay_seconds=args.synth_delay_seconds,
             enable_narration=args.enable_narration, narration_success_threshold=args.narration_success_threshold,
             normalize_audio=args.normalize_audio, inter_segment_silence_ms=args.inter_segment_silence_ms,
+            synth_cache_dir=synth_cache_dir,
         )
 
     dedup_store.save_store(result["store"], store_path)

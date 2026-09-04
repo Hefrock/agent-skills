@@ -15,6 +15,7 @@ import array
 import importlib.util
 import io
 import os
+import tempfile
 import unittest
 import wave
 
@@ -348,6 +349,48 @@ class AssembleEpisodeAudio(unittest.TestCase):
         clips = [make_wav(1), make_wav(1), make_wav(1)]
         result = audio_synth.assemble_episode_audio(script, clips)
         self.assertEqual(len(result["segments"]), 3)
+
+
+class SegmentAudioCache(unittest.TestCase):
+    def test_miss_on_empty_cache_dir_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(audio_synth.load_cached_segment(tmp, "Some segment text."))
+
+    def test_save_then_load_round_trips_the_exact_bytes(self):
+        wav_bytes = make_wav(5)
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_synth.save_cached_segment(tmp, "Some segment text.", wav_bytes)
+            self.assertEqual(audio_synth.load_cached_segment(tmp, "Some segment text."), wav_bytes)
+
+    def test_different_text_is_a_genuine_miss_not_a_false_hit(self):
+        wav_bytes = make_wav(5)
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_synth.save_cached_segment(tmp, "Original text.", wav_bytes)
+            self.assertIsNone(audio_synth.load_cached_segment(tmp, "Different text — e.g. narration reworded this."))
+
+    def test_save_creates_the_cache_dir_if_it_does_not_exist_yet(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "audio_cache")
+            self.assertFalse(os.path.isdir(cache_dir))
+            audio_synth.save_cached_segment(cache_dir, "Text.", make_wav(1))
+            self.assertTrue(os.path.isdir(cache_dir))
+
+    def test_saving_the_same_text_twice_is_idempotent_not_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_synth.save_cached_segment(tmp, "Text.", make_wav(1))
+            audio_synth.save_cached_segment(tmp, "Text.", make_wav(1))  # must not raise
+            self.assertIsNotNone(audio_synth.load_cached_segment(tmp, "Text."))
+
+    def test_identical_text_produces_the_same_cache_key_regardless_of_when_saved(self):
+        # Two independent save calls with the same text must land at the
+        # same path — this is what makes the disclosure text's cache
+        # entry genuinely shared across different days' episodes, not
+        # coincidentally colliding.
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_synth.save_cached_segment(tmp, "The disclosure text.", make_wav(3))
+            entries_after_first = set(os.listdir(tmp))
+            audio_synth.save_cached_segment(tmp, "The disclosure text.", make_wav(3))
+            self.assertEqual(set(os.listdir(tmp)), entries_after_first)  # no second file
 
 
 if __name__ == "__main__":
