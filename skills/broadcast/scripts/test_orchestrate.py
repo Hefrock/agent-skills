@@ -593,6 +593,127 @@ class ReportJson(RunEpisodeWiring):
         self.assertEqual(report["source_utilization"], orchestrate.rank.summarize_source_utilization(result["rank_result"]))
 
 
+class SynthCacheWiring(RunEpisodeWiring):
+    """synth_cache_dir's real point: a retry after a partial TTS failure
+    should only pay for what's still actually missing, not redo
+    everything — see audio_synth.py's cache section for the live
+    incident (11 of 14 segments failing to a rate limit, twice) that
+    motivated this. Each test here uses a synth_fn that actively proves
+    what it claims, not just an assertion after the fact — either a
+    call-counting fake, or one that raises outright if called for a
+    segment that should have been served from cache."""
+
+    def test_second_run_with_same_cache_dir_makes_zero_real_synth_calls(self):
+        def _forbidden_synth_fn(text, api_key):
+            raise AssertionError(f"synth_fn should never be called for a cached segment: {text!r}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "audio_cache")
+            client1 = FakeEvidenceClient()
+            result1 = orchestrate.run_episode(
+                "2026-09-02", self.registry, {"entries": []}, client1, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+                synth_cache_dir=cache_dir,
+            )
+            self.assertIsNotNone(result1["episode_audio"])
+
+            client2 = FakeEvidenceClient()
+            result2 = orchestrate.run_episode(
+                "2026-09-02", self.registry, {"entries": []}, client2, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=_forbidden_synth_fn,
+                synth_cache_dir=cache_dir,
+            )
+            self.assertIsNotNone(result2["episode_audio"])
+            self.assertEqual(len(result2["script"]["segments"]), len(result1["script"]["segments"]))
+
+    def test_retry_after_partial_failure_only_synthesizes_the_missing_segment(self):
+        calls_attempt1 = {"n": 0}
+
+        def flaky_synth(text, api_key):
+            calls_attempt1["n"] += 1
+            if calls_attempt1["n"] == 2:
+                raise RuntimeError("TTS quota exceeded")
+            return self._fake_synth_fn(text, api_key)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "audio_cache")
+            client1 = FakeEvidenceClient()
+            result1 = orchestrate.run_episode(
+                "2026-09-02", self.registry, {"entries": []}, client1, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=flaky_synth,
+                synth_cache_dir=cache_dir,
+            )
+            self.assertIsNone(result1["episode_audio"])
+            self.assertEqual(len(result1["synth_failed"]), 1)
+            total_segments = len(result1["script"]["segments"])
+
+            calls_attempt2 = {"n": 0}
+
+            def counting_synth(text, api_key):
+                calls_attempt2["n"] += 1
+                return self._fake_synth_fn(text, api_key)
+
+            client2 = FakeEvidenceClient()
+            result2 = orchestrate.run_episode(
+                "2026-09-02", self.registry, {"entries": []}, client2, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=counting_synth,
+                synth_cache_dir=cache_dir,
+            )
+            self.assertIsNotNone(result2["episode_audio"])
+            # Only the one segment that failed last attempt needed a real
+            # call this time — the whole point of this feature.
+            self.assertEqual(calls_attempt2["n"], 1)
+            self.assertLess(calls_attempt2["n"], total_segments)
+
+    def test_pacing_sleep_is_skipped_entirely_on_a_fully_cached_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "audio_cache")
+            client1 = FakeEvidenceClient()
+            orchestrate.run_episode(
+                "2026-09-02", self.registry, {"entries": []}, client1, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+                synth_cache_dir=cache_dir,
+            )
+
+            client2 = FakeEvidenceClient()
+            with mock.patch.object(orchestrate.time, "sleep") as fake_sleep:
+                orchestrate.run_episode(
+                    "2026-09-02", self.registry, {"entries": []}, client2, "fake-api-key",
+                    fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+                    synth_delay_seconds=6.0, synth_cache_dir=cache_dir,
+                )
+            fake_sleep.assert_not_called()
+
+    def test_without_a_cache_dir_behavior_is_unchanged_synth_fn_always_called(self):
+        # Regression guard: synth_cache_dir defaults to None, and passing
+        # it explicitly as None must behave exactly like every
+        # pre-existing test that never mentions this parameter at all.
+        calls = {"n": 0}
+
+        def counting_synth(text, api_key):
+            calls["n"] += 1
+            return self._fake_synth_fn(text, api_key)
+
+        client1 = FakeEvidenceClient()
+        result1 = orchestrate.run_episode(
+            "2026-09-02", self.registry, {"entries": []}, client1, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=counting_synth,
+            synth_cache_dir=None,
+        )
+        first_run_calls = calls["n"]
+        self.assertGreater(first_run_calls, 0)
+
+        client2 = FakeEvidenceClient()
+        orchestrate.run_episode(
+            "2026-09-02", self.registry, {"entries": []}, client2, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn, synth_fn=counting_synth,
+            synth_cache_dir=None,
+        )
+        # No caching at all -> the second run repeats every real call the
+        # first one made, none skipped.
+        self.assertEqual(calls["n"], first_run_calls * 2)
+
+
 class MainApiKeyGate(unittest.TestCase):
     """main()'s own GEMINI_API_KEY gate — the CLI wiring layer, distinct
     from run_episode()'s dry_run branch (already proven above, via the

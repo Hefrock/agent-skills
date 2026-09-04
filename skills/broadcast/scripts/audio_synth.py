@@ -52,6 +52,7 @@ stdlib only, matching this repo's other reference tooling."""
 
 import array
 import base64
+import hashlib
 import io
 import json
 import os
@@ -308,3 +309,61 @@ def synthesize_text(
             if attempt == max_attempts - 1 or not gemini_retry.is_retryable(e):
                 raise
             time.sleep(gemini_retry.retry_delay_seconds(e, attempt, backoff_base_seconds))
+
+
+# ── Segment audio cache (not used by anything above) ────────────────────
+#
+# Real, live-motivated: a real GitHub Actions run of orchestrate.py has
+# hit the TTS rate limit (see this module's docstring, and gemini_retry.py's)
+# hard enough that 11 of 14 segments failed — twice, on two separate real
+# runs. Re-running from scratch after waiting for quota to recover means
+# re-synthesizing every segment again, including the ones that already
+# succeeded, burning quota on work that was already done. This cache
+# makes a retry only pay for what's still actually missing.
+#
+# Content-addressed by the segment's own text (sha256), not by segment
+# position or story id — so it's automatically correct if narration
+# wording changes between runs (different text -> different key -> a
+# real cache miss, never a stale match), and it's automatically SHARED
+# across every episode, forever: script_gen.py's fixed disclosure text
+# (DEFAULT_DISCLOSURE_TEXT, identical every single day) only ever needs
+# synthesizing once, not once per day.
+#
+# Deliberately simple for a first version, not fully general: the key is
+# text-only, not text+voice+model. If DEFAULT_VOICE or DEFAULT_MODEL ever
+# change, old cache entries for the old voice/model stay on disk and
+# would need a manual clear (rm -rf <cache_dir>) first — otherwise an
+# episode could end up with an inconsistent voice across segments (some
+# served from a stale cache, some freshly synthesized with the new
+# voice). Accepted here because the voice has been fixed at "Kore" for
+# this project's entire history; revisit if that ever actually changes.
+#
+# Also deliberately NOT auto-pruned — same status episodes/<date>/ was in
+# before prune_episodes.py existed. Left as a known, accepted gap for
+# now rather than building a pruning tool nobody's asked for yet.
+
+def _cache_key(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_cached_segment(cache_dir: str, text: str) -> bytes | None:
+    """Returns the cached WAV bytes for this exact text, or None on a
+    cache miss (file doesn't exist yet). Never raises on a missing file —
+    a cache miss is the normal, expected case for any segment not seen
+    before, not an error."""
+    path = os.path.join(cache_dir, f"{_cache_key(text)}.wav")
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def save_cached_segment(cache_dir: str, text: str, wav_bytes: bytes) -> None:
+    """Writes wav_bytes to the cache, creating cache_dir if it doesn't
+    exist yet. Overwrites silently if somehow already present (same text
+    always produces the same key, so this is idempotent, not a
+    conflict)."""
+    os.makedirs(cache_dir, exist_ok=True)
+    path = os.path.join(cache_dir, f"{_cache_key(text)}.wav")
+    with open(path, "wb") as f:
+        f.write(wav_bytes)
