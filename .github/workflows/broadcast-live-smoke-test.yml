@@ -59,10 +59,18 @@ jobs:
           npm run build
 
       - name: broadcast — run one real episode end-to-end
+        # --top-three-count/--quick-hits-count kept small (1/2, 7 total
+        # synth calls instead of the 14 a default-sized episode makes) —
+        # a real run at the default size just failed outright against an
+        # unbilled GEMINI_API_KEY (every segment after the first few hit
+        # HTTP 429, episode_produced: false — see PR #89). Same "kept
+        # small to bound run time and quota use" intent this job already
+        # states for --max-results-per-source, just also applied to the
+        # selection size, which is what actually drives TTS call count.
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REGULATIONS_GOV_API_KEY: ${{ secrets.REGULATIONS_GOV_API_KEY }}
-        run: python skills/broadcast/scripts/orchestrate.py --data-dir "$RUNNER_TEMP/broadcast-data" --max-results-per-source 5
+        run: python skills/broadcast/scripts/orchestrate.py --data-dir "$RUNNER_TEMP/broadcast-data" --max-results-per-source 5 --top-three-count 1 --quick-hits-count 2
 
       - name: Upload episode + report
         if: always()
