@@ -27,6 +27,14 @@ The dangerous cells are usually the non-obvious surfaces: an injection in
 *retrieved context* or a *tool argument* is far more likely to slip through than
 one typed directly by the user, because the agent is primed to trust it.
 
+A genuinely multi-turn-build-up case needs the conversation history itself,
+not just a final message that references the past — see `adv_015` in
+`examples/adversarial_seed.jsonl` for a real worked example (a roleplay
+frame established two turns before the actual harmful ask) and
+`skills/agent-eval/references/multi-turn-eval.md` for the `turns` field
+this case shape uses and how it reaches the judge prompt as a readable
+transcript.
+
 ## 2. Mutation axes — expand each seed cheaply
 
 For every seed case, apply 2–3 transformations to generate variants. Most real

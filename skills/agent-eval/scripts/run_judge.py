@@ -24,6 +24,7 @@ Case input format (JSONL, one JSON object per line) — one row per case to
 grade:
     {"id": "case_001", "input": "...", "output": "...", "category": "accuracy"}
     {"id": "traj_001", "input": "...", "trajectory": [...], "final_output": "...", "category": "trajectory"}
+    {"id": "mt_001", "turns": [{"role": "user", "content": "..."}, ...], "input": "...", "category": "jailbreak"}
 
 `category` is optional per-row (falls back to --category, then omitted
 entirely — score_eval.py itself already treats a missing category as
@@ -31,7 +32,8 @@ entirely — score_eval.py itself already treats a missing category as
 
 Template format: a text file with the judge prompt, using {input}/{output}
 (and {trajectory}, for a trajectory-shaped case per references/
-trajectory-eval.md) as literal placeholder tokens — see
+trajectory-eval.md, or {transcript}, for a multi-turn case per references/
+multi-turn-eval.md) as literal placeholder tokens — see
 references/llm-judge-prompt.md for the starting template these come from.
 Substitution is plain string replacement, not str.format(), because the
 template's own JSON-shaped output instructions are full of unrelated {}
@@ -95,6 +97,18 @@ def load_cases(path: str) -> list[dict]:
     return cases
 
 
+def format_turns_as_transcript(turns: list[dict]) -> str:
+    """Renders a multi-turn case's turns (see references/multi-turn-eval.md
+    for the case shape) as a readable "Role: content" dialogue transcript,
+    one line per turn. fill_template() could substitute a "turns" list as
+    raw pretty-printed JSON like any other non-string field — functional,
+    but a judge reads a real conversation far more reliably as a
+    transcript than as a JSON array of {"role", "content"} objects, the
+    same reason references/trajectory-eval.md's case shape is a real
+    step-by-step structure rather than a flattened blob."""
+    return "\n".join(f"{turn['role'].capitalize()}: {turn['content']}" for turn in turns)
+
+
 def fill_template(template: str, case: dict) -> str:
     """Plain string replacement of {key} tokens for every key actually
     present in the case, not str.format() — the template's own JSON-
@@ -116,6 +130,14 @@ def fill_template(template: str, case: dict) -> str:
     # trajectory case to also carry a redundant "output" key.
     if "{output}" in filled and "output" not in case and "final_output" in case:
         filled = filled.replace("{output}", case["final_output"])
+    # Multi-turn cases (references/multi-turn-eval.md) carry "turns" as
+    # structured {"role", "content"} data, not a preformatted string — the
+    # loop above would substitute a raw JSON dump into a template's
+    # {turns} token if one were used, but the documented placeholder is
+    # {transcript}, rendered on demand so every multi-turn case doesn't
+    # need to precompute and store its own transcript string.
+    if "{transcript}" in filled and "turns" in case:
+        filled = filled.replace("{transcript}", format_turns_as_transcript(case["turns"]))
     return filled
 
 
