@@ -171,3 +171,12 @@ jobs:
 
       - name: broadcast — prune_episodes.py regression suite (real temp dirs, stdlib unittest)
         run: python skills/broadcast/scripts/test_prune_episodes.py
+
+      - name: broadcast — source_health_report.py regression suite (real temp dirs, stdlib unittest)
+        # Pre-existing gap: added alongside source_health_report.py itself
+        # but never wired into CI. Fixed here while adding its sibling
+        # (qa_gate_history.py) below, same rolling-multi-day-view pattern.
+        run: python skills/broadcast/scripts/test_source_health_report.py
+
+      - name: broadcast — qa_gate_history.py regression suite (real temp dirs, stdlib unittest)
+        run: python skills/broadcast/scripts/test_qa_gate_history.py

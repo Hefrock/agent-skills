@@ -89,6 +89,14 @@ python skills/broadcast/scripts/source_health_report.py --data-dir ~/.broadcast-
 ```
 Sums `source_utilization` across every `episodes/<date>/report.json` in the window, prints a table sorted by pooled `selection_rate` (most-starved first), and separately flags any registered source with *zero* candidates anywhere in the whole window — the clearest "worth asking a human about" signal it can produce. Same discipline as the field it aggregates: nothing here is a QA gate, and it can't tell a genuinely-starved source apart from one that's just legitimately quiet that month — it's a diagnostic to prompt a question, not a verdict. Read-only, standalone, never called automatically.
 
+`qa_checks` has the same rolling-view gap `source_utilization` had before `source_health_report.py` — one run's pass/fail is a snapshot, not a trend. `qa_gate_history.py` closes it differently: instead of reimplementing pass-rate/regression logic a third time, it flattens `qa_checks` across a window into [`skills/agent-eval/`](../agent-eval/SKILL.md)'s own JSONL schema (one row per episode/check pair, `category` = check name) and hands off to that skill's already-tested `score_eval.py` for the actual aggregation, regressions, and CI gate:
+```bash
+python skills/broadcast/scripts/qa_gate_history.py --data-dir ~/.broadcast-data --out qa_results.jsonl [--days N]
+python skills/agent-eval/scripts/score_eval.py qa_results.jsonl --fail-under 0.9
+python skills/agent-eval/scripts/score_eval.py qa_results.jsonl --baseline last_weeks_qa_results.jsonl --fail-on-regression
+```
+A documented file-format handoff, not a cross-skill import — `qa_gate_history.py` has no dependency on `agent-eval` being present to run; the second command is only useful when it is.
+
 A real, unedited (trimmed for length) example from an actual live run, captured before `healthcare_it_news` was removed from the registry (permanently WAF-blocked, no viable RSS alternative found — see "Adding, removing, or tuning an ingest source" below) and before `source_utilization` existed — `qa_passed: true` and narration mostly succeeded, but `episode_produced` is `false` purely because of a TTS rate limit, not a script problem:
 
 ```json
