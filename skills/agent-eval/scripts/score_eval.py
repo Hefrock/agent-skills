@@ -26,31 +26,34 @@ Stdlib only — no dependencies to install.
 
 import argparse
 import json
+import os
 import statistics
 import sys
 from collections import defaultdict
 
+# realpath, not abspath: this file is also reached via a real symlink
+# (skills/agent-redteam/scripts/score_eval.py -> ../../agent-eval/scripts/
+# score_eval.py, see that skill's Files table) — __file__ under a symlink
+# invocation reflects the symlink's own path, not the real one, so abspath
+# alone would look for jsonl_io.py next to the symlink and fail to find
+# it. realpath resolves through the symlink to this file's actual
+# directory regardless of which path was used to invoke it.
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import jsonl_io  # noqa: E402
+
 
 def load_results(path):
-    results = []
-    with open(path) as f:
-        for lineno, line in enumerate(f, 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as e:
-                print(f"Warning: skipping malformed line {lineno} in {path}: {e}", file=sys.stderr)
-                continue
-            if "id" not in obj or "score" not in obj:
-                print(f"Warning: skipping line {lineno} in {path} — missing 'id' or 'score'", file=sys.stderr)
-                continue
-            score = obj["score"]
-            if isinstance(score, bool):
-                score = 1.0 if score else 0.0
-            obj["score"] = float(score)
-            results.append(obj)
+    """List of already-scored rows — thin wrapper over jsonl_io.
+    load_jsonl(), the shared primitive run_judge.load_cases() and
+    calibrate_judge.load_scores_by_id() also build on. score is coerced
+    to float here (bool True/False -> 1.0/0.0) because that coercion is
+    specific to what this function returns, not something every JSONL
+    reader in this skill needs."""
+    results = jsonl_io.load_jsonl(path, required_keys=("id", "score"))
+    for r in results:
+        score = r["score"]
+        r["score"] = 1.0 if score is True else 0.0 if score is False else float(score)
     return results
 
 

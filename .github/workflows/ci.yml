@@ -53,6 +53,9 @@ jobs:
           npm ci
           npm run build
 
+      - name: agent-eval — unit-test the shared JSONL loader (stdlib unittest)
+        run: python skills/agent-eval/scripts/test_jsonl_io.py
+
       - name: agent-eval — unit-test the scorer (stdlib unittest)
         run: python skills/agent-eval/scripts/test_score_eval.py
 
