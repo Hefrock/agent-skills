@@ -62,6 +62,21 @@ jobs:
       - name: agent-eval — unit-test the pairwise runner (stdlib unittest, no real API calls)
         run: python skills/agent-eval/scripts/test_run_pairwise.py
 
+      - name: agent-eval — unit-test the calibration tool (stdlib unittest)
+        run: python skills/agent-eval/scripts/test_calibrate_judge.py
+
+      - name: agent-eval — verify the calibration example still trips the action-needed gate
+        # Self-check, same rationale as the regression-example check above:
+        # this worked example is designed to exceed the calibration
+        # threshold. Confirm it still does (exit non-zero).
+        run: |
+          if python skills/agent-eval/scripts/calibrate_judge.py \
+               skills/agent-eval/examples/calibration_judge_scores.jsonl skills/agent-eval/examples/calibration_human_scores.jsonl; then
+            echo "ERROR: calibration example did not trip the action-needed gate"; exit 1
+          else
+            echo "OK: calibration example correctly exceeded the threshold (exit non-zero)"
+          fi
+
       - name: agent-eval — score example results (smoke)
         run: python skills/agent-eval/scripts/score_eval.py skills/agent-eval/scripts/example_results.jsonl
 

@@ -43,7 +43,11 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 
    Save the flattened lines to a JSON/JSONL file, not just a summary — the failure examples are what make this actionable.
 
-5. **Calibrate the judge periodically.** Every 25-50 judge calls (or whenever you revise the judge prompt), hand-score 5-10 cases yourself and compare to the judge's scores. If the mean delta exceeds 0.2, revise the judge prompt. Record the last calibration date in `references/llm-judge-prompt.md`.
+5. **Calibrate the judge periodically.** Every 25-50 judge calls (or whenever you revise the judge prompt), hand-score 5-10 cases yourself and compare to the judge's scores. Use `scripts/calibrate_judge.py` rather than eyeballing the delta — it computes the mean delta, flags whether it exceeds the threshold (default 0.2), and can log the result for you:
+   ```bash
+   python scripts/calibrate_judge.py judge_results.jsonl human_scores.jsonl --update-log references/llm-judge-prompt.md
+   ```
+   `human_scores.jsonl` only needs the 5-10 IDs you actually hand-scored (same JSONL schema as any `score_eval.py` results file) — it compares whichever IDs appear in both files. See [`examples/README.md`](./examples/README.md)'s calibration example for a worked case where this catches a judge fooled by confident, verbose wrong answers. `--update-log` appends a row to `references/llm-judge-prompt.md`'s calibration table automatically, replacing the "not yet calibrated" placeholder on the first real run — don't edit that table by hand.
 
 6. **Aggregate and report using `scripts/score_eval.py`.** Don't manually tally pass rates — run the script against the results file:
    ```bash

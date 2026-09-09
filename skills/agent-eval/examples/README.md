@@ -126,3 +126,42 @@ This file uses a single `trajectory` category on purpose — a real eval set
 would usually mix it with `accuracy`/`format`/etc. so `score_eval.py`'s
 per-category breakdown can separate "did it answer correctly" from "did it
 get there well," per `references/trajectory-eval.md`.
+
+## Calibration example — a judge fooled by confident, verbose wrong answers
+
+A third worked example (fictional, like the two above — not a real
+calibration run) for step 5's calibration check: hand-score a handful of
+cases and compare to the judge, per SKILL.md.
+[`calibration_judge_scores.jsonl`](./calibration_judge_scores.jsonl) /
+[`calibration_human_scores.jsonl`](./calibration_human_scores.jsonl) are 8
+cases where the judge rated two long, well-structured, *confidently wrong*
+answers almost as highly as the genuinely correct ones — the verbosity bias
+`references/llm-judge-prompt.md`'s "Known biases" section already names,
+caught the way step 5 actually intends: by a human spot-check, not by
+staring at the judge's own rationale text (which reads perfectly reasonable
+in isolation).
+
+```bash
+python scripts/calibrate_judge.py examples/calibration_judge_scores.jsonl examples/calibration_human_scores.jsonl
+```
+
+```
+Calibration: 8 case(s) checked, mean delta 0.206 (threshold 0.2)
+
+Per-case (worst agreement first):
+  cal_02: judge=0.90 human=0.10 delta=0.80
+  cal_05: judge=0.85 human=0.10 delta=0.75
+  cal_06: judge=0.90 human=0.85 delta=0.05
+  cal_03: judge=0.95 human=0.90 delta=0.05
+  cal_01: judge=0.90 human=0.90 delta=0.00
+  cal_04: judge=0.90 human=0.90 delta=0.00
+  cal_07: judge=0.40 human=0.40 delta=0.00
+  cal_08: judge=0.85 human=0.85 delta=0.00
+
+⚠ ACTION NEEDED: mean delta 0.206 exceeds 0.2 — revise the judge prompt
+```
+
+Exit code **1** — this is meant to be run as a real gate on your own
+calibration cadence too, same as `score_eval.py`'s `--fail-under`. Add
+`--update-log references/llm-judge-prompt.md` to append this run to the
+calibration log automatically instead of editing the table by hand.
