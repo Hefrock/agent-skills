@@ -56,6 +56,9 @@ jobs:
       - name: agent-eval — unit-test the scorer (stdlib unittest)
         run: python skills/agent-eval/scripts/test_score_eval.py
 
+      - name: agent-eval — unit-test the judge runner (stdlib unittest, no real API calls)
+        run: python skills/agent-eval/scripts/test_run_judge.py
+
       - name: agent-eval — score example results (smoke)
         run: python skills/agent-eval/scripts/score_eval.py skills/agent-eval/scripts/example_results.jsonl
 

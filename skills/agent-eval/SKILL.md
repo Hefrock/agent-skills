@@ -23,7 +23,14 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 
 4. **Score it.** For rubric/LLM-as-judge evals, use the judge prompt template and request structured JSON output (a score plus a one-line rationale per criterion) — never a vibe-based pass/fail. For programmatic evals, write the check directly.
 
-   The judge prompt returns one nested object per case (per-criterion scores plus an `overall_score`) — that's a different shape from what `scripts/score_eval.py` reads. Flatten each case before saving, to this schema (one JSON object per line):
+   For rubric/LLM-as-judge evals specifically, **use `scripts/run_judge.py`** rather than calling the judge and flattening its response by hand each time — it fills the template, calls the judge, parses the structured JSON, and writes already-flattened rows in the exact schema `score_eval.py` reads:
+   ```bash
+   export ANTHROPIC_API_KEY=...
+   python scripts/run_judge.py cases.jsonl --template references/llm-judge-prompt.md --out results.jsonl --category accuracy
+   ```
+   `cases.jsonl` is one row per case (`id`, plus whatever fields the template's `{placeholder}` tokens need — typically `input`/`output`, or `input`/`trajectory`/`final_output` for a trajectory case). It's generic over criterion names, so it handles both the plain rubric shape and `references/trajectory-eval.md`'s shape without any mode flag. A per-case failure (judge call error, unparseable response) is reported to stderr and that case is skipped — never given a fabricated score. `cost_usd` is only included when both `--input-price-per-mtok`/`--output-price-per-mtok` are given, computed from the API's own real token counts.
+
+   The judge prompt returns one nested object per case (per-criterion scores plus an `overall_score`) — that's a different shape from what `scripts/score_eval.py` reads. If scoring by some other means than `run_judge.py` (a different judge model/provider, a notebook), flatten each case before saving, to this schema (one JSON object per line):
    ```json
    {"id": "case_001", "score": 0.83, "category": "accuracy", "rationale": "...", "cost_usd": 0.003, "latency_ms": 1240}
    ```
