@@ -313,6 +313,64 @@ class RunJudge(unittest.TestCase):
         self.assertEqual([r["id"] for r in results], ["good"])
 
 
+class CallJudgeProvider(unittest.TestCase):
+    """call_judge()'s own provider dispatch — no real network access,
+    only checking that the right internal function gets called and that
+    an unrecognized provider fails loudly rather than silently defaulting
+    to something. Patches run_judge_mod._PROVIDER_CALLERS' entries
+    directly (not the module-level _call_anthropic/_call_gemini names) —
+    call_judge() looks up the function via that dict, built once at
+    import time, so patching the bare names doesn't reach it; an earlier
+    version of these tests patched the wrong reference and silently made
+    a real network call instead of exercising the fake (caught by an
+    unexpected real HTTPError in the test run, not by reasoning about it
+    up front)."""
+
+    def setUp(self):
+        self._original_callers = dict(run_judge_mod._PROVIDER_CALLERS)
+
+    def tearDown(self):
+        run_judge_mod._PROVIDER_CALLERS.clear()
+        run_judge_mod._PROVIDER_CALLERS.update(self._original_callers)
+
+    def test_default_provider_is_anthropic(self):
+        calls = []
+        run_judge_mod._PROVIDER_CALLERS["anthropic"] = lambda *a: calls.append(a) or {"text": "{}", "input_tokens": 0, "output_tokens": 0}
+        run_judge_mod.call_judge("prompt", "key", "model")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][:3], ("prompt", "key", "model"))
+
+    def test_gemini_provider_dispatches_to_gemini_caller(self):
+        calls = []
+        run_judge_mod._PROVIDER_CALLERS["gemini"] = lambda *a: calls.append(a) or {"text": "{}", "input_tokens": 0, "output_tokens": 0}
+        run_judge_mod.call_judge("prompt", "key", "model", provider="gemini")
+        self.assertEqual(len(calls), 1)
+
+    def test_gemini_provider_does_not_call_anthropic(self):
+        anthropic_calls = []
+        gemini_calls = []
+        run_judge_mod._PROVIDER_CALLERS["anthropic"] = lambda *a: anthropic_calls.append(a) or {"text": "{}", "input_tokens": 0, "output_tokens": 0}
+        run_judge_mod._PROVIDER_CALLERS["gemini"] = lambda *a: gemini_calls.append(a) or {"text": "{}", "input_tokens": 0, "output_tokens": 0}
+        run_judge_mod.call_judge("prompt", "key", "model", provider="gemini")
+        self.assertEqual(len(gemini_calls), 1)
+        self.assertEqual(len(anthropic_calls), 0)
+
+    def test_unknown_provider_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            run_judge_mod.call_judge("prompt", "key", "model", provider="not-a-real-provider")
+
+    def test_three_positional_args_still_work_unchanged(self):
+        # The exact call shape judge_fn is always invoked with throughout
+        # this module and run_pairwise.py — call_judge(prompt, api_key,
+        # model) with no provider kwarg must still resolve to anthropic,
+        # so every existing default judge_fn=call_judge call site keeps
+        # working after this provider abstraction was added.
+        calls = []
+        run_judge_mod._PROVIDER_CALLERS["anthropic"] = lambda *a: calls.append(a) or {"text": "{}", "input_tokens": 0, "output_tokens": 0}
+        run_judge_mod.call_judge("prompt", "key", "model")
+        self.assertEqual(len(calls), 1)
+
+
 class Cli(unittest.TestCase):
     """End-to-end: invoke the script as a subprocess (no real API key —
     just proves the ANTHROPIC_API_KEY gate and argument wiring)."""
@@ -344,6 +402,28 @@ class Cli(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 2)
         self.assertIn("ANTHROPIC_API_KEY", proc.stderr)
+
+    def test_gemini_provider_checks_gemini_api_key_not_anthropic(self):
+        cases_path = self.make_jsonl([{"id": "a", "input": "x", "output": "y"}])
+        template_path = self.make_file("{input} {output}")
+        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY")}
+        env["ANTHROPIC_API_KEY"] = "irrelevant-should-not-be-checked"
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", "/dev/null", "--provider", "gemini"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("GEMINI_API_KEY", proc.stderr)
+
+    def test_unknown_provider_rejected_by_argparse(self):
+        cases_path = self.make_jsonl([{"id": "a", "input": "x", "output": "y"}])
+        template_path = self.make_file("{input} {output}")
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", "/dev/null", "--provider", "openai"],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("invalid choice", proc.stderr)
 
 
 if __name__ == "__main__":

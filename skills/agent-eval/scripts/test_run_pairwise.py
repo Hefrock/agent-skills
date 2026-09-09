@@ -229,6 +229,23 @@ class Cli(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("ANTHROPIC_API_KEY", proc.stderr)
 
+    def test_gemini_provider_checks_gemini_api_key_not_anthropic(self):
+        cases_path = write_jsonl([{"id": "p1", "input": "t", "output_a": "A", "output_b": "B"}])
+        self._paths.append(cases_path)
+        fd, template_path = tempfile.mkstemp()
+        with os.fdopen(fd, "w") as f:
+            f.write(TEMPLATE)
+        self._paths.append(template_path)
+
+        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY")}
+        env["ANTHROPIC_API_KEY"] = "irrelevant-should-not-be-checked"
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", "/dev/null", "--provider", "gemini"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("GEMINI_API_KEY", proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

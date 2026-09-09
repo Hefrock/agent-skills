@@ -60,9 +60,18 @@ response reports, multiplied by prices the caller supplies explicitly
 pricing table that would silently go stale. Omitted entirely if prices
 aren't given.
 
+Provider: --provider selects which judge API to call (default:
+anthropic; gemini also supported — see call_judge()'s docstring for why
+gemini's cost tracking specifically carries a lower-confidence caveat
+than anthropic's). Not every agent using this repo has an Anthropic key
+— this repo's own README describes skills as "usable across Claude,
+Codex, Gemini CLI, Cursor, and GitHub Copilot," and a judge tool that
+only worked with one vendor's API sat oddly against that.
+
 Stdlib only (urllib), matching this repo's other reference tooling."""
 
 import argparse
+import functools
 import json
 import os
 import sys
@@ -73,10 +82,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import jsonl_io  # noqa: E402
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "claude-sonnet-5"  # anthropic's default specifically — see PROVIDERS for gemini's
 DEFAULT_MAX_TOKENS = 1024
-DEFAULT_API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_ANTHROPIC_VERSION = "2023-06-01"
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
+
+# One entry per supported --provider. Adding a new provider means adding
+# a _call_<name>() function below, an entry here, and a line in
+# _PROVIDER_CALLERS — nothing else in this module (fill_template,
+# flatten_judge_response, run_judge()'s orchestration) needs to change,
+# since all of it only ever depends on judge_fn's shared (prompt, api_key,
+# model) -> {"text", "input_tokens", "output_tokens"} contract.
+PROVIDERS = {
+    "anthropic": {"default_model": "claude-sonnet-5", "api_key_env": "ANTHROPIC_API_KEY"},
+    "gemini": {"default_model": "gemini-3.5-flash", "api_key_env": "GEMINI_API_KEY"},
+}
 
 
 def load_cases(path: str) -> list[dict]:
@@ -176,26 +196,19 @@ def flatten_judge_response(response_json: dict) -> dict:
     return {"score": overall_score, "rationale": rationale}
 
 
-def call_judge(prompt: str, api_key: str, model: str = DEFAULT_MODEL, max_tokens: int = DEFAULT_MAX_TOKENS, timeout: float = 60.0) -> dict:
-    """The one function in this module that touches the network — kept
-    separate so run_judge() below can be unit-tested against a fake
-    without ever making a real call, same split as this repo's other
-    reference tooling (audio_synth.synthesize_text, dedup_store.embed_text).
-
-    Returns {"text": <raw response text>, "input_tokens": int,
-    "output_tokens": int} — real counts from the API's own "usage" field,
-    not estimated, since cost_usd downstream is only ever computed from
-    real numbers."""
+def _call_anthropic(prompt: str, api_key: str, model: str, max_tokens: int, timeout: float) -> dict:
+    """Anthropic's Messages API. See call_judge()'s docstring for the
+    shared return shape every provider function here returns."""
     payload = json.dumps({
         "model": model,
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }).encode("utf-8")
     request = urllib.request.Request(
-        DEFAULT_API_URL, data=payload, method="POST",
+        ANTHROPIC_API_URL, data=payload, method="POST",
         headers={
             "x-api-key": api_key,
-            "anthropic-version": DEFAULT_ANTHROPIC_VERSION,
+            "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         },
     )
@@ -204,6 +217,67 @@ def call_judge(prompt: str, api_key: str, model: str = DEFAULT_MODEL, max_tokens
     text = "".join(block.get("text", "") for block in body.get("content", []) if block.get("type") == "text")
     usage = body.get("usage", {})
     return {"text": text, "input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0)}
+
+
+def _call_gemini(prompt: str, api_key: str, model: str, max_tokens: int, timeout: float) -> dict:
+    """Gemini's generateContent endpoint. The URL pattern, the contents/
+    parts request wrapping, and the candidates[0].content.parts[0].text
+    response extraction all mirror broadcast/scripts/narrate.py's
+    generate_narration() — this repo's own live-confirmed precedent for
+    calling this exact endpoint for text generation (see that function's
+    own docstring: "Prompt and response shape confirmed live via
+    _diagnose_narration.py's reconnaissance"), not a shape invented for
+    this module.
+
+    One real gap this does NOT share that precedent for: token usage.
+    Gemini's documented API contract includes a "usageMetadata" object
+    (promptTokenCount/candidatesTokenCount) on generateContent responses,
+    but nothing in this repo has independently live-verified that field
+    the way narrate.py's response-text path was. Read defensively
+    (.get(..., 0)) so a missing or differently-named field degrades to
+    an untracked (0) token count rather than a crash — but that also
+    means cost_usd computed from a gemini call should be treated as
+    lower-confidence than an anthropic call's, until someone actually
+    confirms this field live."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens},
+    }).encode("utf-8")
+    request = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        body = json.loads(response.read().decode("utf-8"))
+    text = body["candidates"][0]["content"]["parts"][0]["text"]
+    usage = body.get("usageMetadata", {})
+    return {"text": text, "input_tokens": usage.get("promptTokenCount", 0), "output_tokens": usage.get("candidatesTokenCount", 0)}
+
+
+_PROVIDER_CALLERS = {"anthropic": _call_anthropic, "gemini": _call_gemini}
+
+
+def call_judge(prompt: str, api_key: str, model: str = DEFAULT_MODEL, provider: str = "anthropic", max_tokens: int = DEFAULT_MAX_TOKENS, timeout: float = 60.0) -> dict:
+    """The one function in this module that touches the network — kept
+    separate so run_judge() below can be unit-tested against a fake
+    without ever making a real call, same split as this repo's other
+    reference tooling (audio_synth.synthesize_text, dedup_store.embed_text).
+
+    provider dispatches to _call_anthropic()/_call_gemini() — defaults to
+    "anthropic" so every existing call to call_judge(prompt, api_key,
+    model) (the shape judge_fn is always invoked with throughout this
+    module and run_pairwise.py) keeps working completely unchanged; a
+    caller that wants a different provider passes it via functools.
+    partial(call_judge, provider="gemini") as their judge_fn, not by
+    changing the call site's own 3-positional-argument shape.
+
+    Returns {"text": <raw response text>, "input_tokens": int,
+    "output_tokens": int} — real counts from the API's own usage field,
+    not estimated, since cost_usd downstream is only ever computed from
+    real numbers. Raises ValueError for an unrecognized provider, same
+    "fail loud on a config mistake, fail soft on a data/network problem"
+    split the rest of this module follows."""
+    if provider not in _PROVIDER_CALLERS:
+        raise ValueError(f"Unknown provider {provider!r} — choose one of {sorted(_PROVIDER_CALLERS)}")
+    return _PROVIDER_CALLERS[provider](prompt, api_key, model, max_tokens, timeout)
 
 
 def run_judge(
@@ -277,24 +351,28 @@ def main() -> int:
     parser.add_argument("cases", help="Path to a JSONL file of cases to grade (one object per line: id, input, output, ...).")
     parser.add_argument("--template", required=True, help="Path to a judge-prompt template (see references/llm-judge-prompt.md).")
     parser.add_argument("--out", required=True, help="Path to write flattened results, in score_eval.py's JSONL schema.")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Judge model (default: {DEFAULT_MODEL}).")
+    parser.add_argument("--provider", choices=sorted(PROVIDERS), default="anthropic", help="Which judge API to call (default: anthropic).")
+    parser.add_argument("--model", default=None, help="Judge model (default: the chosen --provider's own default model).")
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, help=f"Max tokens for the judge's response (default: {DEFAULT_MAX_TOKENS}).")
     parser.add_argument("--category", help="Default category for cases that don't carry their own 'category' field.")
     parser.add_argument("--input-price-per-mtok", type=float, help="USD per 1M input tokens — set both prices to get cost_usd in the output.")
     parser.add_argument("--output-price-per-mtok", type=float, help="USD per 1M output tokens — see --input-price-per-mtok.")
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key_env = PROVIDERS[args.provider]["api_key_env"]
+    api_key = os.environ.get(api_key_env)
     if not api_key:
-        print("ANTHROPIC_API_KEY must be set.", file=sys.stderr)
+        print(f"{api_key_env} must be set (--provider {args.provider}).", file=sys.stderr)
         return 2
+    model = args.model or PROVIDERS[args.provider]["default_model"]
 
     cases = load_cases(args.cases)
     with open(args.template, encoding="utf-8") as f:
         template = f.read()
 
+    judge_fn = functools.partial(call_judge, provider=args.provider, max_tokens=args.max_tokens)
     results = run_judge(
-        cases, template, api_key, model=args.model, default_category=args.category,
+        cases, template, api_key, judge_fn=judge_fn, model=model, default_category=args.category,
         input_price_per_mtok=args.input_price_per_mtok, output_price_per_mtok=args.output_price_per_mtok,
     )
 
