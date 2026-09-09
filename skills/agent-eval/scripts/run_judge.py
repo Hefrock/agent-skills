@@ -69,6 +69,10 @@ import sys
 import time
 import urllib.request
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import jsonl_io  # noqa: E402
+
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_API_URL = "https://api.anthropic.com/v1/messages"
@@ -76,25 +80,11 @@ DEFAULT_ANTHROPIC_VERSION = "2023-06-01"
 
 
 def load_cases(path: str) -> list[dict]:
-    """Same discipline as score_eval.load_results(): skip a blank or
-    malformed line with a warning rather than crashing the whole batch,
-    and require an "id" (nothing downstream is meaningful without one)."""
-    cases = []
-    with open(path, encoding="utf-8") as f:
-        for lineno, line in enumerate(f, 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as e:
-                print(f"Warning: skipping malformed line {lineno} in {path}: {e}", file=sys.stderr)
-                continue
-            if "id" not in obj:
-                print(f"Warning: skipping line {lineno} in {path} — missing 'id'", file=sys.stderr)
-                continue
-            cases.append(obj)
-    return cases
+    """Requires an "id" per case (nothing downstream is meaningful
+    without one) — thin wrapper over jsonl_io.load_jsonl(), the shared
+    primitive score_eval.load_results() and calibrate_judge.
+    load_scores_by_id() also build on."""
+    return jsonl_io.load_jsonl(path, required_keys=("id",))
 
 
 def format_turns_as_transcript(turns: list[dict]) -> str:

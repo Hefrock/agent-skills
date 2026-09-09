@@ -28,11 +28,15 @@ intersection, not the full eval set).
 Stdlib only. Run: python calibrate_judge.py ..."""
 
 import argparse
-import json
+import os
 import re
 import statistics
 import sys
 from datetime import date
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import jsonl_io  # noqa: E402
 
 DEFAULT_THRESHOLD = 0.2
 LOG_HEADER = "| Date | Cases checked | Mean delta vs human | Action taken |"
@@ -41,25 +45,12 @@ PLACEHOLDER_ROW = "| — | — | — | not yet calibrated |"
 
 
 def load_scores_by_id(path: str) -> dict:
-    """Same load-and-warn discipline as score_eval.load_results() and
-    run_judge.load_cases() — a malformed or incomplete line is skipped
-    with a warning, not a crash, and never silently treated as a 0."""
-    scores = {}
-    with open(path, encoding="utf-8") as f:
-        for lineno, line in enumerate(f, 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as e:
-                print(f"Warning: skipping malformed line {lineno} in {path}: {e}", file=sys.stderr)
-                continue
-            if "id" not in obj or "score" not in obj:
-                print(f"Warning: skipping line {lineno} in {path} — missing 'id' or 'score'", file=sys.stderr)
-                continue
-            scores[obj["id"]] = float(obj["score"])
-    return scores
+    """{id: score} — built on jsonl_io.load_jsonl(), the shared primitive
+    score_eval.load_results() and run_judge.load_cases() also build on.
+    Never silently treats a missing score as 0; that row is dropped by
+    load_jsonl()'s required_keys check instead."""
+    rows = jsonl_io.load_jsonl(path, required_keys=("id", "score"))
+    return {row["id"]: float(row["score"]) for row in rows}
 
 
 def compute_deltas(judge_scores: dict, human_scores: dict) -> list[dict]:
