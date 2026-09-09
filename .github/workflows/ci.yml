@@ -84,6 +84,12 @@ jobs:
         # adversarial pass rate falls below the gate, failing the build.
         run: python skills/agent-redteam/scripts/score_eval.py skills/agent-redteam/examples/adversarial_results.jsonl --fail-under 0.5
 
+      - name: agent-redteam — verify promoted regressions are honest and unmodified
+        # SKILL.md step 5's own file — checks every promoted case is a
+        # frozen copy of its seed case and traces to a real documented
+        # failure, not a fabricated or drifted one.
+        run: python skills/agent-redteam/scripts/verify_regressions_promoted.py
+
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
 
