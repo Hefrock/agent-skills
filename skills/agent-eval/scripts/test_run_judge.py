@@ -274,6 +274,23 @@ class RunJudge(unittest.TestCase):
         self.assertEqual(results, [])
         self.assertIn("judge call failed", err.getvalue())
 
+    def test_malformed_case_skips_case_without_crashing_the_whole_batch(self):
+        # Regression test for a real, live-found bug: fill_template() was
+        # once called outside any try/except in this loop, so a single
+        # case with a malformed "turns" entry (missing "role"/"content")
+        # raised KeyError and crashed the ENTIRE batch — not just that
+        # case, unlike every other failure mode here — silently
+        # discarding every result already computed for cases before it.
+        cases = [
+            {"id": "good_before", "turns": [{"role": "user", "content": "hi"}], "output": "x"},
+            {"id": "malformed", "turns": [{"role": "user"}], "output": "x"},  # missing "content"
+            {"id": "good_after", "turns": [{"role": "user", "content": "hi again"}], "output": "y"},
+        ]
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            results = run_judge_mod.run_judge(cases, "Conv:\n{transcript}\nOut: {output}", "fake-key", judge_fn=self._fake_judge_fn)
+        self.assertEqual([r["id"] for r in results], ["good_before", "good_after"])
+        self.assertIn("couldn't fill template", err.getvalue())
+
     def test_unparseable_judge_response_skips_case_without_crashing(self):
         def broken_judge_fn(prompt, api_key, model):
             return {"text": "not json", "input_tokens": 10, "output_tokens": 5}
