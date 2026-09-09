@@ -28,8 +28,14 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```bash
    export ANTHROPIC_API_KEY=...
    python scripts/run_judge.py cases.jsonl --template references/llm-judge-prompt.md --out results.jsonl --category accuracy
+
+   # Or judge with Gemini instead of Claude — same output, same schema:
+   export GEMINI_API_KEY=...
+   python scripts/run_judge.py cases.jsonl --template references/llm-judge-prompt.md --out results.jsonl --provider gemini
    ```
-   `cases.jsonl` is one row per case (`id`, plus whatever fields the template's `{placeholder}` tokens need — typically `input`/`output`, or `input`/`trajectory`/`final_output` for a trajectory case). It's generic over criterion names, so it handles both the plain rubric shape and `references/trajectory-eval.md`'s shape without any mode flag. A per-case failure (judge call error, unparseable response) is reported to stderr and that case is skipped — never given a fabricated score. `cost_usd` is only included when both `--input-price-per-mtok`/`--output-price-per-mtok` are given, computed from the API's own real token counts.
+   `--provider` (default: `anthropic`; `gemini` also supported) picks which judge API gets called — `scripts/run_pairwise.py` takes the same flag. `--model` defaults to the chosen provider's own default model if not given. See `call_judge()`'s own docstring in `run_judge.py` for one honest caveat: Gemini's token-usage field (which `cost_usd` depends on) isn't independently live-verified in this repo the way Anthropic's is, so treat `cost_usd` from a Gemini-judged run as lower-confidence than from an Anthropic one.
+
+   `cases.jsonl` is one row per case (`id`, plus whatever fields the template's `{placeholder}` tokens need — typically `input`/`output`, or `input`/`trajectory`/`final_output` for a trajectory case). It's generic over criterion names, so it handles both the plain rubric shape and `references/trajectory-eval.md`'s shape without any mode flag. A per-case failure (judge call error, unparseable response, or a malformed case that fails template-filling) is reported to stderr and that case is skipped — never given a fabricated score. `cost_usd` is only included when both `--input-price-per-mtok`/`--output-price-per-mtok` are given, computed from the API's own real token counts.
 
    The judge prompt returns one nested object per case (per-criterion scores plus an `overall_score`) — that's a different shape from what `scripts/score_eval.py` reads. If scoring by some other means than `run_judge.py` (a different judge model/provider, a notebook), flatten each case before saving, to this schema (one JSON object per line):
    ```json

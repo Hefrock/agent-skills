@@ -21,18 +21,23 @@ the full rationale, the prompt template, and the scoring convention.
 Usage:
     export ANTHROPIC_API_KEY=...
     python run_pairwise.py cases.jsonl --template pairwise_prompt.txt --out results.jsonl
+    python run_pairwise.py cases.jsonl --template pairwise_prompt.txt --out results.jsonl --provider gemini
 
 Case input format (JSONL): {"id": "pair_001", "input": "...", "output_a": "...", "output_b": "...", "category": "accuracy"}
 
-Reuses run_judge.py's load_cases/call_judge/_extract_json rather than
-duplicating them — same "don't let two copies of the same logic drift
-apart" precedent this repo already follows elsewhere (see, e.g.,
-distribute.py's docstring on not reimplementing wiki-operator's vault
-writes).
+Reuses run_judge.py's load_cases/call_judge/_extract_json/PROVIDERS
+rather than duplicating them — same "don't let two copies of the same
+logic drift apart" precedent this repo already follows elsewhere (see,
+e.g., distribute.py's docstring on not reimplementing wiki-operator's
+vault writes). --provider (default: anthropic) selects which judge API
+each of the two orderings' calls goes through — see run_judge.py's own
+docstring for why this exists and call_judge()'s for the per-provider
+caveats (gemini's cost tracking specifically is lower-confidence).
 
 Stdlib only. Run: python run_pairwise.py ..."""
 
 import argparse
+import functools
 import json
 import os
 import sys
@@ -170,23 +175,27 @@ def main() -> int:
     parser.add_argument("cases", help="Path to a JSONL file of cases (id, input, output_a, output_b, ...).")
     parser.add_argument("--template", required=True, help="Path to a pairwise prompt template (see references/pairwise-comparison.md).")
     parser.add_argument("--out", required=True, help="Path to write flattened results, in score_eval.py's JSONL schema.")
-    parser.add_argument("--model", default=run_judge.DEFAULT_MODEL, help=f"Judge model (default: {run_judge.DEFAULT_MODEL}).")
+    parser.add_argument("--provider", choices=sorted(run_judge.PROVIDERS), default="anthropic", help="Which judge API to call (default: anthropic).")
+    parser.add_argument("--model", default=None, help="Judge model (default: the chosen --provider's own default model).")
     parser.add_argument("--category", help="Default category for cases that don't carry their own 'category' field.")
     parser.add_argument("--input-price-per-mtok", type=float, help="USD per 1M input tokens — set both prices to get cost_usd in the output.")
     parser.add_argument("--output-price-per-mtok", type=float, help="USD per 1M output tokens — see --input-price-per-mtok.")
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key_env = run_judge.PROVIDERS[args.provider]["api_key_env"]
+    api_key = os.environ.get(api_key_env)
     if not api_key:
-        print("ANTHROPIC_API_KEY must be set.", file=sys.stderr)
+        print(f"{api_key_env} must be set (--provider {args.provider}).", file=sys.stderr)
         return 2
+    model = args.model or run_judge.PROVIDERS[args.provider]["default_model"]
 
     cases = run_judge.load_cases(args.cases)
     with open(args.template, encoding="utf-8") as f:
         template = f.read()
 
+    judge_fn = functools.partial(run_judge.call_judge, provider=args.provider)
     results = run_pairwise(
-        cases, template, api_key, model=args.model, default_category=args.category,
+        cases, template, api_key, judge_fn=judge_fn, model=model, default_category=args.category,
         input_price_per_mtok=args.input_price_per_mtok, output_price_per_mtok=args.output_price_per_mtok,
     )
 
