@@ -231,15 +231,26 @@ def run_judge(
     API call, same convention as orchestrate.run_episode()'s injected
     fetch_fn/embed_fn/synth_fn.
 
-    A per-case failure (judge_fn raising, or the response not parsing
-    into flatten_judge_response()'s expected shape) is reported to
-    stderr and that case is dropped from the returned list — it never
-    appears with a fabricated score. cost_usd is included only when both
-    price arguments are given; latency_ms is always real wall-clock time
-    around the judge_fn call, whether or not pricing is known."""
+    A per-case failure — template-filling (e.g. a malformed "turns" entry
+    missing "role"/"content", see format_turns_as_transcript()), judge_fn
+    raising, or the response not parsing into flatten_judge_response()'s
+    expected shape — is reported to stderr and that case is dropped from
+    the returned list. Real, live-found bug this guards against: an
+    earlier version of this function called fill_template() outside any
+    try/except, so one malformed case crashed the entire batch and
+    silently discarded every result already computed for cases before
+    it — not just that one case, the way every other failure mode here
+    is handled. cost_usd is included only when both price arguments are
+    given; latency_ms is always real wall-clock time around the judge_fn
+    call, whether or not pricing is known."""
     results = []
     for case in cases:
-        prompt = fill_template(template, case)
+        try:
+            prompt = fill_template(template, case)
+        except Exception as e:
+            print(f"Warning: skipping case {case['id']} — couldn't fill template: {e}", file=sys.stderr)
+            continue
+
         start = time.perf_counter()
         try:
             response = judge_fn(prompt, api_key, model)
