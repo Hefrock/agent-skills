@@ -171,6 +171,8 @@ def run_episode(
     inter_segment_silence_ms: float = audio_synth.DEFAULT_INTER_SEGMENT_SILENCE_MS,
     dry_run: bool = False,
     synth_cache_dir: str | None = None,
+    top_three_count: int = rank.DEFAULT_TOP_THREE_COUNT,
+    quick_hits_count: int = rank.DEFAULT_QUICK_HITS_COUNT,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
     -> embed -> rank -> pin evidence -> generate script -> narrate (best-
@@ -307,12 +309,22 @@ def run_episode(
       — "script" above is already the POST-narration script (or the
       unmodified one, if enable_narration is False), same "one source of
       truth, not the pre- and post- versions both floating around" policy
-      the rest of this pipeline already follows."""
+      the rest of this pipeline already follows.
+
+    top_three_count/quick_hits_count (default rank.py's own defaults, 3
+    and 7): passed straight through to rank.rank_stories() — exposed
+    here, not just there, so a caller can shrink an episode's real TTS
+    call count (synth_calls_estimate_max is roughly this sum + 4) without
+    touching rank.py's own defaults for every other caller. A real,
+    live-motivated need: this pipeline's default-sized episode (10
+    selected stories, 14 synth calls) has twice failed to complete in one
+    pass against Gemini TTS's free-tier rate limit — a smaller episode is
+    the free lever to pull before reaching for paid quota."""
     ingest_result = ingest_all(registry, max_results_per_source, fetch_fn)
 
     if dry_run:
         items_ingested = len(ingest_result["items"])
-        max_selected_stories = min(items_ingested, rank.DEFAULT_TOP_THREE_COUNT + rank.DEFAULT_QUICK_HITS_COUNT)
+        max_selected_stories = min(items_ingested, top_three_count + quick_hits_count)
         return {
             "run_date": run_date,
             "dry_run": True,
@@ -330,7 +342,10 @@ def run_episode(
 
     embed_result = embed_items(ingest_result["items"], api_key, embed_fn)
 
-    rank_result = rank.rank_stories(embed_result["items"], embed_result["embeddings"], registry, store, current_date=run_date)
+    rank_result = rank.rank_stories(
+        embed_result["items"], embed_result["embeddings"], registry, store, current_date=run_date,
+        top_three_count=top_three_count, quick_hits_count=quick_hits_count,
+    )
 
     selected = rank_result["top_three"] + rank_result["quick_hits"]
     pinned = evidence.pin_evidence_for_stories(evidence_client, selected, run_id=run_date)
@@ -468,6 +483,14 @@ def main() -> int:
         "--no-audio-cache", dest="audio_cache", action="store_false",
         help="Disable the per-segment synthesized-audio cache (<data-dir>/audio_cache). Default: enabled — a segment already successfully synthesized (by exact text, e.g. on an earlier failed run) is served from disk instead of spending Gemini TTS quota again. Not auto-pruned; see audio_synth.py's cache section.",
     )
+    parser.add_argument(
+        "--top-three-count", type=int, default=rank.DEFAULT_TOP_THREE_COUNT,
+        help=f"How many throughline stories to select for the top-three segment (default: {rank.DEFAULT_TOP_THREE_COUNT}). Lower this (with --quick-hits-count) to shrink an episode's real TTS call count — the default-sized episode (10 selected stories, 14 synth calls) has repeatedly failed to complete in one pass against Gemini TTS's free-tier rate limit.",
+    )
+    parser.add_argument(
+        "--quick-hits-count", type=int, default=rank.DEFAULT_QUICK_HITS_COUNT,
+        help=f"How many additional stories to select for quick hits (default: {rank.DEFAULT_QUICK_HITS_COUNT}). See --top-three-count.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -491,6 +514,7 @@ def main() -> int:
         result = run_episode(
             args.date, registry, store, None, api_key,
             max_results_per_source=args.max_results_per_source, dry_run=True,
+            top_three_count=args.top_three_count, quick_hits_count=args.quick_hits_count,
         )
         print(json.dumps(result, indent=2))
         return 0
@@ -504,6 +528,7 @@ def main() -> int:
             enable_narration=args.enable_narration, narration_success_threshold=args.narration_success_threshold,
             normalize_audio=args.normalize_audio, inter_segment_silence_ms=args.inter_segment_silence_ms,
             synth_cache_dir=synth_cache_dir,
+            top_three_count=args.top_three_count, quick_hits_count=args.quick_hits_count,
         )
 
     dedup_store.save_store(result["store"], store_path)

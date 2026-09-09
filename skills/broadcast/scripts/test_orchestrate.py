@@ -280,6 +280,40 @@ class RunEpisodeWiring(unittest.TestCase):
         self.assertIsNotNone(result["episode_audio"])
         self.assertEqual(len(result["episode_audio"]["segments"]), len(result["script"]["segments"]))
 
+    def test_top_three_and_quick_hits_count_cap_the_real_selection(self):
+        # A real, live-motivated regression: the default-sized episode (3
+        # top-three + 7 quick hits = 10 selected stories, 14 synth calls)
+        # has twice failed to complete against Gemini TTS's free-tier
+        # rate limit — --top-three-count/--quick-hits-count are the free
+        # lever to shrink a real episode's actual TTS call count. This
+        # proves the CLI-exposed knobs actually reach rank.rank_stories()
+        # through run_episode(), not just that rank.py's own defaults
+        # parameter exists.
+        def fetch_with_plenty_of_candidates(source, max_results):
+            if source["key"] == "pubmed":
+                return [
+                    make_item("pubmed", f"https://doi.org/10.1000/fhir{i}", f"FHIR advance number {i} in clinical decision support")
+                    for i in range(3)
+                ]
+            if source["key"] == "stat_news":
+                return [
+                    make_item("stat_news", f"https://statnews.com/x{i}", f"Hospital adopts scheduling software update {i}")
+                    for i in range(3)
+                ]
+            return []
+
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=fetch_with_plenty_of_candidates, embed_fn=self._fake_embed_fn,
+            narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+            top_three_count=1, quick_hits_count=1,
+        )
+        self.assertEqual(len(result["rank_result"]["top_three"]), 1)
+        self.assertEqual(len(result["rank_result"]["quick_hits"]), 1)
+        # intro + disclosure + 1 top-three + transition + 1 quick hit + outro
+        self.assertEqual(len(result["script"]["segments"]), 6)
+
     def test_store_is_updated_and_returned_for_the_caller_to_persist(self):
         client = FakeEvidenceClient()
         result = orchestrate.run_episode(
