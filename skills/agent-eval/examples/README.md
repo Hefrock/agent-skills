@@ -165,3 +165,38 @@ Exit code **1** — this is meant to be run as a real gate on your own
 calibration cadence too, same as `score_eval.py`'s `--fail-under`. Add
 `--update-log references/llm-judge-prompt.md` to append this run to the
 calibration log automatically instead of editing the table by hand.
+
+## Cost/latency regression example — the scenario the accuracy gate can't see
+
+The [worked example above](#the-scenario) demonstrates an accuracy
+regression that's invisible to cost/latency dashboards. The reverse gap
+existed too: `score_eval.py` has always computed and printed mean
+`cost_usd`/`latency_ms`, but nothing ever *gated* on them — a change that
+holds accuracy perfectly steady while tripling cost sailed through
+`--fail-under`/`--fail-on-regression` untouched.
+
+[`results_cost_regressed.jsonl`](./results_cost_regressed.jsonl) is
+[`results_baseline.jsonl`](./results_baseline.jsonl) with identical scores
+and rationales on every one of the 20 cases (same 90% pass rate, same 0.89
+mean score — no accuracy regression at all) but real cost/latency roughly
+tripled:
+
+```bash
+python scripts/score_eval.py examples/results_cost_regressed.jsonl \
+    --baseline examples/results_baseline.jsonl \
+    --fail-on-cost-regression --fail-on-latency-regression
+```
+
+```
+Mean cost: $0.0152
+Mean latency: 3412ms
+...
+⚠ Cost regression: mean $0.0152 vs baseline $0.0049 (+210%, tolerance 20%)
+⚠ Latency regression: mean 3412ms vs baseline 1312ms (+160%, tolerance 20%)
+
+GATE FAILED:
+  - --fail-on-cost-regression: mean cost $0.0152 exceeds baseline $0.0049 by more than 20%
+  - --fail-on-latency-regression: mean latency 3412ms exceeds baseline 1312ms by more than 20%
+```
+
+Exit code **1** — a real gate, not just a printed number: `--fail-on-cost-regression`/`--fail-on-latency-regression` (tolerance configurable via `--cost-regression-tolerance`/`--latency-regression-tolerance`, default 20%) both require `--baseline`. `--fail-if-mean-cost-above`/`--fail-if-mean-latency-above` set an absolute ceiling instead, with no baseline needed — useful for a hard budget rather than a relative-regression check.

@@ -63,6 +63,13 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```
    This is what makes an eval a gate rather than a report — the same run that scores your change also blocks it if it regressed. See [`examples/`](./examples/) for a worked before/after where a change looks like a win on cost, latency, and format but the gate catches three silent accuracy regressions.
 
+   The reverse gap has a gate too: a change that holds accuracy perfectly steady while cost or latency quietly balloons was previously invisible to every flag above. `--fail-on-cost-regression`/`--fail-on-latency-regression` (needs `--baseline`; tolerance via `--cost-regression-tolerance`/`--latency-regression-tolerance`, default 20%) catch that directly; `--fail-if-mean-cost-above`/`--fail-if-mean-latency-above` set an absolute ceiling with no baseline needed:
+   ```bash
+   python scripts/score_eval.py results.jsonl --baseline previous_results.jsonl --fail-on-cost-regression --fail-on-latency-regression
+   python scripts/score_eval.py results.jsonl --fail-if-mean-cost-above 0.01 --fail-if-mean-latency-above 2000
+   ```
+   See [`examples/README.md`](./examples/README.md)'s cost/latency regression example for a worked case where accuracy is unchanged (same 90% pass rate) but cost/latency both roughly triple, and the gate catches it.
+
 7. **Be honest about sample size.** With under ~20 cases, a 2-3 case swing can look like a large percentage shift. Say so explicitly: "3/10 passed (30%) — too small a sample to call this a real regression yet" rather than presenting a precise-looking percentage as statistically solid.
 
 8. **When re-evaluating after a change** (new prompt, new model, new tool definition), always run the *same* eval set as before and diff against the saved baseline. That's what catches regressions — a fresh set of cases each time doesn't.

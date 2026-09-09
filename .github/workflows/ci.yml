@@ -91,6 +91,16 @@ jobs:
             echo "OK: gate correctly caught the regression (exit non-zero)"
           fi
 
+      - name: agent-eval — verify the cost/latency regression example trips the gate
+        # Self-check, same rationale as the regression-example check above.
+        run: |
+          if python skills/agent-eval/scripts/score_eval.py skills/agent-eval/examples/results_cost_regressed.jsonl \
+               --baseline skills/agent-eval/examples/results_baseline.jsonl --fail-on-cost-regression --fail-on-latency-regression; then
+            echo "ERROR: cost/latency regression example did not trip the gate"; exit 1
+          else
+            echo "OK: gate correctly caught the cost/latency regression (exit non-zero)"
+          fi
+
       - name: agent-eval — verify the trajectory example still matches its documented table
         # Self-check, same rationale as the regression-example check above:
         # examples/README.md documents an exact per-case score table for
