@@ -73,6 +73,12 @@ jobs:
             echo "OK: gate correctly caught the regression (exit non-zero)"
           fi
 
+      - name: agent-eval — verify the trajectory example still matches its documented table
+        # Self-check, same rationale as the regression-example check above:
+        # examples/README.md documents an exact per-case score table for
+        # trajectory_example.jsonl. Confirm it hasn't silently drifted.
+        run: python skills/agent-eval/scripts/verify_trajectory_example.py
+
       - name: agent-redteam — score adversarial set with a CI gate
         # Demonstrates the DevSecOps pattern: the scorer exits non-zero if the
         # adversarial pass rate falls below the gate, failing the build.
