@@ -1,0 +1,8 @@
+{"id": "cal_01", "score": 0.9, "rationale": "Agree — root cause is correct"}
+{"id": "cal_02", "score": 0.1, "rationale": "Long and confident-sounding, but the actual recommended fix is wrong"}
+{"id": "cal_03", "score": 0.9, "rationale": "Agree"}
+{"id": "cal_04", "score": 0.9, "rationale": "Agree"}
+{"id": "cal_05", "score": 0.1, "rationale": "Detailed, but describes the wrong subsystem as the source of the bug"}
+{"id": "cal_06", "score": 0.85, "rationale": "Agree"}
+{"id": "cal_07", "score": 0.4, "rationale": "Agree — judge correctly caught this one"}
+{"id": "cal_08", "score": 0.85, "rationale": "Agree"}

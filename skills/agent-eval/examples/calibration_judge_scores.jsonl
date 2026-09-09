@@ -1,0 +1,8 @@
+{"id": "cal_01", "score": 0.9, "category": "accuracy", "rationale": "Correctly identified the root cause"}
+{"id": "cal_02", "score": 0.9, "category": "accuracy", "rationale": "Thorough, well-structured explanation covering many angles"}
+{"id": "cal_03", "score": 0.95, "category": "accuracy", "rationale": "Precise and complete"}
+{"id": "cal_04", "score": 0.9, "category": "format", "rationale": "Followed the required structure exactly"}
+{"id": "cal_05", "score": 0.85, "category": "accuracy", "rationale": "Comprehensive, detailed walkthrough of the issue"}
+{"id": "cal_06", "score": 0.9, "category": "format", "rationale": "Clean formatting, correct sections"}
+{"id": "cal_07", "score": 0.4, "category": "accuracy", "rationale": "Missed the actual cause entirely"}
+{"id": "cal_08", "score": 0.85, "category": "format", "rationale": "Minor formatting slip, otherwise fine"}
