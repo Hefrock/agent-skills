@@ -21,10 +21,19 @@ Input format (JSONL, one JSON object per line):
 `score` can be a float (0-1) or a bool (true/false treated as 1.0/0.0).
 `category` and `rationale` are optional but recommended.
 
+`category` is grouped case/whitespace-insensitively ("Accuracy", " accuracy ",
+and "ACCURACY" all land in the same by_category row) — the report displays
+whichever spelling was seen first. Category names that are merely *similar*
+(a likely typo, not an exact match after normalizing) are never auto-merged;
+instead a warning is printed listing the suspect pairs, since collapsing two
+possibly-different categories automatically would be a worse mistake than
+leaving them split.
+
 Stdlib only — no dependencies to install.
 """
 
 import argparse
+import difflib
 import json
 import os
 import statistics
@@ -57,20 +66,59 @@ def load_results(path):
     return results
 
 
+def normalize_category(raw) -> str:
+    """The grouping key used for by_category — case/whitespace-insensitive,
+    so "Accuracy", " accuracy ", and "ACCURACY" land in the same bucket
+    instead of silently splitting into separate rows. Real risk this
+    guards against: `category` is operator-typed per case/run (SKILL.md
+    step 4: "assigned by you, not read from the judge's per-criterion
+    keys"), not drawn from a fixed enum anywhere in this pipeline, so a
+    stray capital or trailing space between two eval runs would otherwise
+    silently fragment one category's stats into two without any error —
+    exactly the kind of thing summarize()'s output looks plausible while
+    being wrong. Only used as the dict key; the display label a user sees
+    is still the first-seen original spelling (see summarize())."""
+    return str(raw).strip().lower()
+
+
+def find_likely_typo_categories(categories, similarity_threshold: float = 0.82):
+    """Pairs of already-normalized category keys similar enough to likely
+    be the same category typed two different ways (e.g. "accruacy" vs
+    "accuracy") but not identical — normalize_category() already merges
+    exact case/whitespace variants, so a pair only ever reaches here over
+    a real spelling difference. Uses difflib's ratio (stdlib, no new
+    dependency) rather than true edit distance; deliberately conservative
+    (default 0.82) since this is a warning printed to stderr, never an
+    automatic merge — two genuinely different category names must never
+    be silently combined just because they look similar."""
+    pairs = []
+    cats = sorted(set(categories))
+    for i, a in enumerate(cats):
+        for b in cats[i + 1:]:
+            if difflib.SequenceMatcher(None, a, b).ratio() >= similarity_threshold:
+                pairs.append((a, b))
+    return pairs
+
+
 def summarize(results, threshold):
     if not results:
         return None
     scores = [r["score"] for r in results]
     passed = [r for r in results if r["score"] >= threshold]
+
     by_category = defaultdict(list)
+    display_names = {}
     for r in results:
-        by_category[r.get("category", "uncategorized")].append(r)
+        raw_category = r.get("category", "uncategorized")
+        key = normalize_category(raw_category)
+        by_category[key].append(r)
+        display_names.setdefault(key, raw_category)
 
     has_cost = any("cost_usd" in r for r in results)
     has_latency = any("latency_ms" in r for r in results)
 
     cat_stats = {}
-    for cat, cat_results in sorted(by_category.items()):
+    for key, cat_results in sorted(by_category.items()):
         s = [r["score"] for r in cat_results]
         stat = {
             "count": len(s),
@@ -85,7 +133,7 @@ def summarize(results, threshold):
             latencies = [r["latency_ms"] for r in cat_results if "latency_ms" in r]
             if latencies:
                 stat["mean_latency_ms"] = statistics.mean(latencies)
-        cat_stats[cat] = stat
+        cat_stats[display_names[key]] = stat
 
     summary = {
         "total": len(results),
@@ -280,10 +328,18 @@ def main():
 
     regressions = []
     baseline_summary = None
+    baseline_results = []
     if args.baseline:
         baseline_results = load_results(args.baseline)
         regressions = find_regressions(results, baseline_results, args.threshold)
         baseline_summary = summarize(baseline_results, args.threshold)
+
+    categories_seen = {normalize_category(r.get("category", "uncategorized")) for r in results + baseline_results}
+    typo_pairs = find_likely_typo_categories(categories_seen)
+    if typo_pairs:
+        print("Warning: these category names look similar enough to possibly be the same category, typo'd differently:", file=sys.stderr)
+        for a, b in typo_pairs:
+            print(f"  {a!r} vs {b!r}", file=sys.stderr)
 
     cost_regression = find_metric_regression(summary, baseline_summary, "mean_cost_usd", args.cost_regression_tolerance) if args.fail_on_cost_regression else None
     latency_regression = find_metric_regression(summary, baseline_summary, "mean_latency_ms", args.latency_regression_tolerance) if args.fail_on_latency_regression else None

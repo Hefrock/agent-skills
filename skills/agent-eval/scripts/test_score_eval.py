@@ -86,6 +86,47 @@ class LoadResults(unittest.TestCase):
         self.assertEqual(r[0]["score"], 1.0)
 
 
+class NormalizeCategory(unittest.TestCase):
+    def test_lowercases(self):
+        self.assertEqual(score_eval.normalize_category("Accuracy"), "accuracy")
+
+    def test_strips_whitespace(self):
+        self.assertEqual(score_eval.normalize_category("  accuracy  "), "accuracy")
+
+    def test_combined_case_and_whitespace(self):
+        self.assertEqual(score_eval.normalize_category(" ACCURACY "), "accuracy")
+
+    def test_already_normalized_unchanged(self):
+        self.assertEqual(score_eval.normalize_category("accuracy"), "accuracy")
+
+    def test_non_string_coerced(self):
+        self.assertEqual(score_eval.normalize_category(1), "1")
+
+
+class FindLikelyTypoCategories(unittest.TestCase):
+    def test_identical_categories_not_flagged(self):
+        self.assertEqual(score_eval.find_likely_typo_categories(["accuracy", "accuracy"]), [])
+
+    def test_clearly_different_categories_not_flagged(self):
+        self.assertEqual(score_eval.find_likely_typo_categories(["accuracy", "format"]), [])
+
+    def test_near_duplicate_flagged(self):
+        pairs = score_eval.find_likely_typo_categories(["accuracy", "accuraccy"])
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(set(pairs[0]), {"accuracy", "accuraccy"})
+
+    def test_no_categories_returns_empty(self):
+        self.assertEqual(score_eval.find_likely_typo_categories([]), [])
+
+    def test_below_threshold_not_flagged(self):
+        pairs = score_eval.find_likely_typo_categories(["accuracy", "format"], similarity_threshold=0.82)
+        self.assertEqual(pairs, [])
+
+    def test_custom_threshold_widens_what_is_flagged(self):
+        pairs = score_eval.find_likely_typo_categories(["accuracy", "adequacy"], similarity_threshold=0.5)
+        self.assertEqual(pairs, [("accuracy", "adequacy")])
+
+
 class Summarize(unittest.TestCase):
     def test_empty_returns_none(self):
         self.assertIsNone(score_eval.summarize([], 0.7))
@@ -145,6 +186,36 @@ class Summarize(unittest.TestCase):
         ]
         s = score_eval.summarize(results, 0.7)
         self.assertAlmostEqual(s["mean_cost_usd"], 0.002)
+
+    def test_category_case_and_whitespace_variants_merge_into_one_bucket(self):
+        results = [
+            {"id": "a", "score": 1.0, "category": "Accuracy"},
+            {"id": "b", "score": 0.0, "category": "accuracy"},
+            {"id": "c", "score": 1.0, "category": " ACCURACY "},
+        ]
+        s = score_eval.summarize(results, 0.7)
+        self.assertEqual(len(s["by_category"]), 1)
+        cat = next(iter(s["by_category"]))
+        self.assertEqual(s["by_category"][cat]["count"], 3)
+
+    def test_category_display_label_is_first_seen_spelling(self):
+        results = [
+            {"id": "a", "score": 1.0, "category": "Accuracy"},
+            {"id": "b", "score": 0.0, "category": "accuracy"},
+        ]
+        s = score_eval.summarize(results, 0.7)
+        self.assertIn("Accuracy", s["by_category"])
+        self.assertNotIn("accuracy", s["by_category"])
+
+    def test_similar_but_distinct_categories_stay_separate(self):
+        # normalize_category only handles case/whitespace — a real
+        # spelling difference (typo or not) must never be auto-merged.
+        results = [
+            {"id": "a", "score": 1.0, "category": "accuracy"},
+            {"id": "b", "score": 1.0, "category": "accuraccy"},
+        ]
+        s = score_eval.summarize(results, 0.7)
+        self.assertEqual(len(s["by_category"]), 2)
 
 
 class LowestScoring(unittest.TestCase):
@@ -388,6 +459,33 @@ class Cli(unittest.TestCase):
         path = self.make([{"id": "a", "score": 1.0, "latency_ms": 500}])
         proc = self.run_script(path, "--fail-if-mean-latency-above", "2000")
         self.assertEqual(proc.returncode, 0)
+
+    def test_likely_typo_categories_warned_on_stderr_without_failing(self):
+        path = self.make([
+            {"id": "a", "score": 1.0, "category": "accuracy"},
+            {"id": "b", "score": 1.0, "category": "accuraccy"},
+        ])
+        proc = self.run_script(path)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("look similar", proc.stderr)
+        self.assertIn("accuracy", proc.stderr)
+        self.assertIn("accuraccy", proc.stderr)
+
+    def test_no_typo_warning_for_clean_categories(self):
+        path = self.make([
+            {"id": "a", "score": 1.0, "category": "accuracy"},
+            {"id": "b", "score": 1.0, "category": "format"},
+        ])
+        proc = self.run_script(path)
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn("look similar", proc.stderr)
+
+    def test_typo_check_spans_baseline_categories_too(self):
+        base = self.make([{"id": "a", "score": 1.0, "category": "accuraccy"}])
+        cur = self.make([{"id": "a", "score": 1.0, "category": "accuracy"}])
+        proc = self.run_script(cur, "--baseline", base)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("look similar", proc.stderr)
 
 
 if __name__ == "__main__":
