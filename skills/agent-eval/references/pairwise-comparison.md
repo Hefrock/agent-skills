@@ -54,6 +54,25 @@ system that produced either response — judge only what is given below.
 
 `"winner"` must be exactly `"response_1"`, `"response_2"`, or `"tie"`.
 
+## Running it
+
+```bash
+export ANTHROPIC_API_KEY=...
+python scripts/run_pairwise.py cases.jsonl --template pairwise_prompt.txt --out results.jsonl --category accuracy
+
+# Or judge with Gemini instead of Claude — same output, same schema:
+export GEMINI_API_KEY=...
+python scripts/run_pairwise.py cases.jsonl --template pairwise_prompt.txt --out results.jsonl --provider gemini
+
+# With cost tracking:
+python scripts/run_pairwise.py cases.jsonl --template pairwise_prompt.txt --out results.jsonl \
+    --input-price-per-mtok 3.00 --output-price-per-mtok 15.00
+```
+
+`cases.jsonl` is the case shape above, one row per pair. `--template` is the prompt template above (the literal file, not this doc). `--category` sets a default for rows that don't carry their own `category` field — same convention `run_judge.py` uses, not a separate one invented for this script. `--provider`/`--model` select the judge API, identical to `run_judge.py`'s own flags (see SKILL.md step 4) since both scripts share `run_judge.py`'s `PROVIDERS`/`call_judge()`. `--input-price-per-mtok`/`--output-price-per-mtok` add `cost_usd` to each row, computed from each ordering's real token counts (both calls' usage summed per case) — omit either and `cost_usd` is left out entirely rather than guessed.
+
+Before either judge call, every case is checked for `output_a`/`output_b` plus whatever other `{placeholder}` the template needs, and for duplicate `id`s — a schema mistake spanning the whole file is reported once, upfront, and the run aborts (exit 2, no judge call made) rather than surfacing case-by-case after some judge budget is already spent. Pass `--skip-invalid` to judge just the valid subset instead of aborting.
+
 ## Flattening to `score_eval.py`'s schema
 
 `run_pairwise.py` writes one row per case, already in `score_eval.py`'s schema:
