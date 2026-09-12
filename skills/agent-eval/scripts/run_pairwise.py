@@ -34,6 +34,14 @@ each of the two orderings' calls goes through — see run_judge.py's own
 docstring for why this exists and call_judge()'s for the per-provider
 caveats (gemini's cost tracking specifically is lower-confidence).
 
+Preflight: before any judge call, every case is checked for output_a/
+output_b plus whatever other {placeholder} the template declares, and for
+duplicate ids — same run_judge.py preflight this reuses (validate_
+pairwise_cases() plus run_judge.report_and_filter_invalid_cases()), so a
+systemic case-file mistake aborts (exit 2) with one upfront report instead
+of surfacing case-by-case after some judge budget is already spent.
+--skip-invalid judges just the valid subset instead of aborting.
+
 Stdlib only. Run: python run_pairwise.py ..."""
 
 import argparse
@@ -63,6 +71,40 @@ def fill_pairwise_template(template: str, case: dict, first: str, second: str) -
     filled = filled.replace("{response_1}", case[f"output_{first}"])
     filled = filled.replace("{response_2}", case[f"output_{second}"])
     return filled
+
+
+def validate_pairwise_cases(cases: list[dict], template: str) -> tuple[list[str], set[int]]:
+    """Preflight equivalent of run_judge.validate_cases() for the pairwise
+    case shape — same "one upfront report before any judge call" goal,
+    adapted for two differences from the plain judge case shape:
+    {response_1}/{response_2} tokens in the template are never literal
+    case fields (fill_pairwise_template() fills them itself from output_a/
+    output_b, remapped per ordering), so they're excluded from the
+    placeholder set run_judge.missing_placeholders() checks; output_a/
+    output_b themselves are checked directly instead, since
+    fill_pairwise_template() indexes case[f"output_{first}"]
+    unconditionally — a missing one is exactly the kind of schema mistake
+    this preflight exists to catch before any judge call, not after.
+    Returns (problems, invalid_indices), same shape/semantics as
+    run_judge.validate_cases()."""
+    placeholders = run_judge.find_template_placeholders(template) - {"response_1", "response_2"}
+    problems = []
+    invalid: set[int] = set()
+    seen_ids: dict = {}
+    for i, case in enumerate(cases):
+        case_id = case.get("id", f"<row {i}>")
+        missing = run_judge.missing_placeholders(case, placeholders)
+        missing += [field for field in ("output_a", "output_b") if field not in case]
+        if missing:
+            wanted = ", ".join(f"{{{m}}}" if m not in ("output_a", "output_b") else m for m in missing)
+            problems.append(f"case {case_id!r} (row {i}): missing {wanted}")
+            invalid.add(i)
+        if case_id in seen_ids:
+            problems.append(f"case {case_id!r} (row {i}): duplicate of row {seen_ids[case_id]} — ids must be unique for score_eval.py's aggregation to be meaningful")
+            invalid.add(i)
+        else:
+            seen_ids[case_id] = i
+    return problems, invalid
 
 
 def _parse_winner(response_text: str) -> str:
@@ -180,7 +222,18 @@ def main() -> int:
     parser.add_argument("--category", help="Default category for cases that don't carry their own 'category' field.")
     parser.add_argument("--input-price-per-mtok", type=float, help="USD per 1M input tokens — set both prices to get cost_usd in the output.")
     parser.add_argument("--output-price-per-mtok", type=float, help="USD per 1M output tokens — see --input-price-per-mtok.")
+    parser.add_argument("--skip-invalid", action="store_true", help="Judge only cases that pass preflight validation instead of aborting when problems are found.")
     args = parser.parse_args()
+
+    cases = run_judge.load_cases(args.cases)
+    with open(args.template, encoding="utf-8") as f:
+        template = f.read()
+
+    # Preflight before the API-key check, same rationale as run_judge.py's
+    # main(): validating case-file structure needs no credentials.
+    cases = run_judge.report_and_filter_invalid_cases(cases, template, args.skip_invalid, validate_fn=validate_pairwise_cases)
+    if cases is None:
+        return 2
 
     api_key_env = run_judge.PROVIDERS[args.provider]["api_key_env"]
     api_key = os.environ.get(api_key_env)
@@ -188,10 +241,6 @@ def main() -> int:
         print(f"{api_key_env} must be set (--provider {args.provider}).", file=sys.stderr)
         return 2
     model = args.model or run_judge.PROVIDERS[args.provider]["default_model"]
-
-    cases = run_judge.load_cases(args.cases)
-    with open(args.template, encoding="utf-8") as f:
-        template = f.read()
 
     judge_fn = functools.partial(run_judge.call_judge, provider=args.provider)
     results = run_pairwise(

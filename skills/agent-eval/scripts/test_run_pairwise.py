@@ -37,6 +37,13 @@ def write_jsonl(rows):
     return path
 
 
+def write_file(content):
+    fd, path = tempfile.mkstemp()
+    with os.fdopen(fd, "w") as f:
+        f.write(content)
+    return path
+
+
 TEMPLATE = "Task: {input}\nResponse 1: {response_1}\nResponse 2: {response_2}"
 
 
@@ -205,6 +212,47 @@ class RunPairwise(unittest.TestCase):
         self.assertEqual([r["id"] for r in results], ["good"])
 
 
+class ValidatePairwiseCases(unittest.TestCase):
+    def test_no_problems_for_fully_satisfied_case(self):
+        cases = [{"id": "p1", "input": "t", "output_a": "A", "output_b": "B"}]
+        problems, invalid = run_pairwise_mod.validate_pairwise_cases(cases, TEMPLATE)
+        self.assertEqual(problems, [])
+        self.assertEqual(invalid, set())
+
+    def test_missing_output_a_flagged(self):
+        cases = [{"id": "p1", "input": "t", "output_b": "B"}]
+        problems, invalid = run_pairwise_mod.validate_pairwise_cases(cases, TEMPLATE)
+        self.assertEqual(invalid, {0})
+        self.assertIn("output_a", problems[0])
+
+    def test_missing_output_b_flagged(self):
+        cases = [{"id": "p1", "input": "t", "output_a": "A"}]
+        problems, invalid = run_pairwise_mod.validate_pairwise_cases(cases, TEMPLATE)
+        self.assertEqual(invalid, {0})
+        self.assertIn("output_b", problems[0])
+
+    def test_missing_input_flagged_but_response_1_response_2_never_required_as_fields(self):
+        """{response_1}/{response_2} are filled by fill_pairwise_template()
+        itself from output_a/output_b, never read as literal case keys —
+        a case with output_a/output_b but no "response_1"/"response_2"
+        field must NOT be flagged for those, only for the real gap ({input})."""
+        cases = [{"id": "p1", "output_a": "A", "output_b": "B"}]
+        problems, invalid = run_pairwise_mod.validate_pairwise_cases(cases, TEMPLATE)
+        self.assertEqual(invalid, {0})
+        self.assertIn("input", problems[0])
+        self.assertNotIn("response_1", problems[0])
+        self.assertNotIn("response_2", problems[0])
+
+    def test_duplicate_id_flagged(self):
+        cases = [
+            {"id": "dup", "input": "t", "output_a": "A", "output_b": "B"},
+            {"id": "dup", "input": "t2", "output_a": "A2", "output_b": "B2"},
+        ]
+        problems, invalid = run_pairwise_mod.validate_pairwise_cases(cases, TEMPLATE)
+        self.assertEqual(invalid, {1})
+        self.assertTrue(any("duplicate" in p for p in problems))
+
+
 class Cli(unittest.TestCase):
     def setUp(self):
         self._paths = []
@@ -245,6 +293,57 @@ class Cli(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 2)
         self.assertIn("GEMINI_API_KEY", proc.stderr)
+
+    def test_preflight_problem_aborts_before_any_output_written(self):
+        cases_path = write_jsonl([{"id": "p1", "input": "t", "output_a": "A"}])  # missing output_b
+        self._paths.append(cases_path)
+        template_path = write_file(TEMPLATE)
+        self._paths.append(template_path)
+        out_path = os.path.join(tempfile.mkdtemp(), "results.jsonl")
+
+        env = dict(os.environ, ANTHROPIC_API_KEY="unused-preflight-should-abort-first")
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", out_path],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("Preflight", proc.stderr)
+        self.assertIn("output_b", proc.stderr)
+        self.assertFalse(os.path.exists(out_path))
+
+    def test_skip_invalid_with_no_valid_cases_left_exits_one_without_network_call(self):
+        cases_path = write_jsonl([
+            {"id": "p1", "input": "t", "output_a": "A"},  # missing output_b
+            {"id": "p2", "input": "t", "output_b": "B"},  # missing output_a
+        ])
+        self._paths.append(cases_path)
+        template_path = write_file(TEMPLATE)
+        self._paths.append(template_path)
+        out_path = os.path.join(tempfile.mkdtemp(), "results.jsonl")
+
+        env = dict(os.environ, ANTHROPIC_API_KEY="unused-no-valid-cases-so-no-call-happens")
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", out_path, "--skip-invalid"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("continuing with 0/2", proc.stderr)
+        with open(out_path) as f:
+            self.assertEqual(f.read(), "")
+
+    def test_no_preflight_problems_produces_no_preflight_output(self):
+        cases_path = write_jsonl([{"id": "p1", "input": "t", "output_a": "A", "output_b": "B"}])
+        self._paths.append(cases_path)
+        template_path = write_file(TEMPLATE)
+        self._paths.append(template_path)
+
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", "/dev/null"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 2)  # still hits the missing-API-key gate, but only after preflight passed
+        self.assertNotIn("Preflight", proc.stderr)
 
 
 if __name__ == "__main__":

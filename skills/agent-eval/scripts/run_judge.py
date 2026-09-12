@@ -60,6 +60,14 @@ response reports, multiplied by prices the caller supplies explicitly
 pricing table that would silently go stale. Omitted entirely if prices
 aren't given.
 
+Preflight: before any judge call, every case is checked against the
+template's own {placeholder} tokens (and for duplicate ids) — a systemic
+schema mistake (wrong template, typo'd field name across the whole file)
+gets reported as one upfront summary and aborts (exit 2) instead of
+surfacing as a string of quiet per-case skips after budget on the
+still-valid cases has already been spent. --skip-invalid grades just the
+valid subset instead of aborting.
+
 Provider: --provider selects which judge API to call (default:
 anthropic; gemini also supported — see call_judge()'s docstring for why
 gemini's cost tracking specifically carries a lower-confidence caveat
@@ -74,6 +82,7 @@ import argparse
 import functools
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -149,6 +158,105 @@ def fill_template(template: str, case: dict) -> str:
     if "{transcript}" in filled and "turns" in case:
         filled = filled.replace("{transcript}", format_turns_as_transcript(case["turns"]))
     return filled
+
+
+PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def find_template_placeholders(template: str) -> set[str]:
+    """Every {word}-shaped token in the template that fill_template()
+    would treat as a substitutable placeholder. Deliberately narrow — a
+    bare identifier between braces with nothing else — so it doesn't
+    false-match the judge's own JSON-output-format example (e.g.
+    {"criterion_1_name": {"score": 0.0, "rationale": "..."}}), where every
+    brace pair has a quote or colon inside it, never a lone identifier."""
+    return set(PLACEHOLDER_RE.findall(template))
+
+
+def missing_placeholders(case: dict, placeholders: set[str]) -> list[str]:
+    """Which of `placeholders` this case can't actually satisfy — honoring
+    the exact fallbacks fill_template() applies (output falls back to
+    final_output, transcript falls back to turns) so this never flags a
+    case fill_template() would have filled correctly. Shared by
+    run_judge.py's own preflight (validate_cases()) and run_pairwise.py's,
+    which reuses this for the plain-substitution placeholders a pairwise
+    template can still carry (e.g. {input}) on top of its own output_a/
+    output_b check."""
+    missing = []
+    for placeholder in sorted(placeholders):
+        if placeholder in case:
+            continue
+        if placeholder == "output" and "final_output" in case:
+            continue
+        if placeholder == "transcript" and "turns" in case:
+            continue
+        missing.append(placeholder)
+    return missing
+
+
+def validate_cases(cases: list[dict], template: str) -> tuple[list[str], set[int]]:
+    """Preflight check over the *whole* cases list, run once before any
+    judge call — not the per-case rejection run_judge() already does
+    during the run, which only ever sees one case at a time and can't
+    notice a duplicate id against a case seen earlier, or give one upfront
+    summary instead of N one-at-a-time stderr warnings. Addresses the
+    real risk PR #99's batch-crash fix left behind: a systemic mistake
+    (case file built against the wrong template, a typo'd field name
+    across the whole set) now surfaces as a string of quiet per-case
+    skips *after* judge-call budget has already been spent on whichever
+    cases happened to still fill correctly, rather than one loud report
+    before the first call.
+
+    Returns (problems, invalid_indices): `problems` is one human-readable
+    string per issue (for reporting to the user); `invalid_indices` is
+    the set of positions in `cases` that --skip-invalid would drop before
+    calling run_judge(). A case lands in `invalid_indices` for one of two
+    independent reasons: it can't satisfy every {placeholder} the
+    template declares (see missing_placeholders()), or it repeats an
+    earlier case's id — score_eval.py and calibrate_judge.py both key
+    results by id, so a duplicate makes downstream aggregation ambiguous;
+    the first occurrence is kept, later ones are what's marked invalid."""
+    placeholders = find_template_placeholders(template)
+    problems = []
+    invalid: set[int] = set()
+    seen_ids: dict = {}
+    for i, case in enumerate(cases):
+        case_id = case.get("id", f"<row {i}>")
+        missing = missing_placeholders(case, placeholders)
+        if missing:
+            wanted = ", ".join("{" + m + "}" for m in missing)
+            problems.append(f"case {case_id!r} (row {i}): template needs {wanted}, which this case doesn't supply")
+            invalid.add(i)
+        if case_id in seen_ids:
+            problems.append(f"case {case_id!r} (row {i}): duplicate of row {seen_ids[case_id]} — ids must be unique for score_eval.py's aggregation to be meaningful")
+            invalid.add(i)
+        else:
+            seen_ids[case_id] = i
+    return problems, invalid
+
+
+def report_and_filter_invalid_cases(cases: list[dict], template: str, skip_invalid: bool, validate_fn=validate_cases) -> "list[dict] | None":
+    """Shared CLI-level preflight wiring for both run_judge.py's and
+    run_pairwise.py's main(): print every problem `validate_fn` finds,
+    then either abort (returns None — caller should exit(2) without
+    spending any judge-call budget) or drop the invalid cases and
+    continue (returns the filtered list). Kept out of validate_cases()
+    itself so that function stays pure and testable without capturing
+    stdout/stderr. run_pairwise.py passes validate_fn=validate_pairwise_
+    cases to reuse this same reporting/filtering logic for its own case
+    shape rather than duplicating it."""
+    problems, invalid_indices = validate_fn(cases, template)
+    if not problems:
+        return cases
+    print(f"Preflight: {len(problems)} problem(s) found in {len(cases)} case(s), before any judge call was made:", file=sys.stderr)
+    for problem in problems:
+        print(f"  - {problem}", file=sys.stderr)
+    if not skip_invalid:
+        print("\nAborting without spending judge-call budget. Fix the case file, or pass --skip-invalid to grade only the valid cases.", file=sys.stderr)
+        return None
+    filtered = [c for i, c in enumerate(cases) if i not in invalid_indices]
+    print(f"--skip-invalid: continuing with {len(filtered)}/{len(cases)} valid case(s).", file=sys.stderr)
+    return filtered
 
 
 def _extract_json(text: str) -> dict:
@@ -357,7 +465,20 @@ def main() -> int:
     parser.add_argument("--category", help="Default category for cases that don't carry their own 'category' field.")
     parser.add_argument("--input-price-per-mtok", type=float, help="USD per 1M input tokens — set both prices to get cost_usd in the output.")
     parser.add_argument("--output-price-per-mtok", type=float, help="USD per 1M output tokens — see --input-price-per-mtok.")
+    parser.add_argument("--skip-invalid", action="store_true", help="Grade only cases that pass preflight validation instead of aborting when problems are found.")
     args = parser.parse_args()
+
+    cases = load_cases(args.cases)
+    with open(args.template, encoding="utf-8") as f:
+        template = f.read()
+
+    # Preflight runs before the API-key check on purpose: validating the
+    # case file's structure needs no credentials, and there's no reason to
+    # make the user set one up just to find out their case file doesn't
+    # match their template.
+    cases = report_and_filter_invalid_cases(cases, template, args.skip_invalid)
+    if cases is None:
+        return 2
 
     api_key_env = PROVIDERS[args.provider]["api_key_env"]
     api_key = os.environ.get(api_key_env)
@@ -365,10 +486,6 @@ def main() -> int:
         print(f"{api_key_env} must be set (--provider {args.provider}).", file=sys.stderr)
         return 2
     model = args.model or PROVIDERS[args.provider]["default_model"]
-
-    cases = load_cases(args.cases)
-    with open(args.template, encoding="utf-8") as f:
-        template = f.read()
 
     judge_fn = functools.partial(call_judge, provider=args.provider, max_tokens=args.max_tokens)
     results = run_judge(
