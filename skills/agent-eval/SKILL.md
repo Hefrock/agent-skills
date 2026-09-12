@@ -62,8 +62,10 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```bash
    python scripts/score_eval.py results.jsonl
    python scripts/score_eval.py results.jsonl --baseline previous_results.jsonl
+   python scripts/score_eval.py results.jsonl --threshold 0.8
+   python scripts/score_eval.py results.jsonl --json-out summary.json
    ```
-   It computes pass rate, mean score (overall and per-category), surfaces the lowest-scoring cases for review, and reports mean cost and latency per category when those fields are present. With `--baseline`, it flags regressions — cases that passed before and fail now.
+   It computes pass rate, mean score (overall and per-category), surfaces the lowest-scoring cases for review, and reports mean cost and latency per category when those fields are present. With `--baseline`, it flags regressions — cases that passed before and fail now. `--threshold` sets the score-≥-this-counts-as-a-pass cutoff (default `0.7`) used everywhere in the report and every gate below — set it once per eval set rather than eyeballing which scores "feel like" a pass. `--json-out` writes the same summary `summarize()` computes (including `by_category` and any regressions found) as JSON, for a dashboard or a second script to consume instead of scraping the printed report.
 
    Category grouping is case/whitespace-insensitive — `accuracy`, `Accuracy`, and ` ACCURACY ` all land in the same row rather than silently fragmenting one category's stats across several rows, a real risk since `category` is typed per-run, not drawn from a fixed enum anywhere in this pipeline. A category name that's merely *similar* to another (a likely typo, not an exact match after normalizing) is never auto-merged — that would risk silently combining two genuinely different categories — but `score_eval.py` prints a warning naming the suspect pair so you can fix the eval set's spelling.
 
