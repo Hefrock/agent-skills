@@ -27,6 +27,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian, synthesizer, and warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
 | [`wiki-teacher`](./skills/wiki-teacher) | Knowledge Management | Portfolio-aware project accountability for several concurrent projects — `/checkin`, a forcing function auto-suggested at session start. Surfaces 1-2 projects that genuinely need attention, batch-elicits priority for all overdue projects at once, answers "what should I work on" even when nothing's overdue, reports portfolio breadth. Stateless — priority/checkin_interval/status live in each project's own frontmatter. Deliberately narrow for now — `/teach`/`/reflect` held back until `/checkin` has real usage behind it. `scripts/wiki_teacher.py`, 37-test regression suite (includes real-file integration tests, not just synthetic-dict unit tests). Requires Obsidian MCP connected. |
 | [`wiki-warehouse`](./skills/wiki-warehouse) | Knowledge Management | Cold storage for raw documents — ingests PDFs/ebooks/scans into a separate private GitHub repo (`intake.py`: hash → extract text, OCR fallback for scans → manifest), then writes a lean content-hash pointer note into the vault. Keeps originals and full text out of the vault. `/ingest`, `/warehouse-audit`. Requires Obsidian MCP + the warehouse repo cloned. |
+| [`research-ledger`](./skills/research-ledger) | Knowledge Management | Captures a deep-research run's full claim ledger — every claim, its verdict, and whatever vote detail the run's own output exposes — as a warehoused JSON artifact, before that detail is lost to synthesis. Runs immediately after a deep-research pass, ahead of `wiki-synthesizer`. `/research-ledger`. Requires Obsidian MCP + wiki-warehouse's prerequisites. |
 
 ## Installing a skill
 
@@ -83,7 +84,8 @@ agent-skills/
 │   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 26-test regression suite
 │   ├── wiki-governor/          # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
 │   ├── wiki-teacher/           # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
-│   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
+│   ├── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
+│   └── research-ledger/       # deep-research claim ledger, warehoused ahead of synthesis
 ├── mcp/
 │   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
@@ -109,7 +111,7 @@ agent-skills/
 
 ## Wiki system
 
-The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-teacher`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer. `wiki-teacher` adds project accountability on top of the project portfolio — orthogonal to the other five, which are about the knowledge graph itself.
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-teacher`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer. `wiki-teacher` adds project accountability on top of the project portfolio — orthogonal to the other five, which are about the knowledge graph itself. `research-ledger` slots into the same pipeline just ahead of `wiki-synthesizer` — it warehouses a deep-research run's full claim ledger (including what got rejected) before synthesis only promotes the confirmed subset into `Knowledge/`.
 
 **Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
 
