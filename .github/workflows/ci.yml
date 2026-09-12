@@ -124,6 +124,30 @@ jobs:
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
 
+      - name: privacy-linter — run test suite (stdlib unittest, incl. real temp-git-repo tests)
+        run: python skills/privacy-linter/scripts/test_scan_diff.py
+
+      - name: privacy-linter — worked example smoke test
+        # Recreates examples/README.md's scenario in a real repo and confirms the
+        # documented finding count and severity mix actually come out of the script,
+        # not just the hand-traced numbers in the doc.
+        run: |
+          set -e
+          DEMO=$(mktemp -d)
+          git init -q "$DEMO"
+          git -C "$DEMO" config user.email test@example.com
+          git -C "$DEMO" config user.name Test
+          printf 'patient contact: jane.doe@example.com\nbackup phone: (555) 123-4567\nssn on file: 123-45-6789\ncard used: 4111 1111 1111 1111\nserver ip for staging: 10.0.0.42\norder reference: 1234567890123456\n' > "$DEMO/intake_notes.txt"
+          git -C "$DEMO" add intake_notes.txt
+          OUTPUT=$(python skills/privacy-linter/scripts/scan_diff.py --file "$DEMO/intake_notes.txt")
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "5 finding(s)"
+          echo "$OUTPUT" | grep -q "\[severity: high\] \[class: direct_pii\].*ssn"
+          echo "$OUTPUT" | grep -q "\[severity: high\] \[class: direct_pii\].*credit_card"
+          if echo "$OUTPUT" | grep -q "order reference"; then
+            echo "ERROR: the Luhn-invalid near-miss (line 6) was incorrectly flagged"; exit 1
+          fi
+
       - name: wiki-librarian — check_vault.py regression suite (stdlib unittest)
         run: python skills/wiki-librarian/scripts/test_check_vault.py
 

@@ -20,6 +20,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | [`agent-redteam`](./skills/agent-redteam) | Agent Design | Generates adversarial test cases for safe-failure testing — refusals, hedging, graceful degradation. Pairs with agent-eval for scoring. |
 | [`deid-reid-harness`](./skills/deid-reid-harness) | Agent Design | Adversarial de-identification ⟷ re-identification eval harness for clinical text — generates synthetic notes with ground-truth PHI spans, runs a de-id pipeline, and scores Safe Harbor leakage, Expert Determination re-id risk, and free-text inference across a privacy-utility frontier. Model-independent, verified offline with bootstrap CIs and significance tests. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
 | [`repo-pincer`](./skills/repo-pincer) | Agent Design | Reverse-engineers a codebase by reconciling top-down claims (docs, README, API surface) against bottom-up reality (actual implementation) — classifies every claim as Confirmed, Drift, Aspirational, or Silent. Runs standalone; optionally compiles into a wiki vault. |
+| [`privacy-linter`](./skills/privacy-linter) | Privacy | Deterministic pre-disclosure scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP) and Metadata risk (image/doc types, confirmed EXIF GPS with Pillow). Runs entirely locally, no model or network call. `--block-on` for a CI/hook gate. |
 | [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/ask`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
 | [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
@@ -76,6 +77,7 @@ agent-skills/
 │   ├── agent-redteam/          # adversarial case generation, pairs with agent-eval
 │   ├── deid-reid-harness/      # clinical de-id/re-id eval — scripts, refs, 31-test suite
 │   ├── repo-pincer/            # codebase reverse-engineering — claims vs. reality reconciliation
+│   ├── privacy-linter/         # pre-disclosure PII/metadata scanner — scripts/scan_diff.py, test suite
 │   ├── wiki-operator/          # on-demand vault operations
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 26-test regression suite
