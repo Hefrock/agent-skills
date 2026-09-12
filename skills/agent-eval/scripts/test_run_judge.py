@@ -371,6 +371,113 @@ class CallJudgeProvider(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class FindTemplatePlaceholders(unittest.TestCase):
+    def test_finds_plain_placeholders(self):
+        self.assertEqual(run_judge_mod.find_template_placeholders("{input} and {output}"), {"input", "output"})
+
+    def test_ignores_json_example_braces(self):
+        template = 'Respond with: {"criterion_1_name": {"score": 0.0, "rationale": "..."}, "overall_score": 0.0}'
+        self.assertEqual(run_judge_mod.find_template_placeholders(template), set())
+
+    def test_no_placeholders_returns_empty_set(self):
+        self.assertEqual(run_judge_mod.find_template_placeholders("no tokens here"), set())
+
+    def test_duplicate_token_counted_once(self):
+        self.assertEqual(run_judge_mod.find_template_placeholders("{input} ... {input}"), {"input"})
+
+
+class MissingPlaceholders(unittest.TestCase):
+    def test_present_field_not_missing(self):
+        self.assertEqual(run_judge_mod.missing_placeholders({"input": "x"}, {"input"}), [])
+
+    def test_absent_field_is_missing(self):
+        self.assertEqual(run_judge_mod.missing_placeholders({"input": "x"}, {"output"}), ["output"])
+
+    def test_output_falls_back_to_final_output(self):
+        self.assertEqual(run_judge_mod.missing_placeholders({"final_output": "y"}, {"output"}), [])
+
+    def test_transcript_falls_back_to_turns(self):
+        self.assertEqual(run_judge_mod.missing_placeholders({"turns": []}, {"transcript"}), [])
+
+    def test_missing_sorted_deterministically(self):
+        self.assertEqual(run_judge_mod.missing_placeholders({}, {"output", "input"}), ["input", "output"])
+
+
+class ValidateCases(unittest.TestCase):
+    def test_no_problems_for_fully_satisfied_cases(self):
+        cases = [{"id": "a", "input": "x", "output": "y"}]
+        problems, invalid = run_judge_mod.validate_cases(cases, "{input} {output}")
+        self.assertEqual(problems, [])
+        self.assertEqual(invalid, set())
+
+    def test_missing_field_flagged(self):
+        cases = [{"id": "a", "input": "x"}]
+        problems, invalid = run_judge_mod.validate_cases(cases, "{input} {output}")
+        self.assertEqual(invalid, {0})
+        self.assertIn("'a'", problems[0])
+        self.assertIn("{output}", problems[0])
+
+    def test_trajectory_fallback_not_flagged(self):
+        cases = [{"id": "a", "input": "x", "final_output": "y"}]
+        problems, invalid = run_judge_mod.validate_cases(cases, "{input} {output}")
+        self.assertEqual(problems, [])
+        self.assertEqual(invalid, set())
+
+    def test_duplicate_id_flagged_second_occurrence_only(self):
+        cases = [{"id": "dup", "input": "x", "output": "y"}, {"id": "dup", "input": "x2", "output": "y2"}]
+        problems, invalid = run_judge_mod.validate_cases(cases, "{input} {output}")
+        self.assertEqual(invalid, {1})
+        self.assertTrue(any("duplicate" in p for p in problems))
+
+    def test_case_missing_id_uses_row_placeholder_in_message(self):
+        cases = [{"input": "x"}]
+        problems, invalid = run_judge_mod.validate_cases(cases, "{input} {output}")
+        self.assertEqual(invalid, {0})
+        self.assertIn("row 0", problems[0])
+
+    def test_mixed_valid_and_invalid_cases(self):
+        cases = [
+            {"id": "good", "input": "x", "output": "y"},
+            {"id": "bad", "input": "x"},
+        ]
+        problems, invalid = run_judge_mod.validate_cases(cases, "{input} {output}")
+        self.assertEqual(invalid, {1})
+        self.assertEqual(len(problems), 1)
+
+
+class ReportAndFilterInvalidCases(unittest.TestCase):
+    def test_no_problems_returns_cases_unchanged_silently(self):
+        cases = [{"id": "a", "input": "x", "output": "y"}]
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = run_judge_mod.report_and_filter_invalid_cases(cases, "{input} {output}", skip_invalid=False)
+        self.assertEqual(result, cases)
+        self.assertEqual(err.getvalue(), "")
+
+    def test_problems_without_skip_invalid_returns_none_and_reports(self):
+        cases = [{"id": "a", "input": "x"}]
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = run_judge_mod.report_and_filter_invalid_cases(cases, "{input} {output}", skip_invalid=False)
+        self.assertIsNone(result)
+        self.assertIn("Preflight", err.getvalue())
+        self.assertIn("Aborting", err.getvalue())
+
+    def test_problems_with_skip_invalid_filters_and_continues(self):
+        cases = [{"id": "good", "input": "x", "output": "y"}, {"id": "bad", "input": "x"}]
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            result = run_judge_mod.report_and_filter_invalid_cases(cases, "{input} {output}", skip_invalid=True)
+        self.assertEqual(result, [cases[0]])
+        self.assertIn("continuing with 1/2", err.getvalue())
+
+    def test_custom_validate_fn_used_instead_of_default(self):
+        def always_invalid(cases, template):
+            return (["forced problem"], {0})
+        with contextlib.redirect_stderr(io.StringIO()):
+            result = run_judge_mod.report_and_filter_invalid_cases(
+                [{"id": "a"}], "irrelevant", skip_invalid=True, validate_fn=always_invalid,
+            )
+        self.assertEqual(result, [])
+
+
 class Cli(unittest.TestCase):
     """End-to-end: invoke the script as a subprocess (no real API key —
     just proves the ANTHROPIC_API_KEY gate and argument wiring)."""
@@ -424,6 +531,53 @@ class Cli(unittest.TestCase):
         )
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("invalid choice", proc.stderr)
+
+    def test_preflight_problem_aborts_before_any_output_written(self):
+        """A schema mistake (case missing a field the template needs)
+        must abort before run_judge() ever runs — proven here by the out
+        file never getting created, not just by the exit code, since a
+        stray real network call from an un-caught path would also produce
+        a nonzero exit for other reasons."""
+        cases_path = self.make_jsonl([{"id": "a", "input": "x"}])  # missing "output"
+        template_path = self.make_file("{input} {output}")
+        out_path = os.path.join(tempfile.mkdtemp(), "results.jsonl")
+        env = dict(os.environ, ANTHROPIC_API_KEY="unused-preflight-should-abort-first")
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", out_path],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("Preflight", proc.stderr)
+        self.assertIn("{output}", proc.stderr)
+        self.assertFalse(os.path.exists(out_path))
+
+    def test_skip_invalid_with_no_valid_cases_left_exits_one_without_network_call(self):
+        """Every case is invalid, so after --skip-invalid filters them out
+        run_judge() is called with an empty list — exercises the flag's
+        wiring end-to-end without ever needing a real judge_fn call."""
+        cases_path = self.make_jsonl([{"id": "a", "input": "x"}, {"id": "b", "input": "x"}])  # both missing "output"
+        template_path = self.make_file("{input} {output}")
+        out_path = os.path.join(tempfile.mkdtemp(), "results.jsonl")
+        env = dict(os.environ, ANTHROPIC_API_KEY="unused-no-valid-cases-so-no-call-happens")
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", out_path, "--skip-invalid"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("continuing with 0/2", proc.stderr)
+        with open(out_path) as f:
+            self.assertEqual(f.read(), "")
+
+    def test_no_preflight_problems_produces_no_preflight_output(self):
+        cases_path = self.make_jsonl([{"id": "a", "input": "x", "output": "y"}])
+        template_path = self.make_file("{input} {output}")
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, cases_path, "--template", template_path, "--out", "/dev/null"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 2)  # still hits the missing-API-key gate, but only after preflight passed
+        self.assertNotIn("Preflight", proc.stderr)
 
 
 if __name__ == "__main__":
