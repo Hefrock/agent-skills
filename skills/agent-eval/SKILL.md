@@ -65,6 +65,8 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```
    It computes pass rate, mean score (overall and per-category), surfaces the lowest-scoring cases for review, and reports mean cost and latency per category when those fields are present. With `--baseline`, it flags regressions — cases that passed before and fail now.
 
+   Category grouping is case/whitespace-insensitive — `accuracy`, `Accuracy`, and ` ACCURACY ` all land in the same row rather than silently fragmenting one category's stats across several rows, a real risk since `category` is typed per-run, not drawn from a fixed enum anywhere in this pipeline. A category name that's merely *similar* to another (a likely typo, not an exact match after normalizing) is never auto-merged — that would risk silently combining two genuinely different categories — but `score_eval.py` prints a warning naming the suspect pair so you can fix the eval set's spelling.
+
    **As a CI gate**, add `--fail-under` and/or `--fail-on-regression` so the script exits non-zero (failing the build) when quality drops:
    ```bash
    python scripts/score_eval.py results.jsonl --fail-under 0.85
