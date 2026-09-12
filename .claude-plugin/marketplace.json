@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "plugins": [
     {
@@ -149,6 +149,18 @@
       "strict": false,
       "skills": [
         "./wiki-warehouse"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "research-ledger",
+      "description": "Captures a deep-research run's full claim ledger — every claim, its verdict, and whatever vote detail the run's own output exposes — as a warehoused JSON artifact, before that detail is lost to synthesis. Runs immediately after a deep-research pass, ahead of wiki-synthesizer. Requires Obsidian MCP connected + wiki-warehouse's prerequisites.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./research-ledger"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     }
