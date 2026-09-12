@@ -186,9 +186,46 @@ class FindRegressions(unittest.TestCase):
         self.assertEqual(score_eval.find_regressions(cur, base, 0.7), [])
 
 
+class FindMetricRegression(unittest.TestCase):
+    def test_increase_beyond_tolerance_flagged(self):
+        summary = {"mean_cost_usd": 0.008}
+        baseline = {"mean_cost_usd": 0.005}
+        reg = score_eval.find_metric_regression(summary, baseline, "mean_cost_usd", 0.2)
+        self.assertIsNotNone(reg)
+        self.assertEqual(reg["metric"], "mean_cost_usd")
+        self.assertEqual(reg["baseline"], 0.005)
+        self.assertEqual(reg["current"], 0.008)
+
+    def test_increase_within_tolerance_not_flagged(self):
+        # 0.0055 is a 10% increase over 0.005 — within a 20% tolerance.
+        summary = {"mean_cost_usd": 0.0055}
+        baseline = {"mean_cost_usd": 0.005}
+        self.assertIsNone(score_eval.find_metric_regression(summary, baseline, "mean_cost_usd", 0.2))
+
+    def test_exactly_at_tolerance_boundary_not_flagged(self):
+        # Strictly greater-than, same convention as SummarizeCalibration's
+        # boundary test and score_eval's own pass-rate threshold.
+        summary = {"mean_latency_ms": 1200.0}
+        baseline = {"mean_latency_ms": 1000.0}
+        self.assertIsNone(score_eval.find_metric_regression(summary, baseline, "mean_latency_ms", 0.2))
+
+    def test_decrease_not_flagged(self):
+        summary = {"mean_cost_usd": 0.003}
+        baseline = {"mean_cost_usd": 0.005}
+        self.assertIsNone(score_eval.find_metric_regression(summary, baseline, "mean_cost_usd", 0.2))
+
+    def test_missing_metric_in_either_summary_returns_none(self):
+        self.assertIsNone(score_eval.find_metric_regression({"mean_cost_usd": 0.01}, {}, "mean_cost_usd", 0.2))
+        self.assertIsNone(score_eval.find_metric_regression({}, {"mean_cost_usd": 0.01}, "mean_cost_usd", 0.2))
+
+    def test_none_summaries_return_none(self):
+        self.assertIsNone(score_eval.find_metric_regression(None, {"mean_cost_usd": 0.01}, "mean_cost_usd", 0.2))
+        self.assertIsNone(score_eval.find_metric_regression({"mean_cost_usd": 0.01}, None, "mean_cost_usd", 0.2))
+
+
 class CheckGates(unittest.TestCase):
-    def _summary(self, pass_rate):
-        return {"pass_rate": pass_rate, "total": 10}
+    def _summary(self, pass_rate, **extra):
+        return {"pass_rate": pass_rate, "total": 10, **extra}
 
     def test_no_gates_configured_passes(self):
         self.assertEqual(score_eval.check_gates(self._summary(0.1), [], None, False), [])
@@ -211,6 +248,45 @@ class CheckGates(unittest.TestCase):
 
     def test_fail_on_regression_no_regs_passes(self):
         self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, True), [])
+
+    def test_cost_regression_triggers(self):
+        cost_reg = {"metric": "mean_cost_usd", "baseline": 0.005, "current": 0.01, "tolerance": 0.2}
+        failures = score_eval.check_gates(self._summary(1.0), [], None, False, cost_regression=cost_reg)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("cost", failures[0])
+
+    def test_no_cost_regression_passes(self):
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, cost_regression=None), [])
+
+    def test_latency_regression_triggers(self):
+        lat_reg = {"metric": "mean_latency_ms", "baseline": 1000.0, "current": 2000.0, "tolerance": 0.2}
+        failures = score_eval.check_gates(self._summary(1.0), [], None, False, latency_regression=lat_reg)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("latency", failures[0])
+
+    def test_fail_if_mean_cost_above_triggers(self):
+        summary = self._summary(1.0, mean_cost_usd=0.02)
+        failures = score_eval.check_gates(summary, [], None, False, fail_if_mean_cost_above=0.01)
+        self.assertEqual(len(failures), 1)
+
+    def test_fail_if_mean_cost_above_passes_when_under(self):
+        summary = self._summary(1.0, mean_cost_usd=0.005)
+        self.assertEqual(score_eval.check_gates(summary, [], None, False, fail_if_mean_cost_above=0.01), [])
+
+    def test_fail_if_mean_latency_above_triggers(self):
+        summary = self._summary(1.0, mean_latency_ms=3000.0)
+        failures = score_eval.check_gates(summary, [], None, False, fail_if_mean_latency_above=2000.0)
+        self.assertEqual(len(failures), 1)
+
+    def test_fail_if_mean_cost_above_with_no_cost_data_does_not_crash(self):
+        # A results file with no cost_usd anywhere — summary lacks the key
+        # entirely, this gate just has nothing to check, not an error.
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, fail_if_mean_cost_above=0.01), [])
+
+    def test_multiple_gate_failures_all_reported(self):
+        summary = self._summary(0.1, mean_cost_usd=0.02)
+        failures = score_eval.check_gates(summary, [], 0.8, False, fail_if_mean_cost_above=0.01)
+        self.assertEqual(len(failures), 2)
 
 
 class Cli(unittest.TestCase):
@@ -269,6 +345,49 @@ class Cli(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data["total"], 1)
         self.assertIn("by_category", data)
+
+    def test_fail_on_cost_regression_without_baseline_is_a_usage_error(self):
+        path = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.01}])
+        proc = self.run_script(path, "--fail-on-cost-regression")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("require --baseline", proc.stderr)
+
+    def test_fail_on_cost_regression_gate_exits_nonzero(self):
+        base = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.005}])
+        cur = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.02}])  # +300%, well past default 20%
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-cost-regression")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("GATE FAILED", proc.stderr)
+        self.assertIn("cost regression", proc.stdout.lower())
+
+    def test_fail_on_cost_regression_passes_within_tolerance(self):
+        base = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.005}])
+        cur = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.0055}])  # +10%
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-cost-regression")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_fail_on_latency_regression_gate_exits_nonzero(self):
+        base = self.make([{"id": "a", "score": 1.0, "latency_ms": 1000}])
+        cur = self.make([{"id": "a", "score": 1.0, "latency_ms": 5000}])
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-latency-regression")
+        self.assertEqual(proc.returncode, 1)
+
+    def test_custom_tolerance_widens_what_passes(self):
+        base = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.005}])
+        cur = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.008}])  # +60%
+        # Default 20% tolerance would fail this; a wider explicit tolerance shouldn't.
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-cost-regression", "--cost-regression-tolerance", "0.7")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_fail_if_mean_cost_above_gate_exits_nonzero_no_baseline_needed(self):
+        path = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.02}])
+        proc = self.run_script(path, "--fail-if-mean-cost-above", "0.01")
+        self.assertEqual(proc.returncode, 1)
+
+    def test_fail_if_mean_latency_above_gate_passes_when_under(self):
+        path = self.make([{"id": "a", "score": 1.0, "latency_ms": 500}])
+        proc = self.run_script(path, "--fail-if-mean-latency-above", "2000")
+        self.assertEqual(proc.returncode, 0)
 
 
 if __name__ == "__main__":

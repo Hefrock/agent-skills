@@ -363,10 +363,10 @@ async function listLinks(notePath: string): Promise<object> {
 
 async function listNotes(folder?: string): Promise<object> {
   const files = await walkVault(folder ? vaultPath(folder) : undefined);
+  const results = await Promise.all(files.map(async (file) => ({ file, note: await tryReadNote(file) })));
   const notes: { path: string; frontmatter: Record<string, unknown> }[] = [];
   const skipped: { path: string; error: string }[] = [];
-  for (const file of files) {
-    const note = await tryReadNote(file);
+  for (const { file, note } of results) {
     if (!note.ok) { skipped.push({ path: file, error: note.error }); continue; }
     notes.push({ path: file, frontmatter: note.frontmatter });
   }

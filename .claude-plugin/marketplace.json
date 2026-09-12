@@ -4,10 +4,22 @@
     "name": "Hefrock"
   },
   "metadata": {
-    "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, and knowledge management.",
-    "version": "0.5.0"
+    "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
+    "version": "0.9.0"
   },
   "plugins": [
+    {
+      "name": "broadcast",
+      "description": "Produces a daily healthcare AI news audio briefing — ingests from eleven registered sources, dedupes and ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a spoken script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires GEMINI_API_KEY and a locally-built evidence-pinning-mcp server.",
+      "author": { "name": "Hefrock" },
+      "category": "content-automation",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./broadcast"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
     {
       "name": "agent-redteam",
       "description": "Generates adversarial test cases targeting safe-failure behavior — refusal, hedging, graceful degradation. Pairs with agent-eval for scoring.",
@@ -106,13 +118,25 @@
     },
     {
       "name": "wiki-governor",
-      "description": "Runs the wiki's self-governing maintenance loop — orchestrates wiki-librarian and wiki-synthesizer, then adds a constitution-compliance audit, a tracked health score, and a knowledge-gap queue. Run weekly to keep the vault accountable to its own rules. Requires Obsidian MCP connected.",
+      "description": "Runs the wiki's self-governing maintenance loop — orchestrates wiki-librarian, wiki-synthesizer, and wiki-warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Run weekly to keep the vault accountable to its own rules. Requires Obsidian MCP connected.",
       "author": { "name": "Hefrock" },
       "category": "knowledge-management",
       "source": "./skills",
       "strict": false,
       "skills": [
         "./wiki-governor"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-teacher",
+      "description": "Portfolio-aware project accountability for several concurrent projects — /checkin, a forcing function auto-suggested at session start. Surfaces 1-2 projects that genuinely need attention (never a dump), batch-elicits priority for all overdue projects at once, answers 'what should I work on' even when nothing's overdue, and reports portfolio breadth. Stateless — priority/checkin_interval/status live in each project note's own frontmatter. Deliberately narrow for now: /teach and /reflect were part of the original design but are held back until /checkin has real usage behind it. Requires Obsidian MCP connected.",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-teacher"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },

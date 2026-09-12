@@ -6,6 +6,7 @@ updated: YYYY-MM-DD
 last_synthesized: YYYY-MM-DD
 last_governed: YYYY-MM-DD
 health_score: 0
+last_checkin: YYYY-MM-DD
 ---
 
 # Wiki Context

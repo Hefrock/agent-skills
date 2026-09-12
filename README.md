@@ -15,6 +15,7 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 
 | Skill | Category | Description |
 |---|---|---|
+| [`broadcast`](./skills/broadcast) | Content Automation | Produces a daily healthcare AI news audio briefing — ingests from ten registered sources, dedupes/ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires `GEMINI_API_KEY` and a locally-built evidence-pinning-mcp server. |
 | [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
 | [`agent-redteam`](./skills/agent-redteam) | Agent Design | Generates adversarial test cases for safe-failure testing — refusals, hedging, graceful degradation. Pairs with agent-eval for scoring. |
 | [`deid-reid-harness`](./skills/deid-reid-harness) | Agent Design | Adversarial de-identification ⟷ re-identification eval harness for clinical text — generates synthetic notes with ground-truth PHI spans, runs a de-id pipeline, and scores Safe Harbor leakage, Expert Determination re-id risk, and free-text inference across a privacy-utility frontier. Model-independent, verified offline with bootstrap CIs and significance tests. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
@@ -23,7 +24,8 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 | [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/ask`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
 | [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
-| [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian and synthesizer, then adds a constitution-compliance audit, a tracked health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
+| [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian, synthesizer, and warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
+| [`wiki-teacher`](./skills/wiki-teacher) | Knowledge Management | Portfolio-aware project accountability for several concurrent projects — `/checkin`, a forcing function auto-suggested at session start. Surfaces 1-2 projects that genuinely need attention, batch-elicits priority for all overdue projects at once, answers "what should I work on" even when nothing's overdue, reports portfolio breadth. Stateless — priority/checkin_interval/status live in each project's own frontmatter. Deliberately narrow for now — `/teach`/`/reflect` held back until `/checkin` has real usage behind it. `scripts/wiki_teacher.py`, 37-test regression suite (includes real-file integration tests, not just synthetic-dict unit tests). Requires Obsidian MCP connected. |
 | [`wiki-warehouse`](./skills/wiki-warehouse) | Knowledge Management | Cold storage for raw documents — ingests PDFs/ebooks/scans into a separate private GitHub repo (`intake.py`: hash → extract text, OCR fallback for scans → manifest), then writes a lean content-hash pointer note into the vault. Keeps originals and full text out of the vault. `/ingest`, `/warehouse-audit`. Requires Obsidian MCP + the warehouse repo cloned. |
 
 ## Installing a skill
@@ -70,6 +72,7 @@ agent-skills/
 ├── docs/
 │   └── stalled-work-tracking.md # how the blocked-human / dated-followup convention works
 ├── skills/                     # flat — one folder per skill, no category nesting
+│   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 392-test suite
 │   ├── agent-eval/             # rubric-based evals, LLM-as-judge, regression test sets
 │   ├── agent-redteam/          # adversarial case generation, pairs with agent-eval
 │   ├── deid-reid-harness/      # clinical de-id/re-id eval — scripts, refs, 31-test suite
@@ -79,8 +82,10 @@ agent-skills/
 │   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 26-test regression suite
 │   ├── wiki-governor/          # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
+│   ├── wiki-teacher/           # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
 │   └── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
 ├── mcp/
+│   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
 │       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
 │       ├── test/               # end-to-end STDIO tests — `npm test`
@@ -104,7 +109,7 @@ agent-skills/
 
 ## Wiki system
 
-The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer.
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-teacher`, `wiki-warehouse`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer. `wiki-teacher` adds project accountability on top of the project portfolio — orthogonal to the other five, which are about the knowledge graph itself.
 
 **Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
 

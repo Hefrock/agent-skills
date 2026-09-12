@@ -46,7 +46,7 @@ check by widening it to the whole vault.
 ### Check 3 — Stale notes
 
 1. Query `status: stale` across all notes.
-2. Also find notes where `updated:` is older than 90 days and `status` is not `mature`.
+2. Also find notes where `updated:` is older than 90 days and `status` is not `mature`, `paused`, or `complete`. The latter two (`type: project` only, per `wiki-teacher`) are an intentional off-ramp — a paused or finished project isn't neglected, so it shouldn't compete with genuinely stale notes for attention.
 3. For each stale note: show its current content summary and ask whether to update, merge, or archive.
 
 ### Check 4 — Near-duplicates

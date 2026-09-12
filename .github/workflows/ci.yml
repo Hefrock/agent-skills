@@ -7,12 +7,15 @@ on:
     branches: ["**"]
 
 jobs:
-  mcp-server:
-    name: obsidian-vault MCP (build + test)
+  mcp-servers:
+    name: MCP servers (build + test)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [mcp/obsidian-vault, mcp/evidence-pinning]
     defaults:
       run:
-        working-directory: mcp/obsidian-vault
+        working-directory: ${{ matrix.package }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +23,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: mcp/obsidian-vault/package-lock.json
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -38,8 +41,44 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcp/evidence-pinning/package-lock.json
+
+      - name: broadcast — build evidence-pinning-mcp (needed by the evidence-pinning integration tests below)
+        working-directory: mcp/evidence-pinning
+        run: |
+          npm ci
+          npm run build
+
+      - name: agent-eval — unit-test the shared JSONL loader (stdlib unittest)
+        run: python skills/agent-eval/scripts/test_jsonl_io.py
+
       - name: agent-eval — unit-test the scorer (stdlib unittest)
         run: python skills/agent-eval/scripts/test_score_eval.py
+
+      - name: agent-eval — unit-test the judge runner (stdlib unittest, no real API calls)
+        run: python skills/agent-eval/scripts/test_run_judge.py
+
+      - name: agent-eval — unit-test the pairwise runner (stdlib unittest, no real API calls)
+        run: python skills/agent-eval/scripts/test_run_pairwise.py
+
+      - name: agent-eval — unit-test the calibration tool (stdlib unittest)
+        run: python skills/agent-eval/scripts/test_calibrate_judge.py
+
+      - name: agent-eval — verify the calibration example still trips the action-needed gate
+        # Self-check, same rationale as the regression-example check above:
+        # this worked example is designed to exceed the calibration
+        # threshold. Confirm it still does (exit non-zero).
+        run: |
+          if python skills/agent-eval/scripts/calibrate_judge.py \
+               skills/agent-eval/examples/calibration_judge_scores.jsonl skills/agent-eval/examples/calibration_human_scores.jsonl; then
+            echo "ERROR: calibration example did not trip the action-needed gate"; exit 1
+          else
+            echo "OK: calibration example correctly exceeded the threshold (exit non-zero)"
+          fi
 
       - name: agent-eval — score example results (smoke)
         run: python skills/agent-eval/scripts/score_eval.py skills/agent-eval/scripts/example_results.jsonl
@@ -55,10 +94,32 @@ jobs:
             echo "OK: gate correctly caught the regression (exit non-zero)"
           fi
 
+      - name: agent-eval — verify the cost/latency regression example trips the gate
+        # Self-check, same rationale as the regression-example check above.
+        run: |
+          if python skills/agent-eval/scripts/score_eval.py skills/agent-eval/examples/results_cost_regressed.jsonl \
+               --baseline skills/agent-eval/examples/results_baseline.jsonl --fail-on-cost-regression --fail-on-latency-regression; then
+            echo "ERROR: cost/latency regression example did not trip the gate"; exit 1
+          else
+            echo "OK: gate correctly caught the cost/latency regression (exit non-zero)"
+          fi
+
+      - name: agent-eval — verify the trajectory example still matches its documented table
+        # Self-check, same rationale as the regression-example check above:
+        # examples/README.md documents an exact per-case score table for
+        # trajectory_example.jsonl. Confirm it hasn't silently drifted.
+        run: python skills/agent-eval/scripts/verify_trajectory_example.py
+
       - name: agent-redteam — score adversarial set with a CI gate
         # Demonstrates the DevSecOps pattern: the scorer exits non-zero if the
         # adversarial pass rate falls below the gate, failing the build.
         run: python skills/agent-redteam/scripts/score_eval.py skills/agent-redteam/examples/adversarial_results.jsonl --fail-under 0.5
+
+      - name: agent-redteam — verify promoted regressions are honest and unmodified
+        # SKILL.md step 5's own file — checks every promoted case is a
+        # frozen copy of its seed case and traces to a real documented
+        # failure, not a fabricated or drifted one.
+        run: python skills/agent-redteam/scripts/verify_regressions_promoted.py
 
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
@@ -92,3 +153,57 @@ jobs:
 
       - name: wiki-governor — health_score.py regression suite (stdlib unittest)
         run: python skills/wiki-governor/scripts/test_health_score.py
+
+      - name: wiki-teacher — wiki_teacher.py regression suite (stdlib unittest)
+        run: python skills/wiki-teacher/scripts/test_wiki_teacher.py
+
+      - name: broadcast — dedup_store.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_dedup_store.py
+
+      - name: broadcast — source_registry.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_source_registry.py
+
+      - name: broadcast — ingest.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_ingest.py
+
+      - name: broadcast — rank.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_rank.py
+
+      - name: broadcast — evidence_pinning_client.py regression suite (drives the real built MCP server, stdlib unittest)
+        run: python skills/broadcast/scripts/test_evidence_pinning_client.py
+
+      - name: broadcast — evidence.py regression suite (drives the real built MCP server, stdlib unittest)
+        run: python skills/broadcast/scripts/test_evidence.py
+
+      - name: broadcast — script_gen.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_script_gen.py
+
+      - name: broadcast — qa_gate.py regression suite (drives the real built MCP server, stdlib unittest)
+        run: python skills/broadcast/scripts/test_qa_gate.py
+
+      - name: broadcast — gemini_retry.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_gemini_retry.py
+
+      - name: broadcast — audio_synth.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_audio_synth.py
+
+      - name: broadcast — orchestrate.py regression suite (fully faked wiring, stdlib unittest)
+        run: python skills/broadcast/scripts/test_orchestrate.py
+
+      - name: broadcast — distribute.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_distribute.py
+
+      - name: broadcast — narrate.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_narrate.py
+
+      - name: broadcast — prune_episodes.py regression suite (real temp dirs, stdlib unittest)
+        run: python skills/broadcast/scripts/test_prune_episodes.py
+
+      - name: broadcast — source_health_report.py regression suite (real temp dirs, stdlib unittest)
+        # Pre-existing gap: added alongside source_health_report.py itself
+        # but never wired into CI. Fixed here while adding its sibling
+        # (qa_gate_history.py) below, same rolling-multi-day-view pattern.
+        run: python skills/broadcast/scripts/test_source_health_report.py
+
+      - name: broadcast — qa_gate_history.py regression suite (real temp dirs, stdlib unittest)
+        run: python skills/broadcast/scripts/test_qa_gate_history.py

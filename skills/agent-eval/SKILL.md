@@ -14,16 +14,30 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 2. **Pick the eval type** — don't default to one without considering the fit:
    - **Reference-based**: there's a known correct answer (exact or fuzzy/semantic match). Cheapest and most reliable, but only works when "correct" is well-defined.
    - **Rubric-based (LLM-as-judge)**: quality is graded against explicit criteria (e.g. "factually grounded," "follows the required format," "appropriately concise"). Use `references/llm-judge-prompt.md` as the starting template — don't write a judge prompt from scratch each time.
-   - **Pairwise comparison**: judging which of two outputs is better, not scoring each in isolation. More reliable than absolute scoring for subjective quality, but watch for position bias — always run both orderings and average.
+   - **Pairwise comparison**: judging which of two outputs is better, not scoring each in isolation. More reliable than absolute scoring for subjective quality, but watch for position bias — always run both orderings and average. Use `scripts/run_pairwise.py` for this — it runs both orderings itself and reconciles them (see `references/pairwise-comparison.md`), rather than leaving "remember to run it twice" as a step to repeat by hand each time.
    - **Programmatic/structural**: format compliance, schema validation, code that actually executes, tool calls matching an expected sequence. Cheapest and most deterministic when applicable — prefer this over LLM-as-judge whenever the criterion is mechanically checkable.
-   - **Trajectory evaluation (agents specifically)**: don't just grade the final output — check whether the agent picked the right tool, passed the right arguments, and used a reasonable sequence of steps. A correct final answer reached via a broken process is still a signal of an unreliable agent.
-   - **Adversarial**: the correct outcome is refusal, hedging, or graceful degradation — the question is "did the agent handle this appropriately?" not "was the answer correct." Never blend adversarial scores with correctness scores; run them as a separate eval set and use `category: adversarial` in JSONL output. See `skills/agent-redteam/` for a dedicated case-generation skill.
+   - **Trajectory evaluation (agents specifically)**: don't just grade the final output — check whether the agent picked the right tool, passed the right arguments, and used a reasonable sequence of steps. A correct final answer reached via a broken process is still a signal of an unreliable agent. Use `references/trajectory-eval.md` for the case shape, the judge-rubric addendum, and the flattening convention — don't invent one from scratch each time.
+   - **Adversarial**: the correct outcome is refusal, hedging, or graceful degradation — the question is "did the agent handle this appropriately?" not "was the answer correct." Never blend adversarial scores with correctness scores; run them as a separate eval set, in their own results file. `category` should be the specific failure mode under test (`prompt-injection`, `jailbreak`, `over-refusal`, ...), not a single flat `adversarial` bucket — that's what lets `score_eval.py`'s per-category breakdown show pass rate *per attack type*, not just one undifferentiated adversarial score. See `skills/agent-redteam/examples/adversarial_results.jsonl` for the real convention, and `skills/agent-redteam/` for a dedicated case-generation skill.
+   - **Multi-turn**: not a distinct scoring type so much as a case-shape variant of the ones above — use when the conversation *leading up to* a response is itself part of what makes it right or wrong (a frame established earlier, an incremental escalation), not just the final message in isolation. Use `references/multi-turn-eval.md` for the case shape (a `turns` field, rendered into the judge prompt as `{transcript}` by `scripts/run_judge.py`) — don't collapse a real conversation into one flattened string.
 
 3. **Build a small, reusable eval set, not a one-off.** Even 10-20 representative cases beats eyeballing a handful of outputs. Include a mix of: clear-pass cases, known-hard edge cases, and at least a few cases the current system is expected to fail — a sanity check that the eval can actually detect failure, not just confirm success.
 
 4. **Score it.** For rubric/LLM-as-judge evals, use the judge prompt template and request structured JSON output (a score plus a one-line rationale per criterion) — never a vibe-based pass/fail. For programmatic evals, write the check directly.
 
-   The judge prompt returns one nested object per case (per-criterion scores plus an `overall_score`) — that's a different shape from what `scripts/score_eval.py` reads. Flatten each case before saving, to this schema (one JSON object per line):
+   For rubric/LLM-as-judge evals specifically, **use `scripts/run_judge.py`** rather than calling the judge and flattening its response by hand each time — it fills the template, calls the judge, parses the structured JSON, and writes already-flattened rows in the exact schema `score_eval.py` reads:
+   ```bash
+   export ANTHROPIC_API_KEY=...
+   python scripts/run_judge.py cases.jsonl --template references/llm-judge-prompt.md --out results.jsonl --category accuracy
+
+   # Or judge with Gemini instead of Claude — same output, same schema:
+   export GEMINI_API_KEY=...
+   python scripts/run_judge.py cases.jsonl --template references/llm-judge-prompt.md --out results.jsonl --provider gemini
+   ```
+   `--provider` (default: `anthropic`; `gemini` also supported) picks which judge API gets called — `scripts/run_pairwise.py` takes the same flag. `--model` defaults to the chosen provider's own default model if not given. See `call_judge()`'s own docstring in `run_judge.py` for one honest caveat: Gemini's token-usage field (which `cost_usd` depends on) isn't independently live-verified in this repo the way Anthropic's is, so treat `cost_usd` from a Gemini-judged run as lower-confidence than from an Anthropic one.
+
+   `cases.jsonl` is one row per case (`id`, plus whatever fields the template's `{placeholder}` tokens need — typically `input`/`output`, or `input`/`trajectory`/`final_output` for a trajectory case). It's generic over criterion names, so it handles both the plain rubric shape and `references/trajectory-eval.md`'s shape without any mode flag. A per-case failure (judge call error, unparseable response, or a malformed case that fails template-filling) is reported to stderr and that case is skipped — never given a fabricated score. `cost_usd` is only included when both `--input-price-per-mtok`/`--output-price-per-mtok` are given, computed from the API's own real token counts.
+
+   The judge prompt returns one nested object per case (per-criterion scores plus an `overall_score`) — that's a different shape from what `scripts/score_eval.py` reads. If scoring by some other means than `run_judge.py` (a different judge model/provider, a notebook), flatten each case before saving, to this schema (one JSON object per line):
    ```json
    {"id": "case_001", "score": 0.83, "category": "accuracy", "rationale": "...", "cost_usd": 0.003, "latency_ms": 1240}
    ```
@@ -36,7 +50,11 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 
    Save the flattened lines to a JSON/JSONL file, not just a summary — the failure examples are what make this actionable.
 
-5. **Calibrate the judge periodically.** Every 25-50 judge calls (or whenever you revise the judge prompt), hand-score 5-10 cases yourself and compare to the judge's scores. If the mean delta exceeds 0.2, revise the judge prompt. Record the last calibration date in `references/llm-judge-prompt.md`.
+5. **Calibrate the judge periodically.** Every 25-50 judge calls (or whenever you revise the judge prompt), hand-score 5-10 cases yourself and compare to the judge's scores. Use `scripts/calibrate_judge.py` rather than eyeballing the delta — it computes the mean delta, flags whether it exceeds the threshold (default 0.2), and can log the result for you:
+   ```bash
+   python scripts/calibrate_judge.py judge_results.jsonl human_scores.jsonl --update-log references/llm-judge-prompt.md
+   ```
+   `human_scores.jsonl` only needs the 5-10 IDs you actually hand-scored (same JSONL schema as any `score_eval.py` results file) — it compares whichever IDs appear in both files. See [`examples/README.md`](./examples/README.md)'s calibration example for a worked case where this catches a judge fooled by confident, verbose wrong answers. `--update-log` appends a row to `references/llm-judge-prompt.md`'s calibration table automatically, replacing the "not yet calibrated" placeholder on the first real run — don't edit that table by hand.
 
 6. **Aggregate and report using `scripts/score_eval.py`.** Don't manually tally pass rates — run the script against the results file:
    ```bash
@@ -51,6 +69,13 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    python scripts/score_eval.py results.jsonl --baseline eval_set_v2.jsonl --fail-on-regression
    ```
    This is what makes an eval a gate rather than a report — the same run that scores your change also blocks it if it regressed. See [`examples/`](./examples/) for a worked before/after where a change looks like a win on cost, latency, and format but the gate catches three silent accuracy regressions.
+
+   The reverse gap has a gate too: a change that holds accuracy perfectly steady while cost or latency quietly balloons was previously invisible to every flag above. `--fail-on-cost-regression`/`--fail-on-latency-regression` (needs `--baseline`; tolerance via `--cost-regression-tolerance`/`--latency-regression-tolerance`, default 20%) catch that directly; `--fail-if-mean-cost-above`/`--fail-if-mean-latency-above` set an absolute ceiling with no baseline needed:
+   ```bash
+   python scripts/score_eval.py results.jsonl --baseline previous_results.jsonl --fail-on-cost-regression --fail-on-latency-regression
+   python scripts/score_eval.py results.jsonl --fail-if-mean-cost-above 0.01 --fail-if-mean-latency-above 2000
+   ```
+   See [`examples/README.md`](./examples/README.md)'s cost/latency regression example for a worked case where accuracy is unchanged (same 90% pass rate) but cost/latency both roughly triple, and the gate catches it.
 
 7. **Be honest about sample size.** With under ~20 cases, a 2-3 case swing can look like a large percentage shift. Say so explicitly: "3/10 passed (30%) — too small a sample to call this a real regression yet" rather than presenting a precise-looking percentage as statistically solid.
 

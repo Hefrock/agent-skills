@@ -1,0 +1,113 @@
+{
+  "categories": {
+    "regulatory": {
+      "authority_floor": 0.9,
+      "half_life_days": 30,
+      "note": "FDA guidance, regulations.gov, ONC/ASTP, CMS. High floor, slow decay — a regulatory action stays relevant long after it's announced."
+    },
+    "peer_reviewed": {
+      "authority_floor": 0.9,
+      "half_life_days": 30,
+      "note": "PubMed/NCBI E-utilities. Same treatment as regulatory — published, reviewed findings don't stale out in days."
+    },
+    "preprint": {
+      "authority_floor": 0.4,
+      "half_life_days": 3,
+      "note": "arXiv, medRxiv. Low floor, fast decay — unreviewed, and today's preprint is stale news within days unless it's still trending (the rolling-window dedup store's job, not this rubric's)."
+    },
+    "industry_press": {
+      "authority_floor": 0.4,
+      "half_life_days": 3,
+      "note": "STAT News, Fierce Healthcare, Healthcare IT News. Same treatment as preprint — timely but not authoritative on its own; a claim from here should usually be corroborated, not cited standalone."
+    }
+  },
+  "sources": [
+    {
+      "key": "pubmed",
+      "name": "PubMed / NCBI E-utilities",
+      "category": "peer_reviewed",
+      "query": "(FHIR OR interoperability OR clinical decision support OR clinical workflow) AND (artificial intelligence OR machine learning OR large language model OR agentic)",
+      "query_note": "Widened from the original 'FHIR AND clinical decision support' (still live_smoke_test.py-confirmed, still a documented judgment call, not a validated one, same status as the authority floors/half-lives above): the original query never required an AI/ML term at all, so it could only ever return non-AI health-IT papers — a real gap against this show's own topic. This version keeps the interoperability/CDS anchor (that's still the intended lens, not a random general-AI-in-healthcare feed) but now requires an explicit AI/ML/agentic term, and adds 'agentic' since that's a throughline_keywords entry the old query never touched. Revisit once a real run's story mix can be judged against actual episodes, same as the other hand-tuned rubric values in this file."
+    },
+    {
+      "key": "arxiv",
+      "name": "arXiv",
+      "category": "preprint",
+      "query": "cat:cs.AI AND abs:clinical",
+      "query_note": "Same status as pubmed's query above — reused from live_smoke_test.py, a documented judgment call open to revision."
+    },
+    {
+      "key": "medrxiv",
+      "name": "medRxiv",
+      "category": "preprint"
+    },
+    {
+      "key": "fda_guidance",
+      "name": "FDA Guidance Documents",
+      "category": "regulatory"
+    },
+    {
+      "key": "regulations_gov",
+      "name": "regulations.gov",
+      "category": "regulatory",
+      "query": "clinical decision support software",
+      "query_note": "Same status as pubmed's query above — reused from live_smoke_test.py, a documented judgment call open to revision."
+    },
+    {
+      "key": "fda_maude",
+      "name": "FDA MAUDE (device adverse events)",
+      "category": "regulatory",
+      "query": "device.generic_name:(software OR algorithm OR \"artificial intelligence\" OR \"machine learning\" OR \"clinical decision support\")",
+      "query_note": "Added to close a real, named gap: 'clinical ai assurance' is a throughline_keywords entry this registry had no source backing at all until now. Scoped to AI/software-relevant device terms deliberately — MAUDE covers every medical device (hip implants, insulin pumps, everything), and left unscoped would be almost entirely off-topic noise for a healthcare-AI show. A documented judgment call, not a validated one (same status as pubmed's query) — device.generic_name is FDA's own controlled vocabulary, not free text, so this needs checking against real results, not just intuition, once live-verified. Placed in 'regulatory' since it's official FDA data, though note a single adverse-event report is arguably more time-sensitive breaking news than a guidance document that governs ongoing conduct — this category's slow-decay assumption is a real, open question, not a settled one, unlike fda_guidance/regulations_gov/onc_astp/cms. NOT yet live-verified at all (unlike hit_consultant, which was checked against a real fetched response) — this sandbox's network egress is blocked to api.fda.gov same as everywhere else. ingest.py's field names (mdr_report_key, date_received, device[].generic_name/brand_name, mdr_text[].text_type_code/text, event_type, product_problems) come from openFDA's own long-documented, stable schema, not a guess, but 'documented' isn't 'confirmed against this exact parser' — the bar every other source here was actually held to. The public per-report URL pattern (accessdata.fda.gov/scripts/cdrh/cfdocs/cfmaude/detail.cfm?mdrfoi__id=) is well-known but also unconfirmed. Needs a real live_smoke_test.py run (or a user-supplied real response, the same path that verified hit_consultant) before this is trusted."
+    },
+    {
+      "key": "onc_astp",
+      "name": "ONC/ASTP",
+      "category": "regulatory",
+      "feed_url": "https://www.healthit.gov/buzz-blog/feed",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Confirmed live via the broadcast-live-smoke-test workflow (GitHub Actions run, 2026-09-02): 10 real items, parsed correctly by the existing generic RSS parser (fetch_rss/parse_rss_xml, same one built for STAT News/Fierce Healthcare) with no code changes needed — real dates parsed as standard RFC 822, no pubDate-format fix required unlike fierce_healthcare. Three guessed alternate slugs (/rss.xml on this path, and healthit.gov's site-root /feed which is a much shorter, non-blog feed) were checked and ruled out first."
+    },
+    {
+      "key": "cms",
+      "name": "CMS",
+      "category": "regulatory",
+      "feed_url": "https://www.cms.gov/newsroom/rss-feeds",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Confirmed live via the broadcast-live-smoke-test workflow (GitHub Actions run, 2026-09-02): 10 real items. The URL itself serves RSS XML directly (no separate HTML links page to scrape). Needed two real fixes to the shared RSS parser, not just a feed_url: this feed's <link> field is corrupted (a URL-percent-encoded copy of the <title>'s own markup, not a clean URL — recovered from the title's <a href> instead), and its <pubDate> uses a third undocumented format ('Tue, 09/01/2026 - 09:02') beyond RFC 822 and fierce_healthcare's. Also surfaced a pre-existing description-cleaning bug (multi-paragraph text glued together with no space) fixed in the same pass."
+    },
+    {
+      "key": "stat_news",
+      "name": "STAT News",
+      "category": "industry_press",
+      "feed_url": "https://www.statnews.com/feed/",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Confirmed live via the broadcast-live-smoke-test workflow (GitHub Actions run, 2026-09-01): 20 real items returned once fetch_rss sent a browser-like User-Agent."
+    },
+    {
+      "key": "fierce_healthcare",
+      "name": "Fierce Healthcare",
+      "category": "industry_press",
+      "feed_url": "https://www.fiercehealthcare.com/rss/xml",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Confirmed live (2026-09-01): 25 real items. The URL was fine on the first try; the real bug was that this feed's <pubDate> isn't RFC 822 ('Sep 1, 2026 2:08pm' — no day-of-week, 12hr+am/pm, no timezone), which silently zeroed every item until _parse_rss_pubdate() got a fallback format for it."
+    },
+    {
+      "key": "hit_consultant",
+      "name": "HIT Consultant",
+      "category": "industry_press",
+      "feed_url": "https://hitconsultant.net/feed",
+      "feed_url_verified": true,
+      "feed_url_verified_note": "Replacement for healthcare_it_news (removed — permanently WAF-blocked, no viable RSS alternative found). Picked via a SWOT comparison against Healthcare Dive: closest scope match to what Healthcare IT News actually covered, and a smaller independent site, matching this registry's own empirical pattern (onc_astp, the simplest WordPress feed, worked with zero code changes; larger publisher-network properties have needed real fixes or failed outright). Healthcare Dive was passed over because a third-party scraping guide names healthcaredive.com as an example of a Cloudflare-protected site. Verified 2026-09-03: the user fetched https://hitconsultant.net/feed directly and supplied the real response, run through ingest.parse_rss_xml() here — 4/4 items parsed cleanly: correct HTML-entity decoding ('M&#038;A' -> 'M&A'), clean HTML-stripped summaries (the description CDATA's '<a>...Read More</a>' anchor correctly reduced to plain text), uncorrupted URLs, and standard RFC-822 pubDates parsed with zero special-casing needed (as clean as onc_astp; unlike fierce_healthcare/cms, which both needed real date-format fixes). Confirms this pipeline's own parser handles this feed correctly. The one thing this doesn't confirm is fetch_rss()'s own live HTTP call (with its browser-like User-Agent) succeeding end-to-end from this pipeline's actual runtime — worth a real live_smoke_test.py/orchestrate.py run to close that last gap, but the content-correctness risk this flag exists to track is real and satisfied."
+    }
+  ],
+  "throughline_keywords": [
+    "fhir",
+    "clinical decision support",
+    "agentic",
+    "clinical ai",
+    "interoperability",
+    "evidence provenance",
+    "clinical ai assurance"
+  ]
+}
