@@ -1,7 +1,13 @@
 # Leak Taxonomy
 
 The source design (`Projects/Privacy OS - Pre-Disclosure Privacy Linter`) names four
-leak classes. This version builds two of them.
+leak classes. This version builds two of them (Direct PII, Metadata), plus one class
+added afterward that isn't part of the original four — **Secrets/credentials** — added
+because it's the single most common real "oops I committed X" for a git-hook tool
+specifically, and mechanically detectable the same way Direct PII already is (pattern-
+match added lines, no model needed). Called out explicitly here so it's clear this
+isn't a fifth item from the source spec, just a natural extension of the same
+detection mechanism.
 
 ## Built: Direct PII
 
@@ -24,9 +30,40 @@ a very high false-positive rate (flagging ordinary capitalized phrases) or a ver
 false-negative rate (narrow enough to avoid that, narrow enough to miss most real
 names). Neither is worth shipping as "detection."
 
+## Built: Secrets / credentials
+
+Not one of the source design's four classes — added because it's a distinct, common,
+and high-severity leak category for exactly the surface this tool already scans (a
+git-staged diff). Two tiers, same pattern as Direct PII:
+
+| Pattern | Severity | Why |
+|---|---|---|
+| AWS access key ID (`AKIA`/`ASIA` prefix) | high | Prefix is only ever a real credential — no legitimate reason for this exact shape to appear otherwise |
+| GitHub token (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_` prefix) | high | Same — prefix + length is GitHub's own token format, not ambiguous |
+| Slack token (`xox[baprs]-` prefix) | high | Same reasoning |
+| Stripe live secret key (`sk_live_` prefix) | high | Same reasoning — deliberately excludes `sk_test_` (test-mode keys are meant to be shared in docs/examples) |
+| Google API key (`AIza` prefix, 39 chars) | high | Same reasoning |
+| Anthropic API key (`sk-ant-` prefix) | high | Same reasoning — this repo's own domain |
+| Private key block (`-----BEGIN ... PRIVATE KEY-----`) | high | Unambiguous — this exact string only appears at the start of a real private key |
+| Generic quoted secret assignment (`api_key`/`secret`/`token`/`password` + `=`/`:` + a quoted 8+ char value) | medium | The deliberately narrow catch-all for a secret in a format none of the above recognize — see below for why it's this narrow |
+
+**Why the generic assignment pattern requires quotes.** An earlier draft also matched
+bare/unquoted values (`.env`-style `API_KEY=abcdef123456`) — dropped before shipping
+because it couldn't distinguish a real inline secret from a function call
+(`token = get_token()`), an environment-variable reference, or any other short
+right-hand-side expression, and would have violated this tool's own "low
+false-positive rate matters more than coverage" rule from the first commit. A quoted
+string literal is a much stronger signal that the value is meant to be a static
+credential, not code. Documented as a known gap, not a silent one.
+
+**Also excluded:** a placeholder denylist (`your_`, `example`, `changeme`, `<...>`,
+etc.) suppresses the generic assignment pattern specifically — the prefixed-token
+patterns above never need it, since a real AWS/GitHub/etc. prefix on a placeholder
+string would be a strange thing for anyone to type by hand.
+
 ## Built: Metadata
 
-Two tiers:
+Two tiers for detection, one for remediation:
 
 1. **File-type heuristic** (`medium`) — any staged file with an extension that commonly
    carries embedded metadata (images: jpg/jpeg/png/heic/tiff/bmp/gif; documents:
@@ -39,10 +76,28 @@ Two tiers:
    `wiki-warehouse`'s pattern of degrading gracefully and *reporting* the degradation
    (missing OCR tool → reported per-document) rather than silently downgrading.
 
-**Not attempted (yet):** other EXIF fields (timestamp, camera/device model), embedded
-document properties (author, revision history in Office files), and non-EXIF embedded
-file paths (e.g., a screenshot showing a file-manager path in-frame — that's a *visual*
-leak, unreadable by any metadata scanner; would need an image-understanding model).
+**Remediation: `--strip-metadata`** (JPEG/TIFF only, requires Pillow) — this is the one
+place the scanner does more than detect. A hypothetical text-redaction equivalent (auto-
+rewriting a matched PII span) would carry real judgment risk — did it redact too much,
+too little, or corrupt surrounding non-PII text — and isn't built here for exactly that
+reason. Stripping EXIF has none of that risk: there's no partial-credit version of
+"remove this well-defined metadata block," so the same caution doesn't apply. It
+re-saves the image without ever passing
+`exif=` forward (verified empirically against a real GPS-tagged fixture before
+shipping — Pillow doesn't propagate EXIF unless the caller explicitly asks it to), then
+re-reads the *output* file's EXIF to confirm the strip actually worked rather than
+trusting the save call's silence. Writes a separate `.stripped` copy by default —
+`--in-place` is opt-in and irreversible, matching the "never silently destroy the
+original" convention `install_hook.sh` already follows for an existing hook file.
+
+**Not attempted (yet):** stripping for the other `METADATA_EXTENSIONS` (PNG, HEIC, PDF,
+DOCX, XLSX, PPTX) — each needs its own metadata-writing library (Pillow only round-trips
+EXIF reliably for JPEG/TIFF here; PDF/Office document properties need a different
+library entirely), real scope beyond this pass. Detection still covers all of them via
+the file-type heuristic; only remediation is JPEG/TIFF-only for now. Also not attempted:
+non-EXIF embedded file paths (e.g., a screenshot showing a file-manager path in-frame —
+that's a *visual* leak, unreadable by any metadata scanner; would need an
+image-understanding model).
 
 ## Deferred: Inference cues
 
@@ -75,5 +130,5 @@ Building Inference cues or Stylometric fingerprinting today would mean picking o
    potential disclosure").
 
 Neither should be chosen silently. When there's a concrete need to extend past Direct
-PII + Metadata, that choice is the first design decision to make, not an implementation
-detail to default past.
+PII, Secrets, and Metadata, that choice is the first design decision to make, not an
+implementation detail to default past.

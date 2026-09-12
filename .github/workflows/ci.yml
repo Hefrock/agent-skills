@@ -148,6 +148,25 @@ jobs:
             echo "ERROR: the Luhn-invalid near-miss (line 6) was incorrectly flagged"; exit 1
           fi
 
+      - name: privacy-linter — secret detection smoke test
+        # Same self-check rationale as the PII worked example above, for the
+        # Secrets leak class added after that example was written.
+        run: |
+          set -e
+          DEMO=$(mktemp -d)
+          git init -q "$DEMO"
+          git -C "$DEMO" config user.email test@example.com
+          git -C "$DEMO" config user.name Test
+          printf 'aws_key = AKIAIOSFODNN7EXAMPLE\napi_key = "your_api_key_here"\nnormal_var = "just some ordinary short value"\n' > "$DEMO/config.txt"
+          git -C "$DEMO" add config.txt
+          OUTPUT=$(python skills/privacy-linter/scripts/scan_diff.py --file "$DEMO/config.txt")
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "1 finding(s)"
+          echo "$OUTPUT" | grep -q "\[severity: high\] \[class: secret\].*aws_access_key"
+          if echo "$OUTPUT" | grep -q "your_api_key_here"; then
+            echo "ERROR: the placeholder value was incorrectly flagged"; exit 1
+          fi
+
       - name: wiki-librarian — check_vault.py regression suite (stdlib unittest)
         run: python skills/wiki-librarian/scripts/test_check_vault.py
 
