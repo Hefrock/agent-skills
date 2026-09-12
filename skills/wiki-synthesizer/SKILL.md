@@ -21,6 +21,7 @@ The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before run
 4. **Non-destructive.** When preprocessing journal entries, never delete or rewrite original text — only append structured sections.
 5. **One run, one log.** After each synthesis run, append a compact entry to today's journal documenting what changed.
 6. **Update the hot cache last.** `Maps/_context.md` is written at the end of every run — never mid-run.
+7. **Flag citations, don't fetch them.** Newly-cited external URLs get surfaced for archival — this skill never fetches or ingests a document itself. That's `wiki-warehouse`'s job, and its confirm-before-committing rule still applies; flagging is not an ingestion decision.
 
 ## /synthesize [scope]
 
@@ -83,6 +84,22 @@ Rules:
    e. Delete the raw file after the compiled page is written.
 3. For any concept stubs created, check whether a page already exists under a different name — merge if so.
 
+### Phase 2.5 — External citation flagging
+
+Runs after Phases 1–2 finish, regardless of `[scope]` — journal promotion and source
+compilation can both introduce a bare external URL that has no warehoused backing yet.
+
+1. For every page created or updated in Phase 1 or Phase 2 this run, scan its body for
+   external URLs (`https?://…`, in prose or markdown links).
+2. Skip a URL if it's already covered — search `Sources/` for a note whose body or
+   `warehouse_path`/`doc_id` frontmatter corresponds to that same URL. Already-warehoused
+   citations aren't re-flagged every run.
+3. Collect the rest as candidates: `url`, the page(s) citing it, and a one-line reason
+   (e.g. "primary source for a confirmed claim" vs. "citation only, unevaluated").
+4. Do not fetch, hash, or ingest anything here — this phase only flags. Handing a
+   candidate straight to `wiki-warehouse`'s `/ingest` without surfacing it first would
+   skip that skill's own confirm-before-committing step.
+
 ### Phase 3 — Hot cache update
 
 Rewrite `Maps/_context.md`:
@@ -103,11 +120,18 @@ If today's journal (`Journal/Daily/YYYY-MM-DD.md`) doesn't exist yet, create it 
 - Compiled sources: [title], [title]
 - New stubs: [[page]], [[page]]
 - Skipped (already current): [[page]]
+
+## Citations flagged for archival
+
+- <url> — cited in [[page]] (primary source for a confirmed claim) — not yet warehoused
 ```
+
+If Phase 2.5 found nothing, write `(none — no new external citations this run)` instead
+of an empty list.
 
 ## Output discipline
 
-- Report phase-by-phase as you go: "Phase 0: preprocessed 2 entries, found 5 concepts. Phase 1: promoting 5 ideas."
+- Report phase-by-phase as you go: "Phase 0: preprocessed 2 entries, found 5 concepts. Phase 1: promoting 5 ideas. Phase 2.5: flagged 3 uncited external URLs for archival."
 - List every page to be created or updated before writing it — do not write silently.
 - If a journal idea is ambiguous (could map to multiple concept pages), surface the options and ask before promoting.
 - If a raw source is too sparse to compile meaningfully, flag it rather than creating a thin page.
