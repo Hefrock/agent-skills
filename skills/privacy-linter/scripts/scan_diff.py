@@ -34,6 +34,13 @@ entirely for that invocation:
     scan_diff.py --strip-metadata photo.jpg --out clean.jpg
     scan_diff.py --strip-metadata photo.jpg --in-place     # overwrites photo.jpg itself
 
+Track findings over time (off by default): --log-dir writes one JSON record per scan
+run; scan_log_history.py later flattens a window of those into agent-eval's schema so
+score_eval.py can compute a trend, not just a snapshot:
+    scan_diff.py --log-dir ~/.privacy-linter-log          # add to your normal invocation
+    python scan_log_history.py --log-dir ~/.privacy-linter-log --out trend.jsonl
+    python ../../agent-eval/scripts/score_eval.py trend.jsonl --fail-under 0.9
+
 Stdlib only for the core scan. Pillow is optional for scanning — EXIF GPS confirmation
 degrades gracefully to a file-type heuristic when it isn't installed (reported, not
 silent) — but required for --strip-metadata, which has no non-Pillow fallback.
@@ -45,7 +52,9 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
 
 try:
     from PIL import Image
@@ -502,6 +511,33 @@ def scan_history(repo_root, max_commits=None):
     return findings
 
 
+# --- Run logging (for longitudinal trend tracking) ------------------------------------
+# Every scan_diff.py invocation is stateless — nothing about a run has ever been kept
+# past its own exit code, so a user's leak rate over time (is this getting better or
+# worse) has never been answerable. --log-dir closes that gap the same way this repo's
+# other longitudinal bridges do (see broadcast/scripts/qa_gate_history.py): write a
+# durable per-run record here, hand the actual trend analysis to agent-eval's score_
+# eval.py via scan_log_history.py, rather than growing a second aggregation engine.
+
+def write_run_log(log_dir, findings):
+    """Appends one timestamped JSON record under log_dir — the run's
+    Finding objects only (severity/leak_class/finding/reason/location),
+    never the scanned content itself, so this log can't become a second
+    copy of whatever triggered a finding. Silently creates log_dir if it
+    doesn't exist yet. Never raises on a write failure (a full disk or a
+    permissions problem in the log directory must never block or crash
+    an actual privacy scan — logging history is a bonus, not the job)."""
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        now = datetime.now(timezone.utc)
+        filename = now.strftime("%Y%m%dT%H%M%S%f") + f"-{uuid.uuid4().hex[:8]}.json"
+        record = {"timestamp": now.isoformat(), "findings": [asdict(f) for f in findings]}
+        with open(os.path.join(log_dir, filename), "w", encoding="utf-8") as f:
+            json.dump(record, f)
+    except OSError as e:
+        print(f"Warning: could not write scan log to {log_dir}: {e}", file=sys.stderr)
+
+
 # --- Reporting ---------------------------------------------------------------------
 
 def print_report(findings, json_out=False):
@@ -543,6 +579,8 @@ def main():
                         help="Scan the full commit history (current branch, non-merge commits) for Direct PII/Secrets ever introduced, even if later removed from HEAD. Slower than the default; does not cover Metadata.")
     parser.add_argument("--max-commits", type=int, default=None,
                         help="With --scan-history, only scan the N most recently-committed commits (default: entire history)")
+    parser.add_argument("--log-dir", metavar="DIR",
+                        help="Append this run's findings as a timestamped JSON record under DIR, for trend-tracking over time via scan_log_history.py. Off by default. Not written for --scan-history runs (see write_run_log()'s callers).")
     args = parser.parse_args()
 
     if args.strip_metadata:
@@ -582,6 +620,12 @@ def main():
             print("privacy-linter: not inside a git repository (use --file or --text instead)", file=sys.stderr)
             sys.exit(2)
         findings = scan_staged(repo_root)
+
+    if args.log_dir and not args.scan_history:
+        # --scan-history aggregates many historical commits into one call —
+        # not comparable to a single pre-commit hook run, so mixing it into
+        # the same trend log would make "clean rate over time" meaningless.
+        write_run_log(args.log_dir, findings)
 
     print_report(findings, json_out=args.json)
 

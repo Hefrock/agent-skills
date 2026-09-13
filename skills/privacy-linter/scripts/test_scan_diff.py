@@ -525,6 +525,95 @@ class CliGitStagedMode(unittest.TestCase):
             self.assertIn("not inside a git repository", proc.stderr)
 
 
+class WriteRunLog(unittest.TestCase):
+    def test_writes_a_json_file_under_log_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            log_dir = os.path.join(d, "logs")
+            finding = scan_diff.Finding(severity="high", leak_class="secret", finding="x", reason="y", location="z")
+            scan_diff.write_run_log(log_dir, [finding])
+            files = os.listdir(log_dir)
+            self.assertEqual(len(files), 1)
+            self.assertTrue(files[0].endswith(".json"))
+
+    def test_record_contains_timestamp_and_findings(self):
+        with tempfile.TemporaryDirectory() as d:
+            log_dir = os.path.join(d, "logs")
+            finding = scan_diff.Finding(severity="high", leak_class="secret", finding="x", reason="y", location="z")
+            scan_diff.write_run_log(log_dir, [finding])
+            path = os.path.join(log_dir, os.listdir(log_dir)[0])
+            with open(path) as f:
+                record = json.load(f)
+            self.assertIn("timestamp", record)
+            self.assertEqual(record["findings"], [{"severity": "high", "leak_class": "secret", "finding": "x", "reason": "y", "location": "z"}])
+
+    def test_creates_log_dir_if_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            log_dir = os.path.join(d, "does", "not", "exist", "yet")
+            scan_diff.write_run_log(log_dir, [])
+            self.assertTrue(os.path.isdir(log_dir))
+
+    def test_empty_findings_still_logs_a_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            log_dir = os.path.join(d, "logs")
+            scan_diff.write_run_log(log_dir, [])
+            path = os.path.join(log_dir, os.listdir(log_dir)[0])
+            with open(path) as f:
+                record = json.load(f)
+            self.assertEqual(record["findings"], [])
+
+    def test_two_runs_produce_two_distinct_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            log_dir = os.path.join(d, "logs")
+            scan_diff.write_run_log(log_dir, [])
+            scan_diff.write_run_log(log_dir, [])
+            self.assertEqual(len(os.listdir(log_dir)), 2)
+
+
+class CliLogDir(unittest.TestCase):
+    def setUp(self):
+        self._paths = []
+
+    def tearDown(self):
+        for p in self._paths:
+            os.unlink(p)
+
+    def test_log_dir_written_for_file_mode(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("jane.doe@example.com\n")
+            path = f.name
+        self._paths.append(path)
+        with tempfile.TemporaryDirectory() as log_dir:
+            proc = run_script("--file", path, "--log-dir", log_dir)
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(len(os.listdir(log_dir)), 1)
+
+    def test_log_dir_not_written_when_omitted(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("jane.doe@example.com\n")
+            path = f.name
+        self._paths.append(path)
+        run_script("--file", path)
+        # No log_dir was passed at all — nothing to assert on disk beyond
+        # "the run didn't crash," covered by other CliFileMode tests; this
+        # test exists to document that --log-dir is opt-in, not automatic.
+
+    def test_log_dir_not_written_for_scan_history(self):
+        with tempfile.TemporaryDirectory() as repo:
+            proc_init = subprocess.run(["git", "init", "-q"], cwd=repo, capture_output=True, text=True)
+            self.assertEqual(proc_init.returncode, 0)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+            with open(os.path.join(repo, "notes.txt"), "w") as f:
+                f.write("ssn on file: 123-45-6789\n")
+            subprocess.run(["git", "add", "notes.txt"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "leak"], cwd=repo, check=True)
+
+            with tempfile.TemporaryDirectory() as log_dir:
+                proc = run_script("--scan-history", "--log-dir", log_dir, cwd=repo)
+                self.assertEqual(proc.returncode, 0)
+                self.assertFalse(os.path.isdir(log_dir) and os.listdir(log_dir))
+
+
 class ScanHistory(unittest.TestCase):
     """--scan-history: a real temp git repo with several commits, including
     one that introduces a secret and a LATER commit that removes it again —

@@ -1,6 +1,6 @@
 ---
 name: privacy-linter
-description: Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP address), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private key blocks, hardcoded-credential assignments), and Metadata risk (image/document file types that commonly carry EXIF/embedded properties, with a confirmed EXIF GPS check when Pillow is available) before a commit lands. `--scan-history` walks the full commit history for PII/secrets ever introduced, even if later removed from HEAD. Can also strip EXIF metadata from a JPEG/TIFF outright with `--strip-metadata`. Runs entirely locally with no model or network call — pattern-matching only. Use when the user wants to check a commit, diff, or file for leaked PII or secrets before it's committed or shared, asks "will this diff leak anything," "did I commit an API key," "did I already leak something in an old commit," wants a pre-commit privacy check, wants to scan a specific file or pasted text for personal information, or wants to strip GPS/EXIF data from a photo before sharing it. Triggers on "check this diff for PII," "will committing this leak anything," "scan this file for personal info," "did I leak a secret/API key," "check git history for leaked secrets," "strip metadata from this photo," "set up a privacy pre-commit hook," and the script `scan_diff.py`. Does not cover inference-cue or stylometric leaks, or text redaction — see references/leak-taxonomy.md for why those are deliberately out of scope for this version.
+description: Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP address), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private key blocks, hardcoded-credential assignments), and Metadata risk (image/document file types that commonly carry EXIF/embedded properties, with a confirmed EXIF GPS check when Pillow is available) before a commit lands. `--scan-history` walks the full commit history for PII/secrets ever introduced, even if later removed from HEAD. Can also strip EXIF metadata from a JPEG/TIFF outright with `--strip-metadata`, and track findings over time with `--log-dir` + `scan_log_history.py` (bridges into agent-eval's score_eval.py for trend/regression reporting, same pattern broadcast's qa_gate_history.py uses). Runs entirely locally with no model or network call — pattern-matching only. Use when the user wants to check a commit, diff, or file for leaked PII or secrets before it's committed or shared, asks "will this diff leak anything," "did I commit an API key," "did I already leak something in an old commit," "is my leak rate getting better or worse over time," wants a pre-commit privacy check, wants to scan a specific file or pasted text for personal information, or wants to strip GPS/EXIF data from a photo before sharing it. Triggers on "check this diff for PII," "will committing this leak anything," "scan this file for personal info," "did I leak a secret/API key," "check git history for leaked secrets," "strip metadata from this photo," "track privacy findings over time," "set up a privacy pre-commit hook," and the script `scan_diff.py`. Does not cover inference-cue or stylometric leaks, or text redaction — see references/leak-taxonomy.md for why those are deliberately out of scope for this version.
 ---
 
 # Privacy Linter
@@ -97,6 +97,30 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
    each historical blob's file content, not just its diff — a heavier operation left
    for a future pass) or merge commits (their content was already introduced by a
    non-merge ancestor commit, so nothing is missed by skipping them).
+8. **Track findings over time** instead of only ever seeing one run's snapshot — off by
+   default, opt in per invocation:
+   ```bash
+   python scripts/scan_diff.py --log-dir ~/.privacy-linter-log            # add to any normal run
+   python scripts/scan_log_history.py --log-dir ~/.privacy-linter-log --out trend.jsonl
+   python ../agent-eval/scripts/score_eval.py trend.jsonl --fail-under 0.9
+   python ../agent-eval/scripts/score_eval.py trend.jsonl --baseline last_month.jsonl --fail-on-regression
+   ```
+   `--log-dir` writes one timestamped JSON record per run (the findings only, never the
+   scanned content — this log can't become a second copy of whatever triggered a
+   finding). `scan_log_history.py` is the bridge, not a second aggregation engine — it
+   reads a window of those records and flattens them into `agent-eval`'s own `{id,
+   score, category, rationale}` schema (same "bridge, not reimplementation" pattern
+   `broadcast/scripts/qa_gate_history.py` already established for its own QA gate), so
+   `score_eval.py` does the actual pass-rate/regression/gate work rather than a second
+   copy of that logic growing here. A scan run has no fixed checklist the way a QA gate
+   does — it's zero or more findings, not a pass/fail per named check — so the
+   "categories" `score_eval.py` reports on are derived per run: `clean` (zero findings
+   of any kind), `no_secrets`, `no_direct_pii`, `no_high_severity`. Over enough runs,
+   `score_eval.py`'s per-category pass rate answers "is my secret-leak rate actually
+   improving," not just "did today's commit have a leak." `--scan-history` runs are
+   never logged — they aggregate many historical commits into one call, not comparable
+   to a single pre-commit hook run, and mixing the two would make "clean rate over
+   time" meaningless.
 
 ## Installing as a git pre-commit hook
 
@@ -148,12 +172,23 @@ overwrites an existing hook without confirmation.
   than coverage) — don't recommend `--block-on` as a default without the user asking
   for blocking behavior specifically.
 
+## Pairing
+
+- **agent-eval** — `scan_log_history.py` bridges `--log-dir`'s run records into
+  `score_eval.py`'s schema for trend tracking (step 8); `agent-eval` does all the actual
+  pass-rate/regression/gate computation, never duplicated here.
+- **wiki-privacy-audit** — reuses this skill's `scan_diff.py` directly (as a subprocess,
+  per vault note) rather than reimplementing detection for a vault instead of a git
+  diff. This skill stays the single source of truth for what counts as PII or a secret.
+
 ## Files
 
 | Path | What it is |
 |---|---|
-| `scripts/scan_diff.py` | The scanner — PII/secret regex + metadata heuristics, EXIF stripping, commit-history scanning, git integration, suppression, CLI gate |
+| `scripts/scan_diff.py` | The scanner — PII/secret regex + metadata heuristics, EXIF stripping, commit-history scanning, run logging, git integration, suppression, CLI gate |
 | `scripts/test_scan_diff.py` | Unit + CLI + real-temp-git-repo test suite (stdlib unittest) |
+| `scripts/scan_log_history.py` | Bridges `--log-dir`'s run records into `agent-eval`'s JSONL schema for trend tracking |
+| `scripts/test_scan_log_history.py` | Unit + CLI test suite, including a real end-to-end run into `score_eval.py` |
 | `scripts/install_hook.sh` | Installs `scan_diff.py` as a repo's `pre-commit` hook |
 | `references/leak-taxonomy.md` | Every leak class (the source design's four, plus Secrets), severity rubric and rationale, what's built vs. deferred and why |
 | `examples/` | A worked example: a synthetic diff with seeded PII, and the scan output it produces |

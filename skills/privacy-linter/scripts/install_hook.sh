@@ -38,6 +38,8 @@ cat > "$HOOK_PATH" <<EOF
 #!/usr/bin/env bash
 # Installed by privacy-linter's install_hook.sh — advisory only (always exits 0).
 # Edit this file to add --block-on high (or medium/low) to make it blocking.
+# Add --log-dir /path/to/log/dir to track findings over time (see
+# scan_log_history.py) — off by default, since it writes to disk on every run.
 python3 "$SCAN_SCRIPT"
 exit 0
 EOF
@@ -45,4 +47,5 @@ EOF
 chmod +x "$HOOK_PATH"
 echo "Installed advisory pre-commit hook at $HOOK_PATH"
 echo "It calls: python3 $SCAN_SCRIPT"
-echo "Edit the hook directly to add --block-on high if you want it to block commits."
+echo "Edit the hook directly to add --block-on high if you want it to block commits,"
+echo "or --log-dir /path/to/log/dir to track findings over time (see scan_log_history.py)."
