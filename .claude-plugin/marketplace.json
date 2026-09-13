@@ -70,13 +70,25 @@
     },
     {
       "name": "privacy-linter",
-      "description": "Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP) and Metadata risk (image/document types, confirmed EXIF GPS when Pillow is available). Runs entirely locally, no model or network call.",
+      "description": "Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private keys), and Metadata risk (image/document types, confirmed EXIF GPS when Pillow is available, --strip-metadata). --scan-history walks full commit history; --log-dir tracks findings over time. Runs entirely locally, no model or network call.",
       "author": { "name": "Hefrock" },
       "category": "privacy",
       "source": "./skills",
       "strict": false,
       "skills": [
         "./privacy-linter"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "privacy-threat-oracle",
+      "description": "Deterministic, rule-based privacy decision engine — evaluates a proposed action (identity compartment, exposure, content sensitivity) against an adversary/compartment threat model and recommends proceed/proceed_with_modification/decline with residual risk. Reuses privacy-linter's content-class vocabulary so its --json output plugs in directly. No model or network call.",
+      "author": { "name": "Hefrock" },
+      "category": "privacy",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./privacy-threat-oracle"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },
