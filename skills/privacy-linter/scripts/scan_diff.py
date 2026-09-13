@@ -20,6 +20,9 @@ Usage:
     scan_diff.py --file path/to/thing.txt # scan one file's full current content
     scan_diff.py --commit-msg FILE        # scan a commit message file (commit-msg hook)
     scan_diff.py --text -                 # read text to scan from stdin
+    scan_diff.py --scan-history           # walk commit history for Direct PII/Secrets ever
+                                           # introduced, even if later removed from HEAD
+                                           # (Metadata not covered — see references/leak-taxonomy.md)
 
 Advisory by default (always exits 0). Add a CI/hook gate:
     scan_diff.py --block-on high          # exit 1 if any 'high' (or above) finding exists
@@ -433,6 +436,72 @@ def scan_staged(repo_root):
     return findings
 
 
+# --- Commit history scanning ---------------------------------------------------------
+# Answers a question the staged-diff scan structurally can't: "did I already leak
+# something before this tool existed?" A secret removed from HEAD in a later commit is
+# still sitting in the repo's history unless that history was rewritten — the staged/
+# working-tree view can never see it, only walking commits can.
+
+def get_commit_hashes(repo_root, max_commits=None):
+    """Non-merge commit hashes on HEAD's ancestry, oldest first (so
+    findings print in the order a leak was actually introduced). Merge
+    commits are skipped on purpose: `git show <merge-commit>` produces a
+    combined-diff format (no `+++`/`---`/`@@` in the shape
+    added_lines_from_diff() parses) unless given `-m`, and a merge
+    commit's content was already introduced by one of the non-merge
+    commits that fed into it — skipping it loses no real coverage, only
+    the complexity of a second diff parser for no new information."""
+    cmd = ["git", "log", "--no-merges", "--reverse", "--pretty=format:%H"]
+    if max_commits:
+        cmd += ["-n", str(max_commits)]
+    proc = _run(cmd, cwd=repo_root)
+    if proc.returncode != 0:
+        return []
+    return [h for h in proc.stdout.splitlines() if h]
+
+
+def get_commit_diff(repo_root, commit_hash):
+    proc = _run(["git", "show", commit_hash, "-U0", "--pretty=format:"], cwd=repo_root)
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def scan_history(repo_root, max_commits=None):
+    """Walks non-merge commit history (oldest first), running the same
+    Direct PII/Secrets line scanners scan_staged() uses against every
+    commit's added lines — reusing added_lines_from_diff() exactly as-is
+    since a single commit's `git show` output is a standard unified diff,
+    indistinguishable in shape from the staged diff that function was
+    originally written for.
+
+    Metadata is deliberately NOT scanned here — unlike Direct PII/Secrets
+    (line-based, works directly off each commit's diff text), a
+    historical metadata check would need each commit's actual file
+    content (`git show <hash>:<path>`, not just its diff), a materially
+    heavier operation, and out of scope for this pass. See
+    references/leak-taxonomy.md.
+
+    `.privacy-linter-ignore` is read once, from the current working tree
+    — not reconstructed per-commit from whatever that file looked like at
+    the time — since an ignore rule is a forward-looking policy the user
+    wants applied uniformly across all of history, not something that
+    should silently vary because the ignore file itself didn't exist yet
+    in an old commit."""
+    findings = []
+    ignore_patterns = load_ignore_patterns(repo_root)
+    for commit_hash in get_commit_hashes(repo_root, max_commits=max_commits):
+        diff_text = get_commit_diff(repo_root, commit_hash)
+        short_hash = commit_hash[:8]
+        for path, lineno, content in added_lines_from_diff(diff_text):
+            if is_path_ignored(path, ignore_patterns):
+                continue
+            if SUPPRESS_MARKER in content:
+                continue
+            location = f"{short_hash} {path}:{lineno}"
+            findings.extend(_findings_from_matches(content, PII_SCANNERS, "direct_pii", location, " in commit history"))
+            findings.extend(_findings_from_matches(content, SECRET_SCANNERS, "secret", location, " in commit history"))
+    return findings
+
+
 # --- Reporting ---------------------------------------------------------------------
 
 def print_report(findings, json_out=False):
@@ -470,6 +539,10 @@ def main():
     parser.add_argument("--out", metavar="PATH", help="Output path for --strip-metadata (default: FILE with '.stripped' inserted before the extension)")
     parser.add_argument("--in-place", action="store_true",
                         help="With --strip-metadata, overwrite FILE itself instead of writing a separate output — irreversible, the original EXIF is gone")
+    parser.add_argument("--scan-history", action="store_true",
+                        help="Scan the full commit history (current branch, non-merge commits) for Direct PII/Secrets ever introduced, even if later removed from HEAD. Slower than the default; does not cover Metadata.")
+    parser.add_argument("--max-commits", type=int, default=None,
+                        help="With --scan-history, only scan the N most recently-committed commits (default: entire history)")
     args = parser.parse_args()
 
     if args.strip_metadata:
@@ -497,6 +570,12 @@ def main():
             with open(args.file, encoding="utf-8", errors="replace") as f:
                 text = f.read()
             findings = scan_text_for_pii(text, location_prefix=args.file) + scan_text_for_secrets(text, location_prefix=args.file)
+    elif args.scan_history:
+        repo_root = get_repo_root()
+        if repo_root is None:
+            print("privacy-linter: --scan-history requires being inside a git repository.", file=sys.stderr)
+            sys.exit(2)
+        findings = scan_history(repo_root, max_commits=args.max_commits)
     else:
         repo_root = get_repo_root()
         if repo_root is None:

@@ -167,6 +167,31 @@ jobs:
             echo "ERROR: the placeholder value was incorrectly flagged"; exit 1
           fi
 
+      - name: privacy-linter — --scan-history finds a secret removed from HEAD
+        # Proves the actual reason --scan-history exists: a secret committed then
+        # deleted is invisible to the default staged/working-tree scan but must still
+        # surface here, since it's still reachable in the repo's history.
+        run: |
+          set -e
+          DEMO=$(mktemp -d)
+          git init -q "$DEMO"
+          git -C "$DEMO" config user.email test@example.com
+          git -C "$DEMO" config user.name Test
+          cd "$DEMO"
+          echo "nothing sensitive" > notes.txt
+          git add notes.txt && git commit -q -m init
+          printf 'aws_key = AKIAIOSFODNN7EXAMPLE\n' > .env
+          git add .env && git commit -q -m "oops, committed a key"
+          git rm -q .env && git commit -q -m "remove the key"
+          cd - > /dev/null
+
+          DEFAULT_OUTPUT=$(python skills/privacy-linter/scripts/scan_diff.py --file "$DEMO/notes.txt")
+          echo "$DEFAULT_OUTPUT" | grep -q "no findings"
+
+          HISTORY_OUTPUT=$(cd "$DEMO" && python "$OLDPWD/skills/privacy-linter/scripts/scan_diff.py" --scan-history)
+          echo "$HISTORY_OUTPUT"
+          echo "$HISTORY_OUTPUT" | grep -q "aws_access_key"
+
       - name: wiki-librarian — check_vault.py regression suite (stdlib unittest)
         run: python skills/wiki-librarian/scripts/test_check_vault.py
 

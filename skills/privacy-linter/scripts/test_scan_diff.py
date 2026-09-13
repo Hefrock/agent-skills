@@ -525,5 +525,130 @@ class CliGitStagedMode(unittest.TestCase):
             self.assertIn("not inside a git repository", proc.stderr)
 
 
+class ScanHistory(unittest.TestCase):
+    """--scan-history: a real temp git repo with several commits, including
+    one that introduces a secret and a LATER commit that removes it again —
+    the case the staged-diff/working-tree scan structurally cannot see."""
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp()
+        self._git("init", "-q")
+        self._git("config", "user.email", "test@example.com")
+        self._git("config", "user.name", "Test")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.repo, ignore_errors=True)
+
+    def _git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, capture_output=True, text=True, check=True)
+
+    def _write(self, relpath, content):
+        full = os.path.join(self.repo, relpath)
+        os.makedirs(os.path.dirname(full), exist_ok=True) if os.path.dirname(full) else None
+        with open(full, "w") as f:
+            f.write(content)
+
+    def _commit(self, msg):
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", msg)
+
+    def test_finds_secret_introduced_and_later_removed(self):
+        self._write("notes.txt", "nothing sensitive here\n")
+        self._commit("init")
+        self._write(".env", "aws_key = AKIAIOSFODNN7EXAMPLE\n")
+        self._commit("oops, committed a key")
+        self._git("rm", "-q", ".env")
+        self._commit("remove the key")
+
+        # Working tree/staged view has nothing — the secret is genuinely gone from HEAD.
+        proc = run_script(cwd=self.repo)
+        self.assertIn("no findings", proc.stdout)
+
+        # History scan still finds it, because it's still reachable in an old commit.
+        proc = run_script("--scan-history", cwd=self.repo)
+        self.assertEqual(proc.returncode, 0)  # advisory by default
+        self.assertIn("aws_access_key", proc.stdout)
+
+    def test_findings_report_the_introducing_commit_and_path(self):
+        self._write("notes.txt", "initial\n")
+        self._commit("init")
+        self._write("config.txt", "ssn on file: 123-45-6789\n")
+        self._commit("add config")
+
+        proc = run_script("--scan-history", cwd=self.repo)
+        second_commit = self._git("rev-parse", "HEAD").stdout.strip()[:8]
+        self.assertIn(second_commit, proc.stdout)
+        self.assertIn("config.txt:1", proc.stdout)
+
+    def test_findings_ordered_oldest_commit_first(self):
+        self._write("a.txt", "ssn on file: 123-45-6789\n")
+        self._commit("first leak")
+        self._write("b.txt", "aws_key = AKIAIOSFODNN7EXAMPLE\n")
+        self._commit("second leak")
+
+        proc = run_script("--scan-history", "--json", cwd=self.repo)
+        rows = json.loads(proc.stdout)
+        locations = [r["location"] for r in rows]
+        # a.txt's finding (first commit) must be reported before b.txt's (second commit).
+        self.assertLess(
+            next(i for i, loc in enumerate(locations) if "a.txt" in loc),
+            next(i for i, loc in enumerate(locations) if "b.txt" in loc),
+        )
+
+    def test_ignored_path_suppressed_across_history(self):
+        self._write(".privacy-linter-ignore", "fixtures/*\n")
+        self._commit("add ignore file")
+        self._write("fixtures/sample.txt", "jane.doe@example.com\n")
+        self._commit("add fixture")
+
+        proc = run_script("--scan-history", cwd=self.repo)
+        self.assertIn("no findings", proc.stdout)
+
+    def test_inline_suppression_marker_respected_in_history(self):
+        self._write("notes.txt", "jane.doe@example.com  # privacy-linter: ignore\n")
+        self._commit("add suppressed line")
+
+        proc = run_script("--scan-history", cwd=self.repo)
+        self.assertIn("no findings", proc.stdout)
+
+    def test_max_commits_limits_scan_to_most_recent(self):
+        self._write("a.txt", "ssn on file: 123-45-6789\n")
+        self._commit("old leak")
+        self._write("b.txt", "nothing sensitive\n")
+        self._commit("unrelated recent commit")
+
+        proc = run_script("--scan-history", "--max-commits", "1", cwd=self.repo)
+        self.assertIn("no findings", proc.stdout)
+
+    def test_merge_commit_does_not_crash_the_scan(self):
+        self._write("base.txt", "nothing sensitive\n")
+        self._commit("init")
+        default_branch = self._git("branch", "--show-current").stdout.strip()
+        self._git("checkout", "-q", "-b", "feature")
+        self._write("feature.txt", "ssn on file: 123-45-6789\n")
+        self._commit("feature work")
+        self._git("checkout", "-q", default_branch)
+        self._git("merge", "-q", "--no-edit", "feature")
+
+        proc = run_script("--scan-history", cwd=self.repo)
+        self.assertEqual(proc.returncode, 0)
+        # The non-merge "feature work" commit is still scanned directly.
+        self.assertIn("ssn", proc.stdout)
+
+    def test_block_on_gate_applies_to_history_scan(self):
+        self._write("notes.txt", "ssn on file: 123-45-6789\n")
+        self._commit("leak")
+
+        proc = run_script("--scan-history", "--block-on", "high", cwd=self.repo)
+        self.assertEqual(proc.returncode, 1)
+
+    def test_scan_history_outside_git_repo_errors_cleanly(self):
+        with tempfile.TemporaryDirectory() as d:
+            proc = run_script("--scan-history", cwd=d)
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn("--scan-history requires being inside a git repository", proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

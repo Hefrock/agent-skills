@@ -61,6 +61,34 @@ etc.) suppresses the generic assignment pattern specifically — the prefixed-to
 patterns above never need it, since a real AWS/GitHub/etc. prefix on a placeholder
 string would be a strange thing for anyone to type by hand.
 
+## Built: Commit-history scanning (`--scan-history`)
+
+Direct PII and Secrets, both above, get a second surface: everything the staged-diff
+scan already checks, `--scan-history` also checks against every non-merge commit's own
+added lines, oldest first. This exists because the default scan structurally can't
+answer "did I leak this before the tool existed" — a secret committed and later deleted
+is gone from `HEAD` and the working tree, but still sitting in a reachable git object
+unless history itself gets rewritten (`git filter-repo`/BFG, outside this tool's scope
+entirely — this is a detector, not a history-rewriting tool).
+
+Two explicit exclusions, not silent gaps:
+
+- **Merge commits are skipped.** `git show <merge-commit>` produces a combined-diff
+  format by default (no `+++`/`---`/`@@` unified-diff shape), and every merge commit's
+  content already arrived via a non-merge ancestor commit that IS scanned directly — so
+  skipping merges costs no real coverage, only the complexity of a second diff parser.
+- **Metadata is not scanned in history mode.** Direct PII/Secrets work off each commit's
+  diff text directly (cheap, already available from `git show`); a historical metadata
+  check would need each commit's actual file content (`git show <hash>:<path>` per
+  candidate file, per commit) — a materially heavier operation, and real scope beyond
+  this pass. A GPS-tagged photo committed and later removed would not be caught by
+  `--scan-history` today.
+
+`.privacy-linter-ignore` is read once from the current working tree and applied
+uniformly across all of history — not reconstructed per-commit from whatever that file
+looked like at the time, since an ignore rule is a forward-looking policy decision, not
+something that should vary by which commit happens to be under the microscope.
+
 ## Built: Metadata
 
 Two tiers for detection, one for remediation:
