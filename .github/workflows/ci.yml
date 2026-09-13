@@ -127,6 +127,11 @@ jobs:
       - name: privacy-linter — run test suite (stdlib unittest, incl. real temp-git-repo tests)
         run: python skills/privacy-linter/scripts/test_scan_diff.py
 
+      - name: privacy-linter — scan_log_history.py test suite (stdlib unittest)
+        # Includes a real end-to-end run into agent-eval's score_eval.py, not
+        # just schema assertions — proves the cross-skill bridge actually works.
+        run: python skills/privacy-linter/scripts/test_scan_log_history.py
+
       - name: privacy-linter — worked example smoke test
         # Recreates examples/README.md's scenario in a real repo and confirms the
         # documented finding count and severity mix actually come out of the script,
