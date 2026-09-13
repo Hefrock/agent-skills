@@ -1,6 +1,6 @@
 ---
 name: privacy-linter
-description: Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP address), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private key blocks, hardcoded-credential assignments), and Metadata risk (image/document file types that commonly carry EXIF/embedded properties, with a confirmed EXIF GPS check when Pillow is available) before a commit lands. Can also strip EXIF metadata from a JPEG/TIFF outright with `--strip-metadata`. Runs entirely locally with no model or network call — pattern-matching only. Use when the user wants to check a commit, diff, or file for leaked PII or secrets before it's committed or shared, asks "will this diff leak anything," "did I commit an API key," wants a pre-commit privacy check, wants to scan a specific file or pasted text for personal information, or wants to strip GPS/EXIF data from a photo before sharing it. Triggers on "check this diff for PII," "will committing this leak anything," "scan this file for personal info," "did I leak a secret/API key," "strip metadata from this photo," "set up a privacy pre-commit hook," and the script `scan_diff.py`. Does not cover inference-cue or stylometric leaks, or text redaction — see references/leak-taxonomy.md for why those are deliberately out of scope for this version.
+description: Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP address), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private key blocks, hardcoded-credential assignments), and Metadata risk (image/document file types that commonly carry EXIF/embedded properties, with a confirmed EXIF GPS check when Pillow is available) before a commit lands. `--scan-history` walks the full commit history for PII/secrets ever introduced, even if later removed from HEAD. Can also strip EXIF metadata from a JPEG/TIFF outright with `--strip-metadata`. Runs entirely locally with no model or network call — pattern-matching only. Use when the user wants to check a commit, diff, or file for leaked PII or secrets before it's committed or shared, asks "will this diff leak anything," "did I commit an API key," "did I already leak something in an old commit," wants a pre-commit privacy check, wants to scan a specific file or pasted text for personal information, or wants to strip GPS/EXIF data from a photo before sharing it. Triggers on "check this diff for PII," "will committing this leak anything," "scan this file for personal info," "did I leak a secret/API key," "check git history for leaked secrets," "strip metadata from this photo," "set up a privacy pre-commit hook," and the script `scan_diff.py`. Does not cover inference-cue or stylometric leaks, or text redaction — see references/leak-taxonomy.md for why those are deliberately out of scope for this version.
 ---
 
 # Privacy Linter
@@ -79,6 +79,24 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
    is passed explicitly — and re-reads the *output* file's EXIF afterward to confirm the
    strip actually worked before reporting success. Refuses to silently clobber an
    existing `.stripped` file from a previous run; pass `--out` for a different path.
+7. **Check whether something was already leaked before this tool existed**, not just
+   what's staged right now:
+   ```bash
+   python scripts/scan_diff.py --scan-history                  # entire branch history
+   python scripts/scan_diff.py --scan-history --max-commits 50 # just the N most recent commits
+   ```
+   Walks every non-merge commit on the current branch (oldest first, so findings print
+   in the order a leak was actually introduced), checking each commit's own added lines
+   for Direct PII/Secrets — the same regex scanners as everything above, just pointed at
+   history instead of the staged diff. This is the one check the staged/working-tree
+   view structurally cannot do: a secret committed and later removed from `HEAD` is
+   still sitting in an old commit unless history itself was rewritten, and `--scan-
+   history` is what actually looks there instead of assuming a deleted line is a solved
+   problem. Each finding's location is `<short-hash> <path>:<line>` — `git show
+   <short-hash>` to see the exact commit. Does not cover Metadata (would need reading
+   each historical blob's file content, not just its diff — a heavier operation left
+   for a future pass) or merge commits (their content was already introduced by a
+   non-merge ancestor commit, so nothing is missed by skipping them).
 
 ## Installing as a git pre-commit hook
 
@@ -112,6 +130,11 @@ overwrites an existing hook without confirmation.
   `--strip-metadata` only covers JPEG/TIFF via Pillow; the others need a different
   metadata-writing library each — detection still flags all of them, just not
   remediation.
+- **Metadata in `--scan-history`, and merge commits in `--scan-history`.** History
+  scanning covers Direct PII/Secrets only — a historical metadata check would need
+  each commit's actual file content, not just its diff, real scope beyond this pass.
+  Merge commits are skipped (their content already arrived via a scanned non-merge
+  ancestor). See `references/leak-taxonomy.md`.
 
 ## Output discipline
 
@@ -129,7 +152,7 @@ overwrites an existing hook without confirmation.
 
 | Path | What it is |
 |---|---|
-| `scripts/scan_diff.py` | The scanner — PII/secret regex + metadata heuristics, EXIF stripping, git integration, suppression, CLI gate |
+| `scripts/scan_diff.py` | The scanner — PII/secret regex + metadata heuristics, EXIF stripping, commit-history scanning, git integration, suppression, CLI gate |
 | `scripts/test_scan_diff.py` | Unit + CLI + real-temp-git-repo test suite (stdlib unittest) |
 | `scripts/install_hook.sh` | Installs `scan_diff.py` as a repo's `pre-commit` hook |
 | `references/leak-taxonomy.md` | Every leak class (the source design's four, plus Secrets), severity rubric and rationale, what's built vs. deferred and why |
