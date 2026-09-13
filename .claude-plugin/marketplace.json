@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "plugins": [
     {
@@ -161,6 +161,18 @@
       "strict": false,
       "skills": [
         "./research-ledger"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "wiki-privacy-audit",
+      "description": "Audits an Obsidian vault's notes for Direct PII and Secrets by reusing privacy-linter's deterministic scanner rather than reimplementing detection. Reports findings and proposes redaction with confirmation via wiki-operator; never edits vault content automatically. Requires Obsidian MCP connected + privacy-linter (sibling skill).",
+      "author": { "name": "Hefrock" },
+      "category": "knowledge-management",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./wiki-privacy-audit"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     }

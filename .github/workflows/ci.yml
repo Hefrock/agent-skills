@@ -201,6 +201,12 @@ jobs:
       - name: wiki-teacher — wiki_teacher.py regression suite (stdlib unittest)
         run: python skills/wiki-teacher/scripts/test_wiki_teacher.py
 
+      - name: wiki-privacy-audit — check_vault_privacy.py test suite (stdlib unittest)
+        # Exercises the real cross-skill subprocess call into privacy-linter's
+        # scan_diff.py, not a mock — proves the two skills actually stay wired
+        # together, not just that each one's own suite passes in isolation.
+        run: python skills/wiki-privacy-audit/scripts/test_check_vault_privacy.py
+
       - name: broadcast — dedup_store.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_dedup_store.py
 
