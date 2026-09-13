@@ -1,6 +1,6 @@
 ---
 name: privacy-linter
-description: Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP address) and Metadata risk (image/document file types that commonly carry EXIF/embedded properties, with a confirmed EXIF GPS check when Pillow is available) before a commit lands. Runs entirely locally with no model or network call — pattern-matching only. Use when the user wants to check a commit, diff, or file for leaked PII before it's committed or shared, asks "will this diff leak anything," wants a pre-commit privacy check, or wants to scan a specific file or pasted text for personal information. Triggers on "check this diff for PII," "will committing this leak anything," "scan this file for personal info," "set up a privacy pre-commit hook," and the script `scan_diff.py`. Does not cover inference-cue or stylometric leaks — see references/leak-taxonomy.md for why those are deliberately out of scope for this version.
+description: Deterministic pre-disclosure privacy scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP address), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private key blocks, hardcoded-credential assignments), and Metadata risk (image/document file types that commonly carry EXIF/embedded properties, with a confirmed EXIF GPS check when Pillow is available) before a commit lands. Can also strip EXIF metadata from a JPEG/TIFF outright with `--strip-metadata`. Runs entirely locally with no model or network call — pattern-matching only. Use when the user wants to check a commit, diff, or file for leaked PII or secrets before it's committed or shared, asks "will this diff leak anything," "did I commit an API key," wants a pre-commit privacy check, wants to scan a specific file or pasted text for personal information, or wants to strip GPS/EXIF data from a photo before sharing it. Triggers on "check this diff for PII," "will committing this leak anything," "scan this file for personal info," "did I leak a secret/API key," "strip metadata from this photo," "set up a privacy pre-commit hook," and the script `scan_diff.py`. Does not cover inference-cue or stylometric leaks, or text redaction — see references/leak-taxonomy.md for why those are deliberately out of scope for this version.
 ---
 
 # Privacy Linter
@@ -16,13 +16,19 @@ The design this implements (`Projects/Privacy OS - Pre-Disclosure Privacy Linter
 source vault) requires local-only analysis: **sending content to an external LLM API for
 leak detection is itself a potential disclosure.** Of the four leak classes in that
 design — Direct PII, Metadata, Inference cues, Stylometric fingerprint — only the first
-two are mechanically detectable without a model. This version implements those two,
-end to end, with real tests, the same order `deid-reid-harness` used for its own tracks
-(ship the model-independent slice first). Inference cues and stylometric fingerprinting
-are documented, not built — see `references/leak-taxonomy.md` — because building them
-today would mean either standing up a local-model pipeline (real setup work, not yet
-done) or using an external LLM for exactly the analysis this project exists to keep
-local. Don't silently reach for an external model to "complete" those two classes.
+two are mechanically detectable without a model. This version implements those two, end
+to end, with real tests, the same order `deid-reid-harness` used for its own tracks
+(ship the model-independent slice first) — plus **Secrets/credentials**, a class added
+afterward that isn't part of the source design's original four but is mechanically
+detectable the exact same way (see `references/leak-taxonomy.md` for why it's called
+out as an addition, not silently folded into "Direct PII"). Inference cues and
+stylometric fingerprinting are documented, not built — see `references/leak-taxonomy.md`
+— because building them today would mean either standing up a local-model pipeline
+(real setup work, not yet done) or using an external LLM for exactly the analysis this
+project exists to keep local. Don't silently reach for an external model to "complete"
+those two classes. Text redaction for Direct PII/Secrets is deliberately not built for
+a related reason — auto-rewriting is a judgment call (did it redact too much/too
+little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit version.
 
 ## How this works
 
@@ -31,6 +37,11 @@ local. Don't silently reach for an external model to "complete" those two classe
    - **Direct PII** — regex-matched against added lines only (not removed or context
      lines): email, phone, SSN (strict `###-##-####` form), credit card (13-19 digit
      run, Luhn-validated to cut false positives), IPv4 (octet-range validated).
+   - **Secrets** — same added-lines-only scope: AWS/GitHub/Slack/Stripe/Google/
+     Anthropic token prefixes, private key blocks, and a conservative catch-all for a
+     secret in an unrecognized format (a *quoted* string literal assigned to a
+     `api_key`/`secret`/`token`/`password`-shaped name — bare/unquoted values are a
+     documented gap, too false-positive-prone to catch reliably).
    - **Metadata** — any staged file whose extension commonly carries embedded metadata
      (jpg/png/heic/tiff/bmp/gif/pdf/docx/xlsx/pptx) is flagged as an advisory. If
      Pillow is installed, JPEG/TIFF files additionally get a real EXIF GPS check —
@@ -57,6 +68,17 @@ local. Don't silently reach for an external model to "complete" those two classe
    ```
    Same `--block-on`-as-CI-gate pattern `agent-eval`'s `score_eval.py` already uses —
    reused here rather than inventing a new convention.
+6. **Strip EXIF metadata outright**, instead of just flagging it (JPEG/TIFF only,
+   requires Pillow):
+   ```bash
+   python scripts/scan_diff.py --strip-metadata photo.jpg               # -> photo.stripped.jpg
+   python scripts/scan_diff.py --strip-metadata photo.jpg --out clean.jpg
+   python scripts/scan_diff.py --strip-metadata photo.jpg --in-place    # overwrites photo.jpg
+   ```
+   Writes a separate copy by default — never overwrites the original unless `--in-place`
+   is passed explicitly — and re-reads the *output* file's EXIF afterward to confirm the
+   strip actually worked before reporting success. Refuses to silently clobber an
+   existing `.stripped` file from a previous run; pass `--out` for a different path.
 
 ## Installing as a git pre-commit hook
 
@@ -80,6 +102,16 @@ overwrites an existing hook without confirmation.
 - **Free-text name detection.** Regex can't reliably distinguish a name from an
   ordinary capitalized word without NER/a model — deliberately not attempted rather
   than shipped with a high false-positive rate.
+- **Text redaction / auto-fix for Direct PII or Secrets.** Detection only reports;
+  nothing here rewrites a file or diff. Auto-redacting is a judgment call (did it
+  redact too much, too little, or corrupt surrounding content) that this tool's own
+  "low false-positive rate matters more than coverage" philosophy argues against
+  automating — a human should apply the actual fix. `--strip-metadata` is the one
+  exception, because EXIF removal has no such judgment call to get wrong.
+- **Metadata stripping for non-EXIF formats** (PNG, HEIC, PDF, DOCX, XLSX, PPTX).
+  `--strip-metadata` only covers JPEG/TIFF via Pillow; the others need a different
+  metadata-writing library each — detection still flags all of them, just not
+  remediation.
 
 ## Output discipline
 
@@ -97,8 +129,8 @@ overwrites an existing hook without confirmation.
 
 | Path | What it is |
 |---|---|
-| `scripts/scan_diff.py` | The scanner — PII regex + metadata heuristics, git integration, suppression, CLI gate |
+| `scripts/scan_diff.py` | The scanner — PII/secret regex + metadata heuristics, EXIF stripping, git integration, suppression, CLI gate |
 | `scripts/test_scan_diff.py` | Unit + CLI + real-temp-git-repo test suite (stdlib unittest) |
 | `scripts/install_hook.sh` | Installs `scan_diff.py` as a repo's `pre-commit` hook |
-| `references/leak-taxonomy.md` | The four leak classes, severity rubric and rationale, what's built vs. deferred and why |
+| `references/leak-taxonomy.md` | Every leak class (the source design's four, plus Secrets), severity rubric and rationale, what's built vs. deferred and why |
 | `examples/` | A worked example: a synthetic diff with seeded PII, and the scan output it produces |

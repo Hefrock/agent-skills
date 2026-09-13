@@ -84,6 +84,82 @@ class PiiPatterns(unittest.TestCase):
         self.assertEqual(f[0].location, "test:3")
 
 
+class SecretPatterns(unittest.TestCase):
+    def findings_for(self, text):
+        return scan_diff.scan_text_for_secrets(text, location_prefix="test")
+
+    def test_aws_access_key_detected(self):
+        f = self.findings_for("key_id = AKIAIOSFODNN7EXAMPLE")
+        self.assertTrue(any(x.leak_class == "secret" and "aws_access_key" in x.finding for x in f))
+
+    def test_github_token_detected(self):
+        f = self.findings_for("export GITHUB_TOKEN=ghp_" + "a" * 36)
+        self.assertTrue(any("github_token" in x.finding for x in f))
+
+    def test_slack_token_detected(self):
+        f = self.findings_for("SLACK_BOT_TOKEN=xoxb-" + "1" * 12 + "-" + "a" * 16)
+        self.assertTrue(any("slack_token" in x.finding for x in f))
+
+    def test_stripe_key_detected(self):
+        f = self.findings_for("stripe_key = " + "sk_live_" + "a" * 24)
+        self.assertTrue(any("stripe_key" in x.finding for x in f))
+
+    def test_google_api_key_detected(self):
+        f = self.findings_for("apiKey: " + "AIza" + "a" * 35)
+        self.assertTrue(any("google_api_key" in x.finding for x in f))
+
+    def test_anthropic_api_key_detected(self):
+        f = self.findings_for("ANTHROPIC_API_KEY=sk-ant-" + "a" * 20)
+        self.assertTrue(any("anthropic_api_key" in x.finding for x in f))
+
+    def test_private_key_block_detected(self):
+        f = self.findings_for("-----BEGIN RSA PRIVATE KEY-----\nMIIB...\n-----END RSA PRIVATE KEY-----")
+        self.assertTrue(any("private_key_block" in x.finding for x in f))
+
+    def test_private_key_block_without_algorithm_prefix_detected(self):
+        f = self.findings_for("-----BEGIN PRIVATE KEY-----\nMIIB...\n-----END PRIVATE KEY-----")
+        self.assertTrue(any("private_key_block" in x.finding for x in f))
+
+    def test_generic_quoted_secret_assignment_detected(self):
+        f = self.findings_for('password = "hunter2isaveryrealpassword"')
+        self.assertTrue(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_generic_secret_keyword_mid_identifier_detected(self):
+        # "password" isn't at a word boundary in "db_password" — must still match.
+        f = self.findings_for('db_password = "hunter2isaveryrealpassword"')
+        self.assertTrue(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_generic_placeholder_value_not_flagged(self):
+        f = self.findings_for('api_key = "your_api_key_here"')
+        self.assertFalse(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_generic_short_value_not_flagged(self):
+        f = self.findings_for('token = "short"')
+        self.assertFalse(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_generic_unquoted_assignment_not_flagged(self):
+        # Documented gap: bare/unquoted values (.env-style) aren't covered —
+        # too many false positives (function calls, env-var references).
+        f = self.findings_for("API_KEY=abcdef123456")
+        self.assertFalse(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_clean_text_no_findings(self):
+        f = self.findings_for("this is a perfectly ordinary sentence about nothing sensitive")
+        self.assertEqual(f, [])
+
+    def test_inline_suppression_marker(self):
+        f = self.findings_for("AKIAIOSFODNN7EXAMPLE  # privacy-linter: ignore")
+        self.assertEqual(f, [])
+
+    def test_severity_is_high_for_prefixed_tokens(self):
+        f = self.findings_for("key_id = AKIAIOSFODNN7EXAMPLE")
+        self.assertEqual(f[0].severity, "high")
+
+    def test_severity_is_medium_for_generic_assignment(self):
+        f = self.findings_for('password = "hunter2isaveryrealpassword"')
+        self.assertEqual(f[0].severity, "medium")
+
+
 class MetadataHeuristic(unittest.TestCase):
     def test_image_extension_flagged(self):
         f = scan_diff.scan_metadata(["photos/vacation.jpg"], repo_root=None)
@@ -131,6 +207,119 @@ class MetadataHeuristic(unittest.TestCase):
         f = scan_diff.scan_metadata(["photos/vacation.jpg"], repo_root=None)
         self.assertEqual(len(f), 1)
         self.assertEqual(f[0].severity, "medium")
+
+
+def _make_gps_jpeg(path, testcase):
+    """Writes a real JPEG with a GPSInfo EXIF IFD to `path`, skipping the
+    calling test (not failing it) if this Pillow version/environment
+    can't round-trip a written GPS IFD — same tolerance the pre-existing
+    test_exif_gps_confirmed_when_present already established, reused here
+    rather than duplicating the try/except-skip dance in every new test."""
+    from PIL import Image
+    img = Image.new("RGB", (2, 2))
+    exif = img.getexif()
+    exif[0x8825] = {1: "N", 2: (10.0, 0.0, 0.0)}
+    exif[0x010F] = "TestCameraMake"
+    try:
+        img.save(path, exif=exif)
+    except Exception as e:
+        testcase.skipTest(f"could not write test EXIF fixture: {e}")
+    if not scan_diff._read_exif_gps(path):
+        testcase.skipTest("Pillow round-tripped no GPS IFD in this environment — can't validate the positive path here")
+
+
+@unittest.skipUnless(scan_diff.HAS_PIL, "Pillow not installed — --strip-metadata has no fallback")
+class MetadataStripping(unittest.TestCase):
+    def test_strip_removes_gps_and_reports_removed_tags(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "photo.jpg")
+            _make_gps_jpeg(source, self)
+            dest = os.path.join(d, "clean.jpg")
+
+            removed = scan_diff.strip_exif_metadata(source, dest)
+            self.assertIn("GPSInfo", removed)
+            self.assertIn("Make", removed)
+            self.assertIsNone(scan_diff._read_exif_gps(dest))
+
+    def test_strip_on_image_with_no_exif_returns_empty_list(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "plain.jpg")
+            Image.new("RGB", (2, 2)).save(source)
+            dest = os.path.join(d, "clean.jpg")
+
+            removed = scan_diff.strip_exif_metadata(source, dest)
+            self.assertEqual(removed, [])
+            self.assertTrue(os.path.isfile(dest))
+
+    def test_strip_in_place_same_path_still_works(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "photo.jpg")
+            _make_gps_jpeg(path, self)
+
+            scan_diff.strip_exif_metadata(path, path)
+            self.assertIsNone(scan_diff._read_exif_gps(path))
+
+    def test_cli_strip_default_output_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "photo.jpg")
+            _make_gps_jpeg(source, self)
+
+            proc = run_script("--strip-metadata", source)
+            self.assertEqual(proc.returncode, 0)
+            dest = os.path.join(d, "photo.stripped.jpg")
+            self.assertTrue(os.path.isfile(dest))
+            self.assertIsNone(scan_diff._read_exif_gps(dest))
+            self.assertIn("stripped EXIF", proc.stdout)
+
+    def test_cli_strip_refuses_to_clobber_existing_default_output(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "photo.jpg")
+            _make_gps_jpeg(source, self)
+            existing = os.path.join(d, "photo.stripped.jpg")
+            with open(existing, "w") as f:
+                f.write("not a real image, just occupying the path")
+
+            proc = run_script("--strip-metadata", source)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("already exists", proc.stderr)
+            with open(existing) as f:
+                self.assertEqual(f.read(), "not a real image, just occupying the path")
+
+    def test_cli_strip_explicit_out_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "photo.jpg")
+            _make_gps_jpeg(source, self)
+            out = os.path.join(d, "custom_name.jpg")
+
+            proc = run_script("--strip-metadata", source, "--out", out)
+            self.assertEqual(proc.returncode, 0)
+            self.assertTrue(os.path.isfile(out))
+            self.assertIsNone(scan_diff._read_exif_gps(out))
+
+    def test_cli_strip_in_place_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "photo.jpg")
+            _make_gps_jpeg(source, self)
+
+            proc = run_script("--strip-metadata", source, "--in-place")
+            self.assertEqual(proc.returncode, 0)
+            self.assertIsNone(scan_diff._read_exif_gps(source))
+
+    def test_cli_strip_unsupported_extension_errors_cleanly(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = os.path.join(d, "doc.pdf")
+            with open(source, "w") as f:
+                f.write("not a real pdf")
+
+            proc = run_script("--strip-metadata", source)
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn("isn't implemented for .pdf", proc.stderr)
+
+    def test_cli_strip_missing_file_errors_cleanly(self):
+        proc = run_script("--strip-metadata", "/nonexistent/path/photo.jpg")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("not found", proc.stderr)
 
 
 class IgnorePatterns(unittest.TestCase):
@@ -221,6 +410,21 @@ class CliFileMode(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("ssn", proc.stdout)
 
+    def test_stdin_text_mode_detects_secrets_too(self):
+        proc = run_script("--text", "-", input_text="key_id = AKIAIOSFODNN7EXAMPLE\n")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("aws_access_key", proc.stdout)
+
+    def test_file_mode_detects_secrets_too(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("ANTHROPIC_API_KEY=sk-ant-" + "a" * 20 + "\n")
+            path = f.name
+        try:
+            proc = run_script("--file", path)
+            self.assertIn("anthropic_api_key", proc.stdout)
+        finally:
+            os.unlink(path)
+
     def test_json_output_is_valid(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("jane.doe@example.com\n")
@@ -283,6 +487,14 @@ class CliGitStagedMode(unittest.TestCase):
         proc = run_script(cwd=self.repo)
         self.assertEqual(proc.returncode, 0)  # advisory by default
         self.assertIn("email", proc.stdout)
+
+    def test_staged_secret_detected_with_no_args(self):
+        self._write(".env", "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n")
+        self._git("add", ".env")
+        proc = run_script(cwd=self.repo)
+        self.assertEqual(proc.returncode, 0)  # advisory by default
+        self.assertIn("aws_access_key", proc.stdout)
+        self.assertIn("[class: secret]", proc.stdout)
 
     def test_ignored_path_suppresses_finding(self):
         self._write(".privacy-linter-ignore", "fixtures/*\n")
