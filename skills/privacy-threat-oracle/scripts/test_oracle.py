@@ -41,7 +41,7 @@ class RuleTable(unittest.TestCase):
         # employer_visible -> employer (medium) + civil_discovery (medium): no high-cost
         # adversary in this exposure, unlike public_internet (state_actor) or
         # specific_person/close_group (stalker).
-        r = oracle.evaluate("personal", "personal", "employer_visible", ["secrets"])
+        r = oracle.evaluate("personal", "personal", "employer_visible", ["secret"])
         self.assertEqual(r["adversary_cost_tier"], "medium")
         self.assertEqual(r["recommendation"], "proceed_with_modification")
         self.assertEqual(r["residual_risk"], "medium")
@@ -107,21 +107,37 @@ class ReversibilityDowngrade(unittest.TestCase):
 class LinterJsonBridge(unittest.TestCase):
     def test_extracts_deduped_classes(self):
         payload = json.dumps([
-            {"class": "direct_pii", "severity": "high"},
-            {"class": "direct_pii", "severity": "high"},
-            {"class": "secrets", "severity": "high"},
+            {"leak_class": "direct_pii", "severity": "high"},
+            {"leak_class": "direct_pii", "severity": "high"},
+            {"leak_class": "secret", "severity": "high"},
         ])
-        self.assertEqual(oracle.content_classes_from_linter_json(payload), ["direct_pii", "secrets"])
+        self.assertEqual(oracle.content_classes_from_linter_json(payload), ["direct_pii", "secret"])
 
     def test_malformed_json_returns_empty_list(self):
         self.assertEqual(oracle.content_classes_from_linter_json("not json"), [])
 
     def test_non_list_json_returns_empty_list(self):
-        self.assertEqual(oracle.content_classes_from_linter_json(json.dumps({"class": "direct_pii"})), [])
+        self.assertEqual(oracle.content_classes_from_linter_json(json.dumps({"leak_class": "direct_pii"})), [])
 
-    def test_findings_missing_class_field_are_skipped(self):
-        payload = json.dumps([{"severity": "high"}, {"class": "metadata"}])
+    def test_findings_missing_leak_class_field_are_skipped(self):
+        payload = json.dumps([{"severity": "high"}, {"leak_class": "metadata"}])
         self.assertEqual(oracle.content_classes_from_linter_json(payload), ["metadata"])
+
+    def test_real_scan_diff_output_round_trips(self):
+        """Regression guard for the bug this replaced: the fixtures above hand-build
+        {"leak_class": ...} payloads, which would keep passing even if scan_diff.py's
+        actual Finding schema drifted again (that's exactly how the original {"class":
+        ...} mismatch slipped through). This runs the real scan_diff.py --json and
+        feeds its literal output through the bridge, so a future schema change here
+        or there breaks this test instead of silently degrading to zero content classes."""
+        scan_diff = str(Path(__file__).resolve().parents[2] / "privacy-linter" / "scripts" / "scan_diff.py")
+        proc = subprocess.run(
+            [sys.executable, scan_diff, "--text", "-", "--json"],
+            capture_output=True, text=True, input="AWS key: AKIAABCDEFGHIJKLMNOP\n",
+        )
+        self.assertEqual(proc.returncode, 0)
+        classes = oracle.content_classes_from_linter_json(proc.stdout)
+        self.assertEqual(classes, ["secret"])
 
 
 class Cli(unittest.TestCase):
@@ -150,7 +166,7 @@ class Cli(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
 
     def test_from_linter_json_stdin_feeds_content_classes(self):
-        payload = json.dumps([{"class": "secrets", "severity": "high"}])
+        payload = json.dumps([{"leak_class": "secret", "severity": "high"}])
         proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",
                           "--target-exposure", "specific_person", "--from-linter-json", "-",
                           "--json", input_text=payload)

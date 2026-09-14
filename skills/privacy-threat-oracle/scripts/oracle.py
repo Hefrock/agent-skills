@@ -44,9 +44,10 @@ def load_threat_model(path: str = THREAT_MODEL_PATH) -> dict:
 
 def content_classes_from_linter_json(raw: str) -> list[str]:
     """Extract a deduped list of content classes from a privacy-linter --json payload
-    (a list of finding objects each carrying a "class" field). Unknown/malformed input
-    yields an empty list rather than raising -- an oracle call should degrade to "no
-    known content classes", not crash, if the linter's output shape ever changes."""
+    (a list of Finding objects each carrying a "leak_class" field -- see scan_diff.py's
+    Finding dataclass). Unknown/malformed input yields an empty list rather than
+    raising -- an oracle call should degrade to "no known content classes", not crash,
+    if the linter's output shape ever changes."""
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -55,9 +56,9 @@ def content_classes_from_linter_json(raw: str) -> list[str]:
         return []
     classes = []
     for finding in data:
-        if isinstance(finding, dict) and isinstance(finding.get("class"), str):
-            if finding["class"] not in classes:
-                classes.append(finding["class"])
+        if isinstance(finding, dict) and isinstance(finding.get("leak_class"), str):
+            if finding["leak_class"] not in classes:
+                classes.append(finding["leak_class"])
     return classes
 
 
@@ -166,7 +167,7 @@ def main():
     ap.add_argument("--target-compartment", required=True, choices=["public_professional", "personal", "sensitive_research"])
     ap.add_argument("--target-exposure", required=True, choices=["public_internet", "specific_person", "close_group", "employer_visible"])
     ap.add_argument("--content-class", action="append", default=[],
-                     choices=["direct_pii", "secrets", "metadata", "inference_cue", "stylometric", "none"],
+                     choices=["direct_pii", "secret", "metadata", "inference_cue", "stylometric", "none"],
                      help="Repeatable. Omit (or pass 'none') for content with no flagged sensitivity.")
     ap.add_argument("--from-linter-json", metavar="PATH",
                      help="Read a privacy-linter --json payload ('-' for stdin) and add its finding classes to --content-class.")

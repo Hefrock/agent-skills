@@ -1,6 +1,6 @@
 ---
 name: privacy-threat-oracle
-description: Deterministic, rule-based privacy decision engine — evaluates a proposed action (which identity/compartment it's taken from, who can see it, what sensitive content it contains) against a threat model of adversary classes and identity compartments, and reports a recommendation (proceed / proceed_with_modification / decline) with a stated residual risk and reason. Reuses privacy-linter's exact content-class vocabulary (direct_pii, secrets, metadata, inference_cue, stylometric) so its --json output plugs in directly as the content-sensitivity input. Runs entirely locally, no model or network call — a rule table over a fixed schema, not an LLM judgment call. Use when the user wants to check whether sharing/posting something crosses an identity-compartment boundary, asks "should I post this under my real name," "is this safe to share publicly," "does this leak across my compartments," or wants a structured second opinion before a disclosure decision. Triggers on "check this against my threat model," "will this cross compartments," "is this safe to post/share," "privacy decision check," and the script oracle.py. Does not parse free-text proposed actions (see "What's NOT built here") or replace privacy-linter's own content detection — this is the decision layer on top of it, not a second scanner.
+description: Deterministic, rule-based privacy decision engine — evaluates a proposed action (which identity/compartment it's taken from, who can see it, what sensitive content it contains) against a threat model of adversary classes and identity compartments, and reports a recommendation (proceed / proceed_with_modification / decline) with a stated residual risk and reason. Reuses privacy-linter's exact content-class vocabulary (direct_pii, secret, metadata, inference_cue, stylometric) so its --json output plugs in directly as the content-sensitivity input. Runs entirely locally, no model or network call — a rule table over a fixed schema, not an LLM judgment call. Use when the user wants to check whether sharing/posting something crosses an identity-compartment boundary, asks "should I post this under my real name," "is this safe to share publicly," "does this leak across my compartments," or wants a structured second opinion before a disclosure decision. Triggers on "check this against my threat model," "will this cross compartments," "is this safe to post/share," "privacy decision check," and the script oracle.py. Does not parse free-text proposed actions (see "What's NOT built here") or replace privacy-linter's own content detection — this is the decision layer on top of it, not a second scanner.
 ---
 
 # Privacy Threat Oracle
@@ -39,7 +39,7 @@ python scripts/oracle.py \
    `target_exposure_map` (e.g. `public_internet` reaches data brokers, criminals,
    employer, corporations, civil discovery, and state actors).
 3. **Sensitivity tier** — the highest tier among `--content-class` values present
-   (`direct_pii`/`secrets` = high, `metadata`/`inference_cue`/`stylometric` = medium).
+   (`direct_pii`/`secret` = high, `metadata`/`inference_cue`/`stylometric` = medium).
 4. **Recommendation** — the rule table in `references/decision-rubric.md`, applied top
    to bottom: compartment violation + high sensitivity → `decline`; compartment
    violation alone → `proceed_with_modification`; high sensitivity reaching a
@@ -55,7 +55,7 @@ python scripts/oracle.py \
    ```
    This is the "wire oracle to Pre-Disclosure Linter for severity context" integration
    the source project named as a milestone — `--from-linter-json` reads a
-   `scan_diff.py --json` payload (or any list of `{"class": ...}` objects) and folds
+   `scan_diff.py --json` payload (or any list of `{"leak_class": ...}` objects) and folds
    its finding classes into the sensitivity calculation, deduped.
 7. **`--json`** for machine-readable output; default is a short human-readable report.
 

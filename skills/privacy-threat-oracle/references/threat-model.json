@@ -22,7 +22,7 @@
   },
   "content_sensitivity_tiers": {
     "direct_pii":   "high",
-    "secrets":      "high",
+    "secret":       "high",
     "metadata":     "medium",
     "inference_cue": "medium",
     "stylometric":  "medium",
