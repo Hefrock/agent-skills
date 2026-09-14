@@ -1,0 +1,171 @@
+import json
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import oracle  # noqa: E402
+
+SCRIPT = str(Path(__file__).resolve().parent / "oracle.py")
+
+
+class RuleTable(unittest.TestCase):
+    def test_no_violation_no_sensitivity_proceeds(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", ["none"])
+        self.assertEqual(r["recommendation"], "proceed")
+        self.assertEqual(r["residual_risk"], "low")
+        self.assertFalse(r["compartment_violation"])
+
+    def test_compartment_violation_with_high_sensitivity_declines(self):
+        r = oracle.evaluate("sensitive_research", "public_professional", "public_internet", ["direct_pii"])
+        self.assertTrue(r["compartment_violation"])
+        self.assertEqual(r["sensitivity_tier"], "high")
+        self.assertEqual(r["recommendation"], "decline")
+        self.assertEqual(r["residual_risk"], "high")
+
+    def test_compartment_violation_alone_is_modification_not_decline(self):
+        r = oracle.evaluate("sensitive_research", "personal", "close_group", ["none"])
+        self.assertTrue(r["compartment_violation"])
+        self.assertEqual(r["recommendation"], "proceed_with_modification")
+        self.assertEqual(r["residual_risk"], "medium")
+
+    def test_high_sensitivity_no_violation_high_cost_adversary_declines(self):
+        # specific_person exposure -> stalker only, which is a high-cost adversary
+        r = oracle.evaluate("personal", "personal", "specific_person", ["direct_pii"])
+        self.assertFalse(r["compartment_violation"])
+        self.assertEqual(r["adversary_cost_tier"], "high")
+        self.assertEqual(r["recommendation"], "decline")
+
+    def test_high_sensitivity_no_high_cost_adversary_is_modification(self):
+        # employer_visible -> employer (medium) + civil_discovery (medium): no high-cost
+        # adversary in this exposure, unlike public_internet (state_actor) or
+        # specific_person/close_group (stalker).
+        r = oracle.evaluate("personal", "personal", "employer_visible", ["secrets"])
+        self.assertEqual(r["adversary_cost_tier"], "medium")
+        self.assertEqual(r["recommendation"], "proceed_with_modification")
+        self.assertEqual(r["residual_risk"], "medium")
+
+    def test_medium_sensitivity_no_high_cost_adversary_proceeds_via_named_exposure(self):
+        r = oracle.evaluate("public_professional", "public_professional", "employer_visible", ["metadata"])
+        self.assertEqual(r["adversary_cost_tier"], "medium")
+        self.assertEqual(r["recommendation"], "proceed")
+        self.assertEqual(r["residual_risk"], "low")
+
+    def test_medium_sensitivity_no_high_cost_adversary_proceeds(self):
+        tm = oracle.load_threat_model()
+        # Build a synthetic exposure with only low-cost adversaries to isolate this branch.
+        tm["target_exposure_map"]["low_cost_only"] = ["data_brokers", "corporations"]
+        r = oracle.evaluate("personal", "personal", "low_cost_only", ["metadata"], threat_model=tm)
+        self.assertEqual(r["recommendation"], "proceed")
+        self.assertEqual(r["residual_risk"], "low")
+
+    def test_medium_sensitivity_high_cost_adversary_is_modification(self):
+        r = oracle.evaluate("personal", "personal", "specific_person", ["metadata"])
+        self.assertEqual(r["adversary_cost_tier"], "high")
+        self.assertEqual(r["recommendation"], "proceed_with_modification")
+        self.assertEqual(r["residual_risk"], "medium")
+
+    def test_none_content_class_treated_as_no_sensitivity(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", [])
+        self.assertEqual(r["sensitivity_tier"], "none")
+
+    def test_multiple_content_classes_takes_highest_tier(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", ["metadata", "direct_pii"])
+        self.assertEqual(r["sensitivity_tier"], "high")
+
+    def test_unknown_target_exposure_raises(self):
+        with self.assertRaises(ValueError):
+            oracle.evaluate("personal", "personal", "not_a_real_exposure", ["none"])
+
+    def test_unknown_compartment_raises(self):
+        with self.assertRaises(ValueError):
+            oracle.evaluate("not_a_real_compartment", "personal", "public_internet", ["none"])
+
+
+class ReversibilityDowngrade(unittest.TestCase):
+    def test_decline_downgrades_to_modification(self):
+        r = oracle.evaluate("sensitive_research", "public_professional", "public_internet", ["direct_pii"], reversible=True)
+        self.assertEqual(r["recommendation"], "proceed_with_modification")
+        self.assertTrue(r["reversibility_applied"])
+
+    def test_modification_downgrades_to_proceed(self):
+        r = oracle.evaluate("sensitive_research", "personal", "close_group", ["none"], reversible=True)
+        self.assertEqual(r["recommendation"], "proceed")
+        self.assertTrue(r["reversibility_applied"])
+
+    def test_proceed_stays_proceed_and_not_marked_applied(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", ["none"], reversible=True)
+        self.assertEqual(r["recommendation"], "proceed")
+        self.assertFalse(r["reversibility_applied"])
+
+    def test_reversible_never_fully_clears_a_compartment_violation_plus_high_sensitivity(self):
+        r = oracle.evaluate("sensitive_research", "public_professional", "public_internet", ["direct_pii"], reversible=True)
+        self.assertNotEqual(r["recommendation"], "proceed")
+
+
+class LinterJsonBridge(unittest.TestCase):
+    def test_extracts_deduped_classes(self):
+        payload = json.dumps([
+            {"class": "direct_pii", "severity": "high"},
+            {"class": "direct_pii", "severity": "high"},
+            {"class": "secrets", "severity": "high"},
+        ])
+        self.assertEqual(oracle.content_classes_from_linter_json(payload), ["direct_pii", "secrets"])
+
+    def test_malformed_json_returns_empty_list(self):
+        self.assertEqual(oracle.content_classes_from_linter_json("not json"), [])
+
+    def test_non_list_json_returns_empty_list(self):
+        self.assertEqual(oracle.content_classes_from_linter_json(json.dumps({"class": "direct_pii"})), [])
+
+    def test_findings_missing_class_field_are_skipped(self):
+        payload = json.dumps([{"severity": "high"}, {"class": "metadata"}])
+        self.assertEqual(oracle.content_classes_from_linter_json(payload), ["metadata"])
+
+
+class Cli(unittest.TestCase):
+    def _run(self, *args, input_text=None):
+        return subprocess.run(
+            [sys.executable, SCRIPT, *args],
+            capture_output=True, text=True, input=input_text,
+        )
+
+    def test_human_output_reports_recommendation(self):
+        proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet", "--content-class", "none")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("recommendation: proceed", proc.stdout)
+
+    def test_json_output_is_valid(self):
+        proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet", "--content-class", "none", "--json")
+        self.assertEqual(proc.returncode, 0)
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["recommendation"], "proceed")
+
+    def test_invalid_choice_errors_via_argparse(self):
+        proc = self._run("--source-compartment", "not_real", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet")
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_from_linter_json_stdin_feeds_content_classes(self):
+        payload = json.dumps([{"class": "secrets", "severity": "high"}])
+        proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",
+                          "--target-exposure", "specific_person", "--from-linter-json", "-",
+                          "--json", input_text=payload)
+        self.assertEqual(proc.returncode, 0)
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["sensitivity_tier"], "high")
+        self.assertEqual(data["recommendation"], "decline")
+
+    def test_repeated_content_class_flags_accumulate(self):
+        proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet",
+                          "--content-class", "metadata", "--content-class", "direct_pii", "--json")
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["sensitivity_tier"], "high")
+
+
+if __name__ == "__main__":
+    unittest.main()
