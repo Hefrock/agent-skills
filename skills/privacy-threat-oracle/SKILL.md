@@ -37,7 +37,9 @@ python scripts/oracle.py \
    `references/threat-model.json`.
 2. **Exposed adversaries** — resolved from `--target-exposure` via the same file's
    `target_exposure_map` (e.g. `public_internet` reaches data brokers, criminals,
-   employer, corporations, civil discovery, and state actors). Any exposed adversary
+   employer, corporations, civil discovery, state actors, and autonomous adversarial
+   AI agents — automated tools that scrape and correlate public content across
+   compartments at machine scale, unlike a human adversary who has to bother). Any exposed adversary
    flagged `out_of_scope` in `threat-model.json` (currently just the state actor — see
    `references/decision-rubric.md`'s "Out-of-scope adversaries" section) still counts
    toward `adversary_cost_tier` and the recommendation like any other adversary, but is

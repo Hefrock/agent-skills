@@ -109,6 +109,26 @@ class OutOfScopeAdversaries(unittest.TestCase):
         self.assertEqual(r["recommendation"], "proceed")
 
 
+class AutonomousAiAgentAdversary(unittest.TestCase):
+    """autonomous_ai_agent (public_internet only): unlike state_actor, this one is
+    NOT flagged out_of_scope -- the whole point of adding it is that, unlike
+    state-actor-level defense (real opsec, out of reach for a personal tool),
+    defending against automated cross-compartment correlation is exactly what
+    compartmentalization discipline is for. It should count toward cost tier and
+    the recommendation like any ordinary adversary, with no out-of-scope note."""
+
+    def test_public_internet_exposes_it_as_high_cost_and_in_scope(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", ["direct_pii"])
+        self.assertIn("autonomous_ai_agent", r["exposed_adversaries"])
+        self.assertEqual(r["adversary_cost_tier"], "high")
+        self.assertNotIn("autonomous_ai_agent", r["out_of_scope_adversaries_exposed"])
+
+    def test_not_exposed_at_other_exposure_levels(self):
+        for exposure in ("specific_person", "close_group", "employer_visible"):
+            r = oracle.evaluate("personal", "personal", exposure, ["direct_pii"])
+            self.assertNotIn("autonomous_ai_agent", r["exposed_adversaries"], exposure)
+
+
 class ReversibilityDowngrade(unittest.TestCase):
     def test_decline_downgrades_to_modification(self):
         r = oracle.evaluate("sensitive_research", "public_professional", "public_internet", ["direct_pii"], reversible=True)
