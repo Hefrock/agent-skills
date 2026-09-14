@@ -80,6 +80,18 @@ def adversary_cost_tier(adversary_ids: list[str], threat_model: dict) -> str:
     return max(tiers, key=lambda t: COST_RANK.get(t, 0))
 
 
+def out_of_scope_adversaries(adversary_ids: list[str], threat_model: dict) -> list[str]:
+    """IDs from adversary_ids flagged out_of_scope in the threat model (currently just
+    state_actor) -- adversaries modeled for completeness, so their cost_to_defend still
+    counts toward adversary_cost_tier and the recommendation, but that this tool was
+    never designed to meaningfully help defend against (see threat-model.json and
+    Knowledge/AI/privacy-threat-modeling.md's cost-to-defend rationale). Purely
+    informational: this doesn't change the rule table, it only tells the caller which
+    part of "adversary exposed" they can't actually act on with this tool."""
+    by_id = {a["id"]: a for a in threat_model["adversary_classes"]}
+    return [a for a in adversary_ids if by_id.get(a, {}).get("out_of_scope")]
+
+
 def is_compartment_violation(source_compartment: str, target_compartment: str, threat_model: dict) -> bool:
     by_id = {c["id"]: c for c in threat_model["compartments"]}
     source = by_id.get(source_compartment)
@@ -108,6 +120,7 @@ def evaluate(
     sensitivity = sensitivity_tier(content_classes, tm)
     cost_tier = adversary_cost_tier(exposed, tm)
     high_cost_exposed = cost_tier == "high"
+    out_of_scope_exposed = out_of_scope_adversaries(exposed, tm)
 
     if violation and sensitivity == "high":
         recommendation, residual_risk = "decline", "high"
@@ -131,6 +144,15 @@ def evaluate(
         recommendation, residual_risk = "proceed", "low"
         reason = "No flagged content sensitivity."
 
+    if out_of_scope_exposed:
+        by_id = {a["id"]: a for a in tm["adversary_classes"]}
+        names = ", ".join(by_id[a]["name"] for a in out_of_scope_exposed)
+        reason += (
+            f" Note: this exposure also reaches {names}, which this tool treats as "
+            f"out-of-scope -- modeled for cost purposes, but not something this tool "
+            f"can meaningfully help you defend against."
+        )
+
     downgraded = False
     if reversible and recommendation != "proceed":
         recommendation = RECOMMENDATION_DOWNGRADE[recommendation]
@@ -140,6 +162,7 @@ def evaluate(
     return {
         "compartment_violation": violation,
         "exposed_adversaries": exposed,
+        "out_of_scope_adversaries_exposed": out_of_scope_exposed,
         "sensitivity_tier": sensitivity,
         "adversary_cost_tier": cost_tier,
         "reversible": reversible,
@@ -156,6 +179,7 @@ def format_human(result: dict) -> str:
         f"  reason: {result['reason']}",
         f"  compartment_violation: {result['compartment_violation']}",
         f"  exposed_adversaries: {', '.join(result['exposed_adversaries']) or '(none)'}",
+        f"  out_of_scope_adversaries_exposed: {', '.join(result['out_of_scope_adversaries_exposed']) or '(none)'}",
         f"  sensitivity_tier: {result['sensitivity_tier']}  adversary_cost_tier: {result['adversary_cost_tier']}",
     ]
     return "\n".join(lines)

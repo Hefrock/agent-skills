@@ -37,7 +37,13 @@ python scripts/oracle.py \
    `references/threat-model.json`.
 2. **Exposed adversaries** — resolved from `--target-exposure` via the same file's
    `target_exposure_map` (e.g. `public_internet` reaches data brokers, criminals,
-   employer, corporations, civil discovery, and state actors).
+   employer, corporations, civil discovery, and state actors). Any exposed adversary
+   flagged `out_of_scope` in `threat-model.json` (currently just the state actor — see
+   `references/decision-rubric.md`'s "Out-of-scope adversaries" section) still counts
+   toward `adversary_cost_tier` and the recommendation like any other adversary, but is
+   also surfaced separately in `out_of_scope_adversaries_exposed` and noted in `reason`
+   — a flag this tool can't meaningfully help you defend against, called out rather than
+   silently folded into the same bucket as one you can.
 3. **Sensitivity tier** — the highest tier among `--content-class` values present
    (`direct_pii`/`secret` = high, `metadata`/`inference_cue`/`stylometric` = medium).
 4. **Recommendation** — the rule table in `references/decision-rubric.md`, applied top

@@ -64,6 +64,30 @@ turns a compartment-violation-plus-high-sensitivity case into an unqualified `pr
 it only ever moves one step, matching this tool's advisory (never silently-safe)
 posture.
 
+## Out-of-scope adversaries
+
+`threat-model.json` can flag an adversary class `out_of_scope: true` — currently just
+`state_actor`, per `Knowledge/AI/privacy-threat-modeling.md`'s cost-to-defend rationale:
+meaningfully defending against a state actor means real operational security
+(infrastructure hardening, traffic analysis resistance), categorically different from
+"add 2FA" or "opt out of a data broker," and out of reach for a personal-OS v1 tool.
+
+This flag is **informational, not a rule-table input**. An out-of-scope adversary still
+counts toward `adversary_cost_tier` and the recommendation exactly like any other
+adversary — Step 3's table doesn't know or care whether the high-cost adversary driving
+a `decline` is one you can realistically do something about. What the flag does is
+surface, separately, which of the exposed adversaries fall in that category:
+`out_of_scope_adversaries_exposed` in the JSON output, and a trailing note in `reason`
+when non-empty. The point isn't to soften or override the recommendation — it's so a
+`decline` triggered partly or wholly by an adversary this tool can't help you defend
+against reads differently than one triggered by an adversary it can (e.g. the stalker
+case, which the reversibility downgrade and compartment fixes above genuinely address).
+
+Whether `out_of_scope` *should* eventually exclude an adversary from the cost-tier
+calculation entirely (rather than just being noted) is still an open call — flagged
+here rather than decided, pending real usage. See the "Update cadence" and "Oracle
+calibration" open questions on the design doc's project page.
+
 ## Why `decline` is advisory language, not a block
 
 This tool always exits 0 — like `privacy-linter`, it reports a recommendation, it does

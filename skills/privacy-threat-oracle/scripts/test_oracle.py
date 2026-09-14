@@ -83,6 +83,32 @@ class RuleTable(unittest.TestCase):
             oracle.evaluate("not_a_real_compartment", "personal", "public_internet", ["none"])
 
 
+class OutOfScopeAdversaries(unittest.TestCase):
+    """state_actor is the only adversary currently flagged out_of_scope in
+    threat-model.json, and public_internet is the only exposure that reaches it.
+    Surfacing it is purely informational -- it must never change what the rule
+    table itself decides, only add a note the caller can see or ignore."""
+
+    def test_public_internet_surfaces_state_actor_as_out_of_scope(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", ["direct_pii"])
+        self.assertEqual(r["out_of_scope_adversaries_exposed"], ["state_actor"])
+        self.assertIn("State actor", r["reason"])
+        self.assertIn("out-of-scope", r["reason"])
+
+    def test_exposure_without_state_actor_has_no_out_of_scope_note(self):
+        r = oracle.evaluate("personal", "personal", "specific_person", ["direct_pii"])
+        self.assertEqual(r["out_of_scope_adversaries_exposed"], [])
+        self.assertNotIn("out-of-scope", r["reason"])
+
+    def test_out_of_scope_surfacing_does_not_change_the_recommendation(self):
+        """public_internet + no sensitivity still proceeds -- state_actor's
+        cost_to_defend still feeds adversary_cost_tier (it's modeled, not excluded),
+        but this must stay a rule-table decision, not something the note overrides."""
+        r = oracle.evaluate("personal", "personal", "public_internet", ["none"])
+        self.assertEqual(r["out_of_scope_adversaries_exposed"], ["state_actor"])
+        self.assertEqual(r["recommendation"], "proceed")
+
+
 class ReversibilityDowngrade(unittest.TestCase):
     def test_decline_downgrades_to_modification(self):
         r = oracle.evaluate("sensitive_research", "public_professional", "public_internet", ["direct_pii"], reversible=True)
