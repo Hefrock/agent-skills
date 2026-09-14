@@ -212,6 +212,15 @@ jobs:
         # together, not just that each one's own suite passes in isolation.
         run: python skills/wiki-privacy-audit/scripts/test_check_vault_privacy.py
 
+      - name: privacy-threat-oracle — run test suite (stdlib unittest)
+        # Includes a round-trip test that pipes privacy-linter's real scan_diff.py
+        # --json output through the --from-linter-json bridge, not just a hand-built
+        # fixture — that's exactly the gap that let the leak_class/"secret" vocabulary
+        # drift between the two skills ship and pass CI-less for two PRs before a
+        # manual review caught it. This step's own absence was the other half of that
+        # gap: the suite existed (25 tests) but was never wired into CI.
+        run: python skills/privacy-threat-oracle/scripts/test_oracle.py
+
       - name: broadcast — dedup_store.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_dedup_store.py
 
