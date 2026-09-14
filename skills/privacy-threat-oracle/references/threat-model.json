@@ -7,7 +7,8 @@
     {"id": "employer",         "name": "Employer",                  "primary_threat": "Professional reputation, work-related content",  "cost_to_defend": "medium"},
     {"id": "civil_discovery",  "name": "Civil discovery",            "primary_threat": "Legal exposure from content or associations",    "cost_to_defend": "medium"},
     {"id": "corporations",     "name": "Corporations",               "primary_threat": "ToS exploitation, data monetization",            "cost_to_defend": "low"},
-    {"id": "state_actor",      "name": "State actor",                "primary_threat": "Surveillance, targeting",                        "cost_to_defend": "high", "out_of_scope": true}
+    {"id": "state_actor",      "name": "State actor",                "primary_threat": "Surveillance, targeting",                        "cost_to_defend": "high", "out_of_scope": true},
+    {"id": "autonomous_ai_agent", "name": "Autonomous adversarial agentic AI", "primary_threat": "Automated, machine-scale cross-compartment correlation, aggregation, and stylometric fingerprinting of public content", "cost_to_defend": "high"}
   ],
   "compartments": [
     {"id": "public_professional", "name": "Public/professional", "examples": ["LinkedIn", "published work", "GitHub"],              "may_reference": ["public_professional"]},
@@ -15,7 +16,7 @@
     {"id": "sensitive_research",  "name": "Sensitive-research",  "examples": ["security research", "vulnerability work", "adversarial eval"], "may_reference": ["sensitive_research"]}
   ],
   "target_exposure_map": {
-    "public_internet":  ["data_brokers", "criminals", "employer", "corporations", "civil_discovery", "state_actor"],
+    "public_internet":  ["data_brokers", "criminals", "employer", "corporations", "civil_discovery", "state_actor", "autonomous_ai_agent"],
     "specific_person":  ["stalker"],
     "close_group":      ["stalker", "employer"],
     "employer_visible": ["employer", "civil_discovery"]
