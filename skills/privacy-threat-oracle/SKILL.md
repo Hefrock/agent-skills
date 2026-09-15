@@ -52,9 +52,11 @@ python scripts/oracle.py \
    to bottom: compartment violation + high sensitivity → `decline`; compartment
    violation alone → `proceed_with_modification`; high sensitivity reaching a
    high-cost-to-defend adversary → `decline`; and so on down to a clean `proceed`.
-5. **Reversibility** — `--reversible` downgrades the recommendation one step (never
-   past `decline` on a compartment-violation-plus-high-sensitivity case), modeling that
-   a retractable action carries genuinely lower cost.
+5. **Reversibility** — `--reversible` downgrades the recommendation one step (`decline`
+   → `proceed_with_modification`, `proceed_with_modification` → `proceed`; never skips
+   straight to an unqualified `proceed` on a compartment-violation-plus-high-sensitivity
+   case — see `references/decision-rubric.md`'s Step 4), modeling that a retractable
+   action carries genuinely lower cost.
 6. **Plug in privacy-linter directly** instead of naming content classes by hand:
    ```bash
    python ../privacy-linter/scripts/scan_diff.py --file draft_post.txt --json | \
