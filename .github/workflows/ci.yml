@@ -220,6 +220,12 @@ jobs:
         # together, not just that each one's own suite passes in isolation.
         run: python skills/wiki-privacy-audit/scripts/test_check_vault_privacy.py
 
+      - name: wiki-privacy-audit — cron_check.sh test suite (stdlib unittest)
+        # End-to-end: a real temp vault, the real script, fake notify-send/osascript
+        # binaries injected via PATH so the notification branches are exercised
+        # without depending on a desktop notification daemon existing on the runner.
+        run: python skills/wiki-privacy-audit/scripts/test_cron_check.py
+
       - name: privacy-threat-oracle — run test suite (stdlib unittest)
         # Includes a round-trip test that pipes privacy-linter's real scan_diff.py
         # --json output through the --from-linter-json bridge, not just a hand-built
