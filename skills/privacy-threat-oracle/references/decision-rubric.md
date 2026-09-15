@@ -99,10 +99,13 @@ calculation entirely (rather than just being noted) is still an open call — fl
 here rather than decided, pending real usage. See the "Update cadence" and "Oracle
 calibration" open questions on the design doc's project page.
 
-## Why `decline` is advisory language, not a block
+## Why `decline` is advisory language, not a block by default
 
-This tool always exits 0 — like `privacy-linter`, it reports a recommendation, it does
-not gate anything by default. `decline` means "the rule table's most severe bucket,"
-not "action refused." Wiring an actual block (e.g. a CI-style `--block-on decline`) is
-a natural extension, not built here, to keep the advisory-first design of the sibling
-projects.
+This tool exits 0 by default — like `privacy-linter`, it reports a recommendation
+without gating anything unless asked to. `decline` means "the rule table's most severe
+bucket," not "action refused." As of 2026-09-16, `--block-on {proceed_with_modification,
+decline}` exists (mirroring `scan_diff.py`'s own `--block-on`) for a caller that wants
+the exit code to reflect the verdict — but unlike `privacy-linter`'s git hook, nothing
+invokes `oracle.py` unattended today, so there's no default behavior this flips: the
+flag is opt-in capability, not a posture change. It only does something once some
+scripted or automated context actually calls `oracle.py` and checks its exit code.

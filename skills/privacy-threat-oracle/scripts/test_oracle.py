@@ -243,6 +243,27 @@ class ParseErrorFailsClosed(unittest.TestCase):
         self.assertFalse(r["linter_json_parse_error"])
 
 
+class BlockOnGate(unittest.TestCase):
+    """--block-on mirrors privacy-linter's scan_diff.py check_gate() -- same shape,
+    same 'None means advisory' default. Unlike privacy-linter's git hook, nothing
+    invokes oracle.py unattended today, so this is new opt-in capability, not a
+    default-behavior flip; these tests exercise the gate function directly and via
+    the CLI's exit code, not any change to the recommendation itself."""
+
+    def test_no_block_on_never_gates(self):
+        self.assertFalse(oracle.check_gate("decline", None))
+
+    def test_block_on_decline_gates_only_on_decline(self):
+        self.assertTrue(oracle.check_gate("decline", "decline"))
+        self.assertFalse(oracle.check_gate("proceed_with_modification", "decline"))
+        self.assertFalse(oracle.check_gate("proceed", "decline"))
+
+    def test_block_on_proceed_with_modification_gates_on_that_and_above(self):
+        self.assertTrue(oracle.check_gate("decline", "proceed_with_modification"))
+        self.assertTrue(oracle.check_gate("proceed_with_modification", "proceed_with_modification"))
+        self.assertFalse(oracle.check_gate("proceed", "proceed_with_modification"))
+
+
 class Cli(unittest.TestCase):
     def _run(self, *args, input_text=None):
         return subprocess.run(
@@ -267,6 +288,33 @@ class Cli(unittest.TestCase):
         proc = self._run("--source-compartment", "not_real", "--target-compartment", "personal",
                           "--target-exposure", "public_internet")
         self.assertNotEqual(proc.returncode, 0)
+
+    def test_no_block_on_exits_zero_even_on_decline(self):
+        proc = self._run("--source-compartment", "sensitive_research", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet", "--content-class", "direct_pii")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("recommendation: decline", proc.stdout)
+
+    def test_block_on_decline_exits_nonzero_on_decline(self):
+        proc = self._run("--source-compartment", "sensitive_research", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet", "--content-class", "direct_pii",
+                          "--block-on", "decline")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("BLOCKED", proc.stderr)
+
+    def test_block_on_decline_exits_zero_on_proceed_with_modification(self):
+        proc = self._run("--source-compartment", "sensitive_research", "--target-compartment", "personal",
+                          "--target-exposure", "close_group", "--content-class", "none",
+                          "--block-on", "decline")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_block_on_still_prints_full_report_before_gating(self):
+        proc = self._run("--source-compartment", "sensitive_research", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet", "--content-class", "direct_pii",
+                          "--block-on", "decline", "--json")
+        self.assertNotEqual(proc.returncode, 0)
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["recommendation"], "decline")
 
     def test_from_linter_json_stdin_feeds_content_classes(self):
         payload = json.dumps([{"leak_class": "secret", "severity": "high"}])

@@ -21,6 +21,9 @@ Usage:
             --target-exposure public_internet --from-linter-json -
 
     python oracle.py --json ...   # machine-readable output
+
+    # Exit 1 instead of 0 if the recommendation is 'decline' (or 'proceed_with_modification'):
+    python oracle.py ... --block-on decline
 """
 from __future__ import annotations
 import argparse, json, os, sys
@@ -30,11 +33,23 @@ THREAT_MODEL_PATH = os.path.join(REFERENCES, "threat-model.json")
 
 SENSITIVITY_RANK = {"none": 0, "medium": 1, "high": 2}
 COST_RANK = {"low": 0, "medium": 1, "high": 2}
+RECOMMENDATION_RANK = {"proceed": 0, "proceed_with_modification": 1, "decline": 2}
 RECOMMENDATION_DOWNGRADE = {
     "decline": "proceed_with_modification",
     "proceed_with_modification": "proceed",
     "proceed": "proceed",
 }
+
+
+def check_gate(recommendation: str, block_on: str | None) -> bool:
+    """Mirrors privacy-linter's scan_diff.py check_gate() -- same name, same shape,
+    for the same reason: a caller scripting against either tool should be able to
+    reuse the same mental model of what --block-on means. None means advisory only
+    (matches this tool's default; unlike privacy-linter's git hook, nothing calls
+    oracle.py unattended today, so there's no existing default behavior to flip)."""
+    if block_on is None:
+        return False
+    return RECOMMENDATION_RANK[recommendation] >= RECOMMENDATION_RANK[block_on]
 
 
 def load_threat_model(path: str = THREAT_MODEL_PATH) -> dict:
@@ -220,6 +235,9 @@ def main():
                      help="Read a privacy-linter --json payload ('-' for stdin) and add its finding classes to --content-class.")
     ap.add_argument("--reversible", action="store_true", help="The action can be deleted/retracted after the fact.")
     ap.add_argument("--json", action="store_true", help="Machine-readable output.")
+    ap.add_argument("--block-on", choices=["proceed_with_modification", "decline"], default=None,
+                     help="Exit 1 if the recommendation is at or above this level. Default: advisory "
+                          "only, always exits 0 (matches privacy-linter's --block-on convention).")
     args = ap.parse_args()
 
     content_classes = list(args.content_class)
@@ -249,6 +267,12 @@ def main():
         return 2
 
     print(json.dumps(result, indent=2) if args.json else format_human(result))
+
+    if check_gate(result["recommendation"], args.block_on):
+        if not args.json:
+            print(f"\nBLOCKED: recommendation '{result['recommendation']}' is at or above "
+                  f"'{args.block_on}'.", file=sys.stderr)
+        return 1
     return 0
 
 

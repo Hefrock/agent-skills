@@ -73,8 +73,12 @@ python scripts/oracle.py \
    `high` rather than silently falling back to "nothing sensitive found."
 7. **`--json`** for machine-readable output; default is a short human-readable report.
 
-Like `privacy-linter`, this always exits 0 — `decline` is the rule table's most severe
-label, not an enforced block. See `references/decision-rubric.md`'s closing note.
+This exits 0 by default — `decline` is the rule table's most severe label, not an
+automatically enforced block. `--block-on {proceed_with_modification,decline}` exits 1
+instead, for a caller that wants the exit code to reflect the verdict (mirrors
+`privacy-linter`'s own `--block-on`). See `references/decision-rubric.md`'s closing
+note for why this is opt-in rather than a default-behavior change: nothing invokes
+`oracle.py` unattended today, unlike `privacy-linter`'s git hook.
 
 ## What's NOT built here
 
@@ -87,9 +91,9 @@ label, not an enforced block. See `references/decision-rubric.md`'s closing note
 - **A calibration/validation pass against real expert judgment** (source project's Open
   Question #5). The rule table is reasoned from the vault's existing threat-modeling
   concept pages, not yet tested against real proposed-action scenarios.
-- **An actual `--block-on` gate.** `privacy-linter` and `wiki-privacy-audit` both have
-  one; this doesn't, to keep the decision layer purely advisory until there's a reason
-  to enforce it.
+- **Anything that actually calls `oracle.py` unattended.** `--block-on` (see above) only
+  matters once some scripted or automated context invokes this and checks its exit
+  code — none does yet, unlike `privacy-linter`'s git hook.
 - **Live editing of the vault's threat model.** `references/threat-model.json` is the
   executable copy of the adversary/compartment schema already documented in
   `Knowledge/AI/privacy-threat-modeling.md` and the project page; keeping the two in
