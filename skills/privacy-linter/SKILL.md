@@ -125,12 +125,18 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
 ## Installing as a git pre-commit hook
 
 ```bash
-./scripts/install_hook.sh /path/to/your/repo
+./scripts/install_hook.sh /path/to/your/repo                    # blocks on 'high' (default)
+./scripts/install_hook.sh /path/to/your/repo --block-on medium   # blocks on medium or high
+./scripts/install_hook.sh /path/to/your/repo --block-on none     # advisory only, never blocks
 ```
-Writes a `pre-commit` hook that runs `scan_diff.py` with no gate (advisory-only,
-matching the design's default) — edit the installed hook to add `--block-on high` if
-blocking is wanted for that repo. See the script for what it writes; it never
-overwrites an existing hook without confirmation.
+Writes a `pre-commit` hook that runs `scan_diff.py --block-on high` by default —
+confirmed as of 2026-09-16: a report-only linter that never actually stops anything is
+close to a suggestion box, not a control layer, and the tools this default applies to
+(Luhn-validated credit card, matched secret patterns, confirmed EXIF GPS) are exactly
+the low-false-positive-rate findings this project's own philosophy says are worth acting
+on. Medium/low findings still print but never block, regardless of threshold. Pass
+`--block-on none` for the old fully-advisory behavior. See the script for exactly what
+it writes; it never overwrites an existing hook without confirmation.
 
 ## What's NOT built here
 
@@ -189,6 +195,7 @@ overwrites an existing hook without confirmation.
 | `scripts/test_scan_diff.py` | Unit + CLI + real-temp-git-repo test suite (stdlib unittest) |
 | `scripts/scan_log_history.py` | Bridges `--log-dir`'s run records into `agent-eval`'s JSONL schema for trend tracking |
 | `scripts/test_scan_log_history.py` | Unit + CLI test suite, including a real end-to-end run into `score_eval.py` |
-| `scripts/install_hook.sh` | Installs `scan_diff.py` as a repo's `pre-commit` hook |
+| `scripts/install_hook.sh` | Installs `scan_diff.py` as a repo's `pre-commit` hook (blocks on `high` by default) |
+| `scripts/test_install_hook.py` | End-to-end tests: real temp git repo, real installed hook, actually run against staged content |
 | `references/leak-taxonomy.md` | Every leak class (the source design's four, plus Secrets), severity rubric and rationale, what's built vs. deferred and why |
 | `examples/` | A worked example: a synthetic diff with seeded PII, and the scan output it produces |

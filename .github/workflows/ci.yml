@@ -132,6 +132,14 @@ jobs:
         # just schema assertions — proves the cross-skill bridge actually works.
         run: python skills/privacy-linter/scripts/test_scan_log_history.py
 
+      - name: privacy-linter — install_hook.sh test suite (stdlib unittest)
+        # Real temp git repo, real installed hook, actually run against staged
+        # content — a regression suite for a real bug: the hook template used to
+        # append an unconditional `exit 0` after invoking scan_diff.py, so even a
+        # user who followed the script's own instructions to add --block-on high
+        # would still get a hook that never blocked anything.
+        run: python skills/privacy-linter/scripts/test_install_hook.py
+
       - name: privacy-linter — worked example smoke test
         # Recreates examples/README.md's scenario in a real repo and confirms the
         # documented finding count and severity mix actually come out of the script,
