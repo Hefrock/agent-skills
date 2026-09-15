@@ -42,24 +42,28 @@ def load_threat_model(path: str = THREAT_MODEL_PATH) -> dict:
         return json.load(f)
 
 
-def content_classes_from_linter_json(raw: str) -> list[str]:
+def content_classes_from_linter_json(raw: str) -> tuple[list[str], str | None]:
     """Extract a deduped list of content classes from a privacy-linter --json payload
     (a list of Finding objects each carrying a "leak_class" field -- see scan_diff.py's
-    Finding dataclass). Unknown/malformed input yields an empty list rather than
-    raising -- an oracle call should degrade to "no known content classes", not crash,
-    if the linter's output shape ever changes."""
+    Finding dataclass). Returns (classes, error): error is None on success, or a short
+    message describing why the input couldn't be read. Malformed input never raises --
+    an oracle call should degrade gracefully, not crash, if the linter's output shape
+    ever changes -- but the caller MUST NOT treat a non-None error the same as "the
+    linter genuinely found nothing": evaluate()'s parse_error flag forces the
+    sensitivity floor to "high" instead, so a broken pipe fails closed (silent
+    'proceed') rather than open (silent 'proceed')."""
     try:
         data = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return []
+    except (json.JSONDecodeError, TypeError) as e:
+        return [], f"could not parse --from-linter-json input as JSON ({e})"
     if not isinstance(data, list):
-        return []
+        return [], f"--from-linter-json input must be a JSON list of findings, got {type(data).__name__}"
     classes = []
     for finding in data:
         if isinstance(finding, dict) and isinstance(finding.get("leak_class"), str):
             if finding["leak_class"] not in classes:
                 classes.append(finding["leak_class"])
-    return classes
+    return classes, None
 
 
 def sensitivity_tier(content_classes: list[str], threat_model: dict) -> str:
@@ -109,15 +113,22 @@ def evaluate(
     content_classes: list[str],
     reversible: bool = False,
     threat_model: dict | None = None,
+    parse_error: bool = False,
 ) -> dict:
-    """The rule table from references/decision-rubric.md, applied top to bottom."""
+    """The rule table from references/decision-rubric.md, applied top to bottom.
+
+    parse_error=True means --from-linter-json input couldn't be read (see
+    content_classes_from_linter_json) -- the sensitivity floor is forced to "high"
+    in that case rather than falling back to whatever content_classes happens to be
+    (likely empty), so an unreadable input fails closed instead of silently
+    reporting the lowest-risk recommendation."""
     tm = threat_model or load_threat_model()
     if target_exposure not in tm["target_exposure_map"]:
         raise ValueError(f"unknown target_exposure: {target_exposure!r}")
 
     violation = is_compartment_violation(source_compartment, target_compartment, tm)
     exposed = exposed_adversaries(target_exposure, tm)
-    sensitivity = sensitivity_tier(content_classes, tm)
+    sensitivity = "high" if parse_error else sensitivity_tier(content_classes, tm)
     cost_tier = adversary_cost_tier(exposed, tm)
     high_cost_exposed = cost_tier == "high"
     out_of_scope_exposed = out_of_scope_adversaries(exposed, tm)
@@ -144,6 +155,14 @@ def evaluate(
         recommendation, residual_risk = "proceed", "low"
         reason = "No flagged content sensitivity."
 
+    if parse_error:
+        reason = (
+            "WARNING: --from-linter-json input could not be read, so content sensitivity "
+            "could not be determined. Treating it as high (fail-closed) rather than assuming "
+            "nothing sensitive was found -- do not treat this recommendation as validated "
+            "until the input is fixed and re-run. " + reason
+        )
+
     if out_of_scope_exposed:
         by_id = {a["id"]: a for a in tm["adversary_classes"]}
         names = ", ".join(by_id[a]["name"] for a in out_of_scope_exposed)
@@ -167,6 +186,7 @@ def evaluate(
         "adversary_cost_tier": cost_tier,
         "reversible": reversible,
         "reversibility_applied": downgraded,
+        "linter_json_parse_error": parse_error,
         "recommendation": recommendation,
         "residual_risk": residual_risk,
         "reason": reason,
@@ -174,7 +194,10 @@ def evaluate(
 
 
 def format_human(result: dict) -> str:
-    lines = [
+    lines = []
+    if result.get("linter_json_parse_error"):
+        lines.append("*** WARNING: --from-linter-json input could not be read -- see reason below ***")
+    lines += [
         f"[{result['residual_risk']}] recommendation: {result['recommendation']}",
         f"  reason: {result['reason']}",
         f"  compartment_violation: {result['compartment_violation']}",
@@ -200,11 +223,17 @@ def main():
     args = ap.parse_args()
 
     content_classes = list(args.content_class)
+    parse_error = None
     if args.from_linter_json:
         raw = sys.stdin.read() if args.from_linter_json == "-" else open(args.from_linter_json, encoding="utf-8").read()
-        for c in content_classes_from_linter_json(raw):
+        linter_classes, parse_error = content_classes_from_linter_json(raw)
+        for c in linter_classes:
             if c not in content_classes:
                 content_classes.append(c)
+        if parse_error:
+            print(f"privacy-threat-oracle: warning: {parse_error} -- "
+                  f"treating content sensitivity as high (fail-closed), not as 'nothing found'",
+                  file=sys.stderr)
 
     try:
         result = evaluate(
@@ -213,6 +242,7 @@ def main():
             target_exposure=args.target_exposure,
             content_classes=content_classes,
             reversible=args.reversible,
+            parse_error=bool(parse_error),
         )
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)

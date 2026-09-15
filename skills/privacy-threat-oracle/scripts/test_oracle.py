@@ -185,17 +185,25 @@ class LinterJsonBridge(unittest.TestCase):
             {"leak_class": "direct_pii", "severity": "high"},
             {"leak_class": "secret", "severity": "high"},
         ])
-        self.assertEqual(oracle.content_classes_from_linter_json(payload), ["direct_pii", "secret"])
+        classes, error = oracle.content_classes_from_linter_json(payload)
+        self.assertEqual(classes, ["direct_pii", "secret"])
+        self.assertIsNone(error)
 
-    def test_malformed_json_returns_empty_list(self):
-        self.assertEqual(oracle.content_classes_from_linter_json("not json"), [])
+    def test_malformed_json_returns_empty_list_and_an_error(self):
+        classes, error = oracle.content_classes_from_linter_json("not json")
+        self.assertEqual(classes, [])
+        self.assertIsNotNone(error)
 
-    def test_non_list_json_returns_empty_list(self):
-        self.assertEqual(oracle.content_classes_from_linter_json(json.dumps({"leak_class": "direct_pii"})), [])
+    def test_non_list_json_returns_empty_list_and_an_error(self):
+        classes, error = oracle.content_classes_from_linter_json(json.dumps({"leak_class": "direct_pii"}))
+        self.assertEqual(classes, [])
+        self.assertIsNotNone(error)
 
     def test_findings_missing_leak_class_field_are_skipped(self):
         payload = json.dumps([{"severity": "high"}, {"leak_class": "metadata"}])
-        self.assertEqual(oracle.content_classes_from_linter_json(payload), ["metadata"])
+        classes, error = oracle.content_classes_from_linter_json(payload)
+        self.assertEqual(classes, ["metadata"])
+        self.assertIsNone(error)
 
     def test_real_scan_diff_output_round_trips(self):
         """Regression guard for the bug this replaced: the fixtures above hand-build
@@ -210,8 +218,29 @@ class LinterJsonBridge(unittest.TestCase):
             capture_output=True, text=True, input="AWS key: AKIAABCDEFGHIJKLMNOP\n",
         )
         self.assertEqual(proc.returncode, 0)
-        classes = oracle.content_classes_from_linter_json(proc.stdout)
+        classes, error = oracle.content_classes_from_linter_json(proc.stdout)
         self.assertEqual(classes, ["secret"])
+        self.assertIsNone(error)
+
+
+class ParseErrorFailsClosed(unittest.TestCase):
+    """A broken --from-linter-json pipe must never silently look like a clean scan
+    (the bug this replaces: malformed input used to yield [] -> sensitivity "none"
+    -> recommendation "proceed", indistinguishable from a genuinely clean result)."""
+
+    def test_parse_error_forces_high_sensitivity(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", [], parse_error=True)
+        self.assertEqual(r["sensitivity_tier"], "high")
+        self.assertTrue(r["linter_json_parse_error"])
+        self.assertIn("WARNING", r["reason"])
+
+    def test_parse_error_never_recommends_proceed_against_a_high_cost_adversary(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", [], parse_error=True)
+        self.assertEqual(r["recommendation"], "decline")
+
+    def test_no_parse_error_flag_is_false_by_default(self):
+        r = oracle.evaluate("personal", "personal", "public_internet", ["none"])
+        self.assertFalse(r["linter_json_parse_error"])
 
 
 class Cli(unittest.TestCase):
@@ -248,6 +277,17 @@ class Cli(unittest.TestCase):
         data = json.loads(proc.stdout)
         self.assertEqual(data["sensitivity_tier"], "high")
         self.assertEqual(data["recommendation"], "decline")
+
+    def test_malformed_linter_json_warns_on_stderr_and_fails_closed(self):
+        proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",
+                          "--target-exposure", "public_internet", "--from-linter-json", "-",
+                          "--json", input_text="not json")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("warning", proc.stderr.lower())
+        data = json.loads(proc.stdout)
+        self.assertTrue(data["linter_json_parse_error"])
+        self.assertEqual(data["sensitivity_tier"], "high")
+        self.assertNotEqual(data["recommendation"], "proceed")
 
     def test_repeated_content_class_flags_accumulate(self):
         proc = self._run("--source-compartment", "personal", "--target-compartment", "personal",

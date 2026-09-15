@@ -143,6 +143,16 @@ class SecretPatterns(unittest.TestCase):
         f = self.findings_for("API_KEY=abcdef123456")
         self.assertFalse(any("generic_secret_assignment" in x.finding for x in f))
 
+    def test_named_token_pattern_suppresses_overlapping_generic_match(self):
+        # A real github token quoted in an assignment matches both the named
+        # github_token pattern and the generic quoted-assignment catch-all —
+        # only the named, higher-confidence one should be reported, not both.
+        f = self.findings_for('github_token = "' + "gh" + "p_" + "a" * 36 + '"')
+        subtypes = [x.finding for x in f]
+        self.assertTrue(any("github_token" in s for s in subtypes))
+        self.assertFalse(any("generic_secret_assignment" in s for s in subtypes))
+        self.assertEqual(len(f), 1)
+
     def test_clean_text_no_findings(self):
         f = self.findings_for("this is a perfectly ordinary sentence about nothing sensitive")
         self.assertEqual(f, [])

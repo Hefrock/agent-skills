@@ -206,12 +206,26 @@ def _find_pattern_matches(content, scanners):
     baked in here — every call site (scan_text_for_pii, scan_text_for_
     secrets, scan_staged's two passes) wraps this into a Finding with its
     own leak_class/location instead of duplicating the per-scanner loop
-    four times."""
+    four times.
+
+    Scanners run in list order, and a match is skipped if its span overlaps
+    one already claimed by an earlier scanner on this same content — so a
+    named, high-confidence pattern (e.g. github_token) always wins over a
+    broader catch-all (generic_secret_assignment) that also matches the same
+    substring, instead of both firing and reporting one real secret twice.
+    SECRET_SCANNERS/PII_SCANNERS list their specific patterns before generic
+    ones for exactly this reason."""
     hits = []
+    claimed_spans = []
     for subtype, pattern, severity, label, validate in scanners:
         for m in pattern.finditer(content):
-            if validate(m):
-                hits.append((severity, subtype, label))
+            if not validate(m):
+                continue
+            start, end = m.span()
+            if any(start < c_end and c_start < end for c_start, c_end in claimed_spans):
+                continue
+            hits.append((severity, subtype, label))
+            claimed_spans.append((start, end))
     return hits
 
 

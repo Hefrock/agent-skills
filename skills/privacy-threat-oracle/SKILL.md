@@ -53,9 +53,11 @@ python scripts/oracle.py \
    to bottom: compartment violation + high sensitivity → `decline`; compartment
    violation alone → `proceed_with_modification`; high sensitivity reaching a
    high-cost-to-defend adversary → `decline`; and so on down to a clean `proceed`.
-5. **Reversibility** — `--reversible` downgrades the recommendation one step (never
-   past `decline` on a compartment-violation-plus-high-sensitivity case), modeling that
-   a retractable action carries genuinely lower cost.
+5. **Reversibility** — `--reversible` downgrades the recommendation one step (`decline`
+   → `proceed_with_modification`, `proceed_with_modification` → `proceed`; never skips
+   straight to an unqualified `proceed` on a compartment-violation-plus-high-sensitivity
+   case — see `references/decision-rubric.md`'s Step 4), modeling that a retractable
+   action carries genuinely lower cost.
 6. **Plug in privacy-linter directly** instead of naming content classes by hand:
    ```bash
    python ../privacy-linter/scripts/scan_diff.py --file draft_post.txt --json | \
@@ -65,7 +67,10 @@ python scripts/oracle.py \
    This is the "wire oracle to Pre-Disclosure Linter for severity context" integration
    the source project named as a milestone — `--from-linter-json` reads a
    `scan_diff.py --json` payload (or any list of `{"leak_class": ...}` objects) and folds
-   its finding classes into the sensitivity calculation, deduped.
+   its finding classes into the sensitivity calculation, deduped. If the input can't be
+   read (malformed JSON, wrong shape), the oracle fails **closed**, not open: it warns on
+   stderr, sets `linter_json_parse_error: true`, and forces the sensitivity floor to
+   `high` rather than silently falling back to "nothing sensitive found."
 7. **`--json`** for machine-readable output; default is a short human-readable report.
 
 Like `privacy-linter`, this always exits 0 — `decline` is the rule table's most severe
