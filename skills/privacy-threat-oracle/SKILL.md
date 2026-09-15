@@ -64,7 +64,10 @@ python scripts/oracle.py \
    This is the "wire oracle to Pre-Disclosure Linter for severity context" integration
    the source project named as a milestone — `--from-linter-json` reads a
    `scan_diff.py --json` payload (or any list of `{"leak_class": ...}` objects) and folds
-   its finding classes into the sensitivity calculation, deduped.
+   its finding classes into the sensitivity calculation, deduped. If the input can't be
+   read (malformed JSON, wrong shape), the oracle fails **closed**, not open: it warns on
+   stderr, sets `linter_json_parse_error: true`, and forces the sensitivity floor to
+   `high` rather than silently falling back to "nothing sensitive found."
 7. **`--json`** for machine-readable output; default is a short human-readable report.
 
 Like `privacy-linter`, this always exits 0 — `decline` is the rule table's most severe
