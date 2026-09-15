@@ -2,34 +2,53 @@
 
 [![CI](https://github.com/Hefrock/agent-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Hefrock/agent-skills/actions/workflows/ci.yml)
 
-A personal collection of [Agent Skills](https://agentskills.io) — portable, self-contained capabilities that any compatible AI agent can discover and load on demand. Built on the open standard originally published by Anthropic, now adopted across Claude, Codex CLI, Gemini CLI, GitHub Copilot, Cursor, and 25+ other platforms.
+A personal collection of [Agent Skills](https://agentskills.io) — self-contained capabilities that any compatible AI agent can load on demand. Skills are built on the open standard Anthropic originally published, now supported by Claude, Codex CLI, Gemini CLI, GitHub Copilot, Cursor, and 25+ other platforms, so nothing here is locked to one tool.
 
-Each skill is a folder containing a `SKILL.md` file (instructions + metadata) and, where needed, supporting `scripts/`, `references/`, or `assets/`. Nothing here is Claude-specific unless explicitly noted — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the portability rules this repo follows.
+Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/references/assets where needed. See [CONTRIBUTING.md](./CONTRIBUTING.md) if you want to add one or keep it portable across platforms.
 
 > [!IMPORTANT]
-> **Stalled-work tracking.** Tasks blocked on external human action (a DUA signature, a sign-up, a records request) are tracked as GitHub issues and surfaced weekly — see [`docs/stalled-work-tracking.md`](./docs/stalled-work-tracking.md) for how to open, resolve, and check on one.
+> **Stalled-work tracking.** Tasks blocked on someone else (a signature, a sign-up, a records request) are tracked as GitHub issues and surfaced weekly — see [`docs/stalled-work-tracking.md`](./docs/stalled-work-tracking.md).
 
 **Jump to:** [Skills](#skills) · [Installing](#installing-a-skill) · [Repo structure](#repo-structure) · [Wiki system](#wiki-system)
 
 ## Skills
 
-| Skill | Category | Description |
-|---|---|---|
-| [`broadcast`](./skills/broadcast) | Content Automation | Produces a daily healthcare AI news audio briefing — ingests from ten registered sources, dedupes/ranks stories, pins every claim to its source via a real evidence-pinning MCP server, generates a script with grounded AI narration (automatic fallback to plain text if unverifiable), runs a QA gate, synthesizes audio via Gemini TTS, and produces distribution artifacts (podcast RSS feed + Obsidian vault note). Requires `GEMINI_API_KEY` and a locally-built evidence-pinning-mcp server. |
-| [`agent-eval`](./skills/agent-eval) | Agent Design | Designs and runs evaluations for LLM/agent outputs — rubrics, LLM-as-judge scoring, regression test sets, and pass-rate reporting with a runnable scoring script. |
-| [`agent-redteam`](./skills/agent-redteam) | Agent Design | Generates adversarial test cases for safe-failure testing — refusals, hedging, graceful degradation. Pairs with agent-eval for scoring. |
-| [`deid-reid-harness`](./skills/deid-reid-harness) | Agent Design | Adversarial de-identification ⟷ re-identification eval harness for clinical text — generates synthetic notes with ground-truth PHI spans, runs a de-id pipeline, and scores Safe Harbor leakage, Expert Determination re-id risk, and free-text inference across a privacy-utility frontier. Model-independent, verified offline with bootstrap CIs and significance tests. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
-| [`repo-pincer`](./skills/repo-pincer) | Agent Design | Reverse-engineers a codebase by reconciling top-down claims (docs, README, API surface) against bottom-up reality (actual implementation) — classifies every claim as Confirmed, Drift, Aspirational, or Silent. Runs standalone; optionally compiles into a wiki vault. |
-| [`privacy-linter`](./skills/privacy-linter) | Privacy | Deterministic pre-disclosure scanner for git-staged changes — flags Direct PII (email, phone, SSN, Luhn-valid credit card, IP), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic tokens, private keys), and Metadata risk (image/doc types, confirmed EXIF GPS with Pillow, `--strip-metadata`). `--scan-history` for the full commit history, `--log-dir` + `scan_log_history.py` for trend tracking via `agent-eval`. Runs entirely locally, no model or network call. `--block-on` for a CI/hook gate. |
-| [`privacy-threat-oracle`](./skills/privacy-threat-oracle) | Privacy | Deterministic rule-based decision engine — evaluates a proposed action (source/target identity compartment, exposure, content sensitivity) against an adversary/compartment threat model and recommends proceed/modify/decline with residual risk. Reuses `privacy-linter`'s content-class vocabulary so its `--json` output plugs in directly. No model or network call. |
-| [`wiki-operator`](./skills/wiki-operator) | Knowledge Management | On-demand vault operations — `/learn`, `/update`, `/connect`, `/ask`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. The primary interface for working with the wiki. Requires Obsidian MCP connected. |
-| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Knowledge Management | Batch compilation — automatically preprocesses unstructured journals, promotes ideas into concept pages, compiles `Sources/raw/` into source pages, updates the hot cache. Run after learning sessions. Requires Obsidian MCP connected. |
-| [`wiki-librarian`](./skills/wiki-librarian) | Knowledge Management | Structural maintenance — audits broken links, orphans, stale notes, duplicates, and contradictions. Proposes fixes with confirmation. Run weekly. Requires Obsidian MCP connected. |
-| [`wiki-governor`](./skills/wiki-governor) | Knowledge Management | Self-governing maintenance loop — orchestrates the librarian, synthesizer, and warehouse (when in use), then adds a constitution-compliance audit, a tracked 6-submetric health score, and a knowledge-gap queue. Keeps the vault accountable to its own rules. Requires Obsidian MCP connected. |
-| [`wiki-teacher`](./skills/wiki-teacher) | Knowledge Management | Portfolio-aware project accountability for several concurrent projects — `/checkin`, a forcing function auto-suggested at session start. Surfaces 1-2 projects that genuinely need attention, batch-elicits priority for all overdue projects at once, answers "what should I work on" even when nothing's overdue, reports portfolio breadth. Stateless — priority/checkin_interval/status live in each project's own frontmatter. Deliberately narrow for now — `/teach`/`/reflect` held back until `/checkin` has real usage behind it. `scripts/wiki_teacher.py`, 37-test regression suite (includes real-file integration tests, not just synthetic-dict unit tests). Requires Obsidian MCP connected. |
-| [`wiki-warehouse`](./skills/wiki-warehouse) | Knowledge Management | Cold storage for raw documents — ingests PDFs/ebooks/scans into a separate private GitHub repo (`intake.py`: hash → extract text, OCR fallback for scans → manifest), then writes a lean content-hash pointer note into the vault. Keeps originals and full text out of the vault. `/ingest`, `/warehouse-audit`. Requires Obsidian MCP + the warehouse repo cloned. |
-| [`research-ledger`](./skills/research-ledger) | Knowledge Management | Captures a deep-research run's full claim ledger — every claim, its verdict, and whatever vote detail the run's own output exposes — as a warehoused JSON artifact, before that detail is lost to synthesis. Runs immediately after a deep-research pass, ahead of `wiki-synthesizer`. `/research-ledger`. Requires Obsidian MCP + wiki-warehouse's prerequisites. |
-| [`wiki-privacy-audit`](./skills/wiki-privacy-audit) | Knowledge Management | Audits vault notes for Direct PII/Secrets by reusing `privacy-linter`'s scanner — never reimplements detection. Reports findings, proposes redaction via `wiki-operator`, never edits content automatically. `/privacy-audit`. Requires Obsidian MCP + `privacy-linter` (sibling skill). |
+### Agent design — build and evaluate other agents
+
+| Skill | What it does |
+|---|---|
+| [`agent-eval`](./skills/agent-eval) | Turns "does this agent actually work?" into a repeatable score: rubrics, LLM-as-judge grading, and regression sets that catch when a prompt change made things worse. |
+| [`agent-redteam`](./skills/agent-redteam) | Generates adversarial test cases to check that an agent fails safely — refuses, hedges, or degrades gracefully — instead of confidently getting it wrong. Pairs with `agent-eval` for scoring. |
+| [`deid-reid-harness`](./skills/deid-reid-harness) | Stress-tests a clinical de-identification pipeline by trying to re-identify the patients afterward, across three attack types plus a privacy/utility tradeoff score. Runs offline with real statistical confidence intervals. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
+| [`repo-pincer`](./skills/repo-pincer) | Reverse-engineers a codebase: reads what the docs claim, reads what the code actually does, and reports exactly where they disagree. |
+
+### Privacy — catch leaks before they happen
+
+| Skill | What it does |
+|---|---|
+| [`privacy-linter`](./skills/privacy-linter) | Scans a git diff before you commit for leaked emails, SSNs, credit cards, API keys, and photo GPS metadata — entirely offline, no model call. Can strip EXIF metadata outright, dig through commit history for old leaks, track your leak rate over time, and block a commit on high-severity findings (the installed pre-commit hook does this by default). |
+| [`privacy-threat-oracle`](./skills/privacy-threat-oracle) | A rule-based second opinion on "is it safe to share this?" — weighs which identity of yours it's coming from, who could actually see it, and what's in it against a threat model of real adversaries, and gives a clear proceed / modify / decline. Plugs directly into `privacy-linter`'s output. |
+| [`wiki-privacy-audit`](./skills/wiki-privacy-audit) | Runs `privacy-linter` across your entire Obsidian vault instead of one diff, so a stray SSN or API key pasted into a journal entry doesn't sit there forever. Has a wrapper for unattended/scheduled runs. |
+
+### Knowledge management — a personal wiki that maintains itself
+
+| Skill | What it does |
+|---|---|
+| [`wiki-operator`](./skills/wiki-operator) | Your everyday interface to the vault — `/learn`, `/update`, `/connect`, `/ask`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. |
+| [`wiki-synthesizer`](./skills/wiki-synthesizer) | Turns raw journal entries and saved sources into proper, linked knowledge pages. Run after a learning session. |
+| [`wiki-librarian`](./skills/wiki-librarian) | Weekly housekeeping — finds broken links, orphaned notes, duplicates, and contradictions, and proposes fixes for you to confirm. |
+| [`wiki-governor`](./skills/wiki-governor) | Runs the librarian, synthesizer, and warehouse on a schedule, then grades the vault's own health against its own rules and tracks a knowledge-gap queue. |
+| [`wiki-teacher`](./skills/wiki-teacher) | A weekly `/checkin` that looks across several ongoing projects and surfaces the 1-2 that genuinely need your attention — never a dump of everything at once. |
+| [`wiki-warehouse`](./skills/wiki-warehouse) | Archives PDFs, ebooks, and scans in a separate private repo, leaving only a lightweight pointer note in the vault so it stays fast. |
+| [`research-ledger`](./skills/research-ledger) | Saves a deep-research run's full receipts — every claim and how it was verified — before that detail gets compressed away during synthesis. |
+
+### Content automation
+
+| Skill | What it does |
+|---|---|
+| [`broadcast`](./skills/broadcast) | Produces a daily healthcare-AI news audio briefing: pulls from eleven registered sources, dedupes and ranks stories, pins every claim to its source through a real evidence-pinning MCP server, writes a script, synthesizes audio, and publishes a podcast feed + vault note. Requires `GEMINI_API_KEY` and a locally-built evidence-pinning-mcp server. |
+
+Most knowledge-management and privacy-vault skills require the `obsidian-vault` MCP server — see [Wiki system](#wiki-system) below for setup. Full flag-by-flag documentation for any skill lives in its own `SKILL.md`, not here.
 
 ## Installing a skill
 
@@ -38,15 +57,15 @@ Each skill is a folder containing a `SKILL.md` file (instructions + metadata) an
 /plugin marketplace add Hefrock/agent-skills
 /plugin install agent-eval@hefrock-agent-skills
 ```
-Install any other skill the same way — swap `agent-eval` for the plugin name from the table above (e.g. `/plugin install wiki-governor@hefrock-agent-skills`).
+Install any other skill the same way — swap `agent-eval` for the plugin name from the table above.
 
-**Updating after new skills — or content changes to skills you already have — land in this repo:**
+**Getting updates after this repo changes:**
 ```bash
 /plugin marketplace update hefrock-agent-skills
 ```
-This refreshes the marketplace's manifest, including the shared `metadata.version` in `.claude-plugin/marketplace.json` — **content edits to an already-installed skill (an edited `SKILL.md`, a fixed bug) only reach you once that version number has been bumped.** It isn't automatic just because the file changed on GitHub; an unbumped version means Claude Code keeps serving the cached copy, even after `marketplace update`. If a run's behavior doesn't match what a skill's `SKILL.md` currently says on GitHub, check whether the version was actually bumped for that change before assuming the fix didn't work — the content and the served copy can silently disagree.
+This pulls the latest manifest, but an already-installed skill only picks up a content change (an edited `SKILL.md`, a bug fix) once `.claude-plugin/marketplace.json`'s shared `metadata.version` has been bumped past what you have. It is not automatic just because the file changed on GitHub — if a skill's behavior doesn't match what its `SKILL.md` currently says, check whether the version was actually bumped for that change before assuming the update didn't take.
 
-A plugin that's new to the marketplace still needs its own `/plugin install <name>@hefrock-agent-skills` afterward. If a fresh plugin still comes back "not found" right after `marketplace update`, restart the CLI session and retry.
+A plugin new to the marketplace still needs its own `/plugin install <name>@hefrock-agent-skills` afterward. If it comes back "not found" right after updating, restart the CLI session and retry.
 
 **Claude Code (manual, no plugin system):**
 ```bash
@@ -76,20 +95,20 @@ agent-skills/
 │   └── stalled-work-tracking.md # how the blocked-human / dated-followup convention works
 ├── skills/                     # flat — one folder per skill, no category nesting
 │   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 392-test suite
-│   ├── agent-eval/             # rubric-based evals, LLM-as-judge, regression test sets
-│   ├── agent-redteam/          # adversarial case generation, pairs with agent-eval
-│   ├── deid-reid-harness/      # clinical de-id/re-id eval — scripts, refs, 31-test suite
-│   ├── repo-pincer/            # codebase reverse-engineering — claims vs. reality reconciliation
-│   ├── privacy-linter/         # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite
-│   ├── privacy-threat-oracle/  # rule-based compartment/adversary decision engine — scripts/oracle.py, test suite
-│   ├── wiki-operator/          # on-demand vault operations
-│   ├── wiki-synthesizer/       # journal preprocessing + concept page compilation
-│   ├── wiki-librarian/         # structural health audits — scripts/check_vault.py, 26-test regression suite
-│   ├── wiki-governor/          # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
-│   ├── wiki-teacher/           # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
-│   ├── wiki-warehouse/         # raw-document cold storage (external repo) + vault pointers
-│   ├── research-ledger/       # deep-research claim ledger, warehoused ahead of synthesis
-│   └── wiki-privacy-audit/    # vault-wide PII/secret audit — reuses privacy-linter's scanner
+│   ├── agent-eval/              # rubric-based evals, LLM-as-judge, regression test sets
+│   ├── agent-redteam/           # adversarial case generation, pairs with agent-eval
+│   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 31-test suite
+│   ├── repo-pincer/             # codebase reverse-engineering — claims vs. reality reconciliation
+│   ├── privacy-linter/          # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite
+│   ├── privacy-threat-oracle/   # rule-based compartment/adversary decision engine — scripts/oracle.py, test suite
+│   ├── wiki-operator/           # on-demand vault operations
+│   ├── wiki-synthesizer/        # journal preprocessing + concept page compilation
+│   ├── wiki-librarian/          # structural health audits — scripts/check_vault.py, 26-test regression suite
+│   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
+│   ├── wiki-teacher/            # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
+│   ├── wiki-warehouse/          # raw-document cold storage (external repo) + vault pointers
+│   ├── research-ledger/         # deep-research claim ledger, warehoused ahead of synthesis
+│   └── wiki-privacy-audit/      # vault-wide PII/secret audit — reuses privacy-linter's scanner
 ├── mcp/
 │   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
@@ -115,7 +134,12 @@ agent-skills/
 
 ## Wiki system
 
-The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-teacher`, `wiki-warehouse`, `wiki-privacy-audit`) form a complete personal knowledge system built around an Obsidian vault. `wiki-warehouse` adds a separate private "cold storage" repo for raw documents, keeping originals out of the vault while indexing them by content-hash pointer. `wiki-teacher` adds project accountability on top of the project portfolio — orthogonal to the others, which are about the knowledge graph itself. `wiki-privacy-audit` pairs with the `privacy-linter` skill rather than duplicating its detection logic — it's the one wiki skill whose "audit" is fully mechanical (regex, not judgment), so it runs `privacy-linter`'s scanner directly against vault notes instead of looping per-note MCP reads. `research-ledger` slots into the same pipeline just ahead of `wiki-synthesizer` — it warehouses a deep-research run's full claim ledger (including what got rejected) before synthesis only promotes the confirmed subset into `Knowledge/`.
+The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-governor`, `wiki-teacher`, `wiki-warehouse`, `wiki-privacy-audit`) form a complete personal knowledge system built around an Obsidian vault:
+
+- **`wiki-warehouse`** adds a separate private repo for raw documents, so originals stay out of the vault while still being indexed by a content-hash pointer.
+- **`wiki-teacher`** adds project accountability on top of your project portfolio — orthogonal to the rest, which are about the knowledge graph itself.
+- **`wiki-privacy-audit`** pairs with `privacy-linter` instead of reinventing detection — it's the one wiki skill whose "audit" is fully mechanical, so it runs the linter's scanner directly against vault notes rather than reasoning over each one.
+- **`research-ledger`** slots in just ahead of `wiki-synthesizer` — it warehouses a deep-research run's full claim ledger (including what got rejected) before synthesis only promotes the confirmed subset into `Knowledge/`.
 
 **Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
 
@@ -131,7 +155,7 @@ The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-go
        -e OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
        -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
      ```
-     `-s user` registers it at the user level — available in every project, which is how this server is meant to run — and edits `~/.claude.json` for you. This avoids hand-editing that file directly, which can get weird in a GUI editor if a running Claude Code process has it open.
+     `-s user` registers it at the user level — available in every project, which is how this server is meant to run — and edits `~/.claude.json` for you, avoiding the occasional weirdness of hand-editing that file while a running Claude Code process has it open.
    - **`setup-vault.sh`** — run `./bin/setup-vault.sh ~/path/to/vault`; it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints a config snippet with your paths filled in, for the manual route below.
    - **Manual** — add this to `~/.claude.json` yourself:
      ```json
