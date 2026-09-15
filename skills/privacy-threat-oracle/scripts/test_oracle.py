@@ -83,6 +83,34 @@ class RuleTable(unittest.TestCase):
             oracle.evaluate("not_a_real_compartment", "personal", "public_internet", ["none"])
 
 
+class CompartmentIsolationIsFullyMutual(unittest.TestCase):
+    """Confirmed 2026-09-15: all three compartments are isolated from each other, no
+    exceptions -- personal explicitly includes family content, which is reason enough
+    on its own to keep it walled off from public_professional too, not just from
+    sensitive_research. The vault's own design doc briefly read ambiguously enough to
+    suggest personal and public_professional might be allowed to mix; they aren't. This
+    locks in the confirmed policy so a future edit to threat-model.json's may_reference
+    lists can't silently reopen that ambiguity. See decision-rubric.md's Step 1."""
+
+    def test_every_ordered_pair_of_distinct_compartments_is_a_violation(self):
+        compartments = ["public_professional", "personal", "sensitive_research"]
+        for source in compartments:
+            for target in compartments:
+                if source == target:
+                    continue
+                r = oracle.evaluate(source, target, "close_group", ["none"])
+                self.assertTrue(
+                    r["compartment_violation"],
+                    f"{source} -> {target} should be a compartment violation",
+                )
+
+    def test_personal_to_public_professional_is_a_violation(self):
+        """The specific pairing the ambiguous vault wording could have been misread to
+        permit -- confirmed it does not, since personal includes family content."""
+        r = oracle.evaluate("personal", "public_professional", "close_group", ["none"])
+        self.assertTrue(r["compartment_violation"])
+
+
 class OutOfScopeAdversaries(unittest.TestCase):
     """state_actor is the only adversary currently flagged out_of_scope in
     threat-model.json, and public_internet is the only exposure that reaches it.

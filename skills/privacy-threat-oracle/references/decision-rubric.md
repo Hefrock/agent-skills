@@ -28,10 +28,21 @@ accepts already-structured input.
 ## Step 1 — compartment violation
 
 `target_compartment` is a violation if it's not in `source_compartment`'s
-`may_reference` list (see `threat-model.json`). All three compartments currently
-only reference themselves, so any source ≠ target compartment pairing is a
-violation — cross-compartment linkage is the exact aggregation risk
-compartmentalization exists to prevent, independent of content sensitivity.
+`may_reference` list (see `threat-model.json`). All three compartments only reference
+themselves, so any source ≠ target compartment pairing is a violation — cross-
+compartment linkage is the exact aggregation risk compartmentalization exists to
+prevent, independent of content sensitivity.
+
+**Confirmed 2026-09-15: full mutual isolation is the intended policy, not a v1
+placeholder.** The vault's own design doc briefly read ambiguously here — it described
+`sensitive_research` as isolated from "both others" but didn't explicitly say `personal`
+was isolated from `public_professional`, which could be misread as permitting the two to
+mix. They don't. `personal` explicitly includes family content, which alone is reason
+enough to keep it walled off from `public_professional` too, not just from
+`sensitive_research`. This file's self-only `may_reference` for every compartment was
+already the correct encoding; the vault prose has since been corrected to match
+(`Projects/Privacy OS - Threat-Model Decision Engine.md` and
+`Knowledge/AI/privacy-threat-modeling.md`).
 
 ## Step 2 — exposed adversaries and content-sensitivity tier
 

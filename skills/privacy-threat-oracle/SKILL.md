@@ -33,13 +33,14 @@ python scripts/oracle.py \
 
 1. **Compartment violation check** — does the target compartment fall outside what the
    source compartment may reference? All three compartments (`public_professional`,
-   `personal`, `sensitive_research`) currently only reference themselves, per
-   `references/threat-model.json`.
+   `personal`, `sensitive_research`) only reference themselves, per
+   `references/threat-model.json` — full mutual isolation is the confirmed policy, not
+   a v1 placeholder (see `references/decision-rubric.md`'s Step 1).
 2. **Exposed adversaries** — resolved from `--target-exposure` via the same file's
    `target_exposure_map` (e.g. `public_internet` reaches data brokers, criminals,
-   employer, corporations, civil discovery, state actors, and autonomous adversarial
-   AI agents — automated tools that scrape and correlate public content across
-   compartments at machine scale, unlike a human adversary who has to bother). Any exposed adversary
+   employer, corporations, civil discovery, state actors, and autonomous adversarial AI
+   agents — automated tools that scrape and correlate public content across
+   compartments at machine scale, without needing a human to bother). Any exposed adversary
    flagged `out_of_scope` in `threat-model.json` (currently just the state actor — see
    `references/decision-rubric.md`'s "Out-of-scope adversaries" section) still counts
    toward `adversary_cost_tier` and the recommendation like any other adversary, but is
