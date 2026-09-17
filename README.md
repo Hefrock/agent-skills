@@ -29,6 +29,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | [`privacy-linter`](./skills/privacy-linter) | Scans a git diff before you commit for leaked emails, SSNs, credit cards, API keys, and photo GPS metadata — entirely offline, no model call. Can strip EXIF metadata outright, dig through commit history for old leaks, track your leak rate over time, and block a commit on high-severity findings (the installed pre-commit hook does this by default). |
 | [`privacy-threat-oracle`](./skills/privacy-threat-oracle) | A rule-based second opinion on "is it safe to share this?" — weighs which identity of yours it's coming from, who could actually see it, and what's in it against a threat model of real adversaries, and gives a clear proceed / modify / decline. Plugs directly into `privacy-linter`'s output. |
 | [`wiki-privacy-audit`](./skills/wiki-privacy-audit) | Runs `privacy-linter` across your entire Obsidian vault instead of one diff, so a stray SSN or API key pasted into a journal entry doesn't sit there forever. Has a wrapper for unattended/scheduled runs. |
+| [`style-obfuscator`](./skills/style-obfuscator) | Computes a stylometric fingerprint of a draft (function-word frequency, punctuation habits, sentence stats) and scores its similarity against your own known writing — so you know what a matcher would key on before posting something you don't want traced back to you. Flags only; never rewrites. |
 
 ### Knowledge management — a personal wiki that maintains itself
 
@@ -101,6 +102,7 @@ agent-skills/
 │   ├── repo-pincer/             # codebase reverse-engineering — claims vs. reality reconciliation
 │   ├── privacy-linter/          # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite
 │   ├── privacy-threat-oracle/   # rule-based compartment/adversary decision engine — scripts/oracle.py, test suite
+│   ├── style-obfuscator/        # stylometric fingerprint + reference-corpus similarity — scripts/fingerprint.py, test suite
 │   ├── wiki-operator/           # on-demand vault operations
 │   ├── wiki-synthesizer/        # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/          # structural health audits — scripts/check_vault.py, 26-test regression suite
