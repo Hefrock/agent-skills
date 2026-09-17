@@ -1,6 +1,6 @@
 ---
 name: style-obfuscator
-description: Computes a deterministic stylometric fingerprint of a piece of writing — function-word frequency, sentence-length distribution, punctuation habits (em dash rate, contraction rate), approximate passive-voice rate, and repeated-phrase detection — and optionally scores its similarity against a reference corpus of your own known writing (your vault, past posts). No model or network call; classic authorship-attribution stylometry (Mosteller & Wallace, Burrows' Delta) has always been word-frequency statistics, not semantic understanding. Use when the user wants to check whether a draft (a GitHub PR/README/commit message, a LinkedIn post, any public professional writing) carries a distinctive fingerprint that could later be used to match it against something they wrote under a different identity, asks "does this sound too much like me," "will this be traceable back to my other writing," or wants a stylometric self-check before publishing publicly. Triggers on "check my writing style," "stylometric fingerprint," "does this sound like me," "will this be traceable to my other posts," "style-obfuscator," and the script fingerprint.py. Does NOT rewrite or obscure text — see "What's NOT built here" for why that's a separate, harder, not-yet-built tier.
+description: Computes a deterministic stylometric fingerprint of a piece of writing — function-word frequency, sentence-length distribution, punctuation habits (em dash rate, contraction rate), approximate passive-voice rate, and repeated-phrase detection — and optionally scores its similarity against a reference corpus of your own known writing (your vault, past posts). --corpus pools many of your own pseudonymous drafts into one aggregate fingerprint and reports the "aggregation gap" against a single-document check — catching the case where individually-clean posts are collectively identifying, the way real cluster-based stylometric matching actually works. No model or network call; classic authorship-attribution stylometry (Mosteller & Wallace, Burrows' Delta) has always been word-frequency statistics, not semantic understanding. Use when the user wants to check whether a draft (a GitHub PR/README/commit message, a LinkedIn post, any public professional writing) carries a distinctive fingerprint that could later be used to match it against something they wrote under a different identity, asks "does this sound too much like me," "will this be traceable back to my other writing," "do my pseudonymous posts collectively give me away even if each one looks fine," or wants a stylometric self-check before publishing publicly. Triggers on "check my writing style," "stylometric fingerprint," "does this sound like me," "will this be traceable to my other posts," "aggregation gap," "style-obfuscator," and the script fingerprint.py. Does NOT rewrite or obscure text — see "What's NOT built here" for why that's a separate, harder, not-yet-built tier.
 ---
 
 # Style Obfuscator
@@ -57,6 +57,7 @@ python scripts/fingerprint.py --file draft.md --reference known.md --json
 python scripts/fingerprint.py --file draft.md --reference known.md --emit-findings
 python scripts/fingerprint.py --file draft.md --reference known.md --log-dir ~/.style-obfuscator-log
 python scripts/fingerprint.py --file draft.md --show-phrase-text
+python scripts/fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/
 ```
 
 1. **Fingerprint the draft.** Reports word/sentence/paragraph counts, mean sentence
@@ -90,13 +91,59 @@ python scripts/fingerprint.py --file draft.md --show-phrase-text
    `privacy-linter` uses. Requires `--reference`; there's nothing to fingerprint-match
    without one.
 5. **`--log-dir DIR`** appends one timestamped JSON record per run — `{timestamp,
-   label, reference_label, similarity_score, severity}` — for trend-tracking whether a
-   draft's stylometric distinctiveness is rising or falling over time. It never writes
-   the fingerprint's numeric feature vector or `top_phrases`: even the feature rates,
-   while not literal draft text, ARE the stylometric signal this tool exists to expose,
-   so a durable log of them (unlike a one-off report you read and discard) is exactly
-   the kind of data-at-rest this tool should minimize, not accumulate. Also requires
-   `--reference`.
+   label, reference_label, similarity_score, severity, mode, document_count}` — for
+   trend-tracking whether your stylometric distinctiveness is rising or falling over
+   time. It never writes the fingerprint's numeric feature vector or `top_phrases`:
+   even the feature rates, while not literal draft text, ARE the stylometric signal
+   this tool exists to expose, so a durable log of them (unlike a one-off report you
+   read and discard) is exactly the kind of data-at-rest this tool should minimize,
+   not accumulate. Also requires `--reference`.
+6. **`--corpus DIR_OR_FILE`** is an alternative to `--file`/`--text` for the draft
+   side: a directory (or single file) of your own *pseudonymous* writing, pooled into
+   one aggregate fingerprint — see "The aggregation gap" below for why this exists and
+   what it catches that single-document checking can't.
+
+## The aggregation gap: why single-document checking isn't enough
+
+Every other mode here compares one draft to your reference. But real stylometric
+deanonymization research doesn't usually match one anonymous document at a time —
+it clusters *many* pseudonymous documents together first (more text, less noise, a
+much stronger signal), then matches the pooled cluster. That means you can run every
+pseudonymous post through `--file` individually, get a clean score each time, and
+still have those posts collectively converge on a stable "shadow" fingerprint of the
+anonymous identity itself — because pooling several noisy, individually-clean
+documents can average out to a stronger match than any one of them showed alone.
+
+`--corpus`, paired with `--reference`, simulates exactly that attack against yourself
+and reports the **aggregation gap** — how much higher the pooled corpus scores than
+its own highest-scoring individual document:
+
+```bash
+python scripts/fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/
+# --- Aggregation gap (12 document(s) pooled) ---
+# Pooled corpus similarity: 78.0%
+# Highest individual document: 55.0% (posts/2026-03-14-thoughts.md)
+# Aggregation gap: +23.0 points -- the pooled corpus is more identifying than any
+# single document in it. This is the blind spot a cluster-based stylometric match
+# exploits: no single post triggers a check, but pooled together they would.
+```
+
+A large gap (>= 10 points, `AGGREGATION_GAP_NOTABLE`) means your pseudonymous posts
+are individually clean but collectively convergent. A small or negative gap is
+reassuring: pooling didn't reveal anything a single-post check wouldn't have already
+caught. Requires you to have kept local copies of your own pseudonymous writing to
+point `--corpus` at — the tool can't discover these on its own (no crawling LinkedIn/
+GitHub for "everything I've posted under this identity"), same trust-the-input
+precondition `--reference` already has.
+
+**Drift over time falls out of existing infrastructure, not a new one.** There's no
+separate trend engine: re-run `--corpus ... --log-dir ...` periodically as your
+pseudonymous folder grows, and the existing `--log-dir` records (now carrying `mode`
+and `document_count`) give you the history to read back. `--emit-findings` and
+`--log-dir` both work on `--corpus` unchanged, since they only ever consumed a
+`(score, severity, label)` triple to begin with — `--corpus`'s pooled score just
+becomes another value for that same triple, with the aggregation-gap sentence folded
+into the Finding's `reason` when the gap is notable.
 
 ## A concrete example of the reference-corpus workflow
 
@@ -133,6 +180,13 @@ python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
   A structural property of this whole stack's file-based architecture, not something
   fixable in this skill alone — see `privacy-threat-oracle/SKILL.md`'s "What's NOT
   built here" for the full writeup and what was considered and deferred.
+- **Automatic discovery of your own pseudonymous posts.** `--corpus` needs you to have
+  already saved copies locally; it can't crawl any platform to assemble that folder
+  for you.
+- **Time-windowed drift analysis.** `--corpus` pools its whole input as one all-time
+  blob — it can't tell you whether the *last three months* of posts are trending
+  worse than older ones, only the aggregate. Period-bucketing (by file mtime or a
+  frontmatter date) would need real design work, not attempted here.
 
 ## Pairing
 
@@ -177,6 +231,12 @@ python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
   less distinctive over time," not accumulate a second historical copy of the actual
   writing signal, the same "findings/score only, never the content" discipline
   `privacy-linter`'s own `--log-dir` established first.
+- A small aggregation gap is real, useful information, not a null result — report it
+  in the same reassuring-but-not-dismissive tone as a low similarity score, not as
+  "nothing to see here." A cluster-based check finding nothing beyond what a single
+  document already showed doesn't rule out gap #5's ceiling: a richer adversary with a
+  different feature set entirely is still out of scope for this or any deterministic
+  check.
 
 ## Files
 
