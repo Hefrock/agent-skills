@@ -99,6 +99,27 @@ note for why this is opt-in rather than a default-behavior change: nothing invok
   `Knowledge/AI/privacy-threat-modeling.md` and the project page; keeping the two in
   sync by hand is the current state, the same relationship `privacy-linter`'s
   `references/leak-taxonomy.md` has to its own `scan_diff.py` patterns.
+- **Any presence at the actual point of disclosure.** This oracle, `privacy-linter`,
+  and `style-obfuscator` all operate on something that has already touched disk — a
+  file, a git diff, stdin. None of them have any presence at the moment content is
+  actually composed: a GitHub PR description typed directly into the web UI, a
+  LinkedIn post editor, a comment box. A PR description drafted in the browser and
+  pasted straight into a `gh`/web submit is invisible to this entire stack, no matter
+  how hardened any one tool is — this is a structural property of the architecture
+  (local, file-based, explicitly user-invoked), not a gap any single tool's hardening
+  closes. It's also, notably, not really the threat this stack was built against: the
+  `autonomous_ai_agent` adversary's primary threat (above) is correlating content
+  that's *already public*, not intercepting a draft pre-publish — this gap is closer
+  to "did a human remember to run the check before hitting submit" than a detection
+  problem. Considered and explicitly deferred rather than built: a browser extension
+  hooking known compose boxes (real per-site DOM maintenance burden, and an extension
+  with page-read access is itself a new privacy-sensitive surface — ironic for this
+  toolkit) and a clipboard monitor (categorically more invasive than anything else
+  here, which only ever acts on something the user explicitly named). A possible
+  future direction, also not designed or scoped yet: a local LLM agent that sits
+  closer to the point of disclosure and can actually read/flag a draft as it's
+  composed, rather than requiring it to be staged to a file first — noted here as an
+  idea worth revisiting, not a commitment.
 
 ## Pairing
 
