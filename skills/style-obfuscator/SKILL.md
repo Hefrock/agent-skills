@@ -54,6 +54,7 @@ python scripts/fingerprint.py --file draft.md --reference known_writing.md
 python scripts/fingerprint.py --file draft.md --reference ~/vault/Journal/
 python scripts/fingerprint.py --text -
 python scripts/fingerprint.py --file draft.md --reference known.md --json
+python scripts/fingerprint.py --file draft.md --reference known.md --emit-findings
 ```
 
 1. **Fingerprint the draft.** Reports word/sentence/paragraph counts, mean sentence
@@ -72,6 +73,14 @@ python scripts/fingerprint.py --file draft.md --reference known.md --json
    35-word draft is noisy — short input gets an explicit warning in the report, not a
    confident-looking number. The tool never says "this is/isn't the same author"; it
    reports comparable numbers and leaves the judgment call to you.
+4. **`--emit-findings`** turns the comparison into a `privacy-linter`-shaped Finding
+   list instead of a report — `{severity, leak_class: "stylometric", finding, reason,
+   location}`, the exact shape `scan_diff.py --json` already produces and
+   `privacy-threat-oracle`'s `--from-linter-json` already reads. Below
+   `--emit-findings-threshold` (default 60%) it emits `[]` rather than a synthetic
+   low-severity finding — the same "report nothing for clean content" convention
+   `privacy-linter` uses. Requires `--reference`; there's nothing to fingerprint-match
+   without one.
 
 ## A concrete example of the reference-corpus workflow
 
@@ -106,14 +115,22 @@ python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
 
 ## Pairing
 
-- **privacy-threat-oracle** — already accepts `stylometric` as a `--content-class`
-  value (`references/threat-model.json` even names "stylometric fingerprinting" as the
-  `autonomous_ai_agent` adversary's primary threat), but nothing in this repo produced
-  a real stylometric finding before this skill. A high similarity score here is the
-  kind of input that class was meant for — feeding it through isn't wired up
-  automatically (the oracle takes a fixed content-class label, not a numeric score;
-  see its own "What's NOT built here" on free-text input), but the two are designed to
-  fit together.
+- **privacy-threat-oracle** — `--emit-findings` closes the loop that used to be a
+  "designed to fit together, not actually wired up" note here: it emits a
+  `{leak_class: "stylometric", ...}` Finding in `scan_diff.py`'s own JSON shape, so it
+  pipes straight into `--from-linter-json` exactly like a `privacy-linter` scan does:
+  ```bash
+  python scripts/fingerprint.py --file draft.md --reference ~/vault/ --emit-findings | \
+    python ../privacy-threat-oracle/scripts/oracle.py \
+      --source-compartment personal --target-compartment public_professional \
+      --target-exposure public_internet --from-linter-json -
+  ```
+  One thing worth knowing about that bridge: the oracle's `content_classes_from_linter_
+  json` only reads each finding's `leak_class`, not its `severity` — so a "low" and a
+  "high" severity stylometric finding both resolve to the same fixed `stylometric` →
+  `medium` sensitivity tier on the oracle side. This tool's own severity field is real
+  (it drives the ranking if you're reading `--emit-findings` output directly) but
+  doesn't currently change the oracle's tier once it crosses.
 - **privacy-linter** — a distinct, deferred leak class in that skill's own taxonomy;
   this skill is what actually builds the flagging half of it, scoped to a fingerprint
   rather than the full inference-cue class privacy-linter also defers.
