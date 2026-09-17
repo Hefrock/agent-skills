@@ -266,6 +266,51 @@ check(
 
 await fs.unlink(`${VAULT}/Knowledge/malformed.md`);
 
+console.log("\n── list_links: folder-prefixed wikilinks register as backlinks ──");
+
+// Regression: listLinks() computed the target's own name via
+// path.basename(notePath, ".md") (a bare filename, no folder) but compared it
+// against the *raw*, unstripped bracket text of every other note's outbound
+// links. A link written as [[Projects/Target]] (folder-prefixed) never equaled
+// bare "Target", so every prefixed-style link silently failed to register as
+// an inbound backlink -- even though the same link correctly appeared in the
+// linking note's own *outbound* list. Found 2026-09-15 auditing a real vault:
+// every Projects/ page showed zero inbound despite being referenced by name
+// from half a dozen Knowledge/ pages, all via the folder-prefixed form.
+await fs.mkdir(`${VAULT}/Projects`, { recursive: true });
+await fs.writeFile(
+  `${VAULT}/Projects/Target Project.md`,
+  "---\ntype: project\nstatus: draft\n---\n# Target Project\n"
+);
+await fs.writeFile(
+  `${VAULT}/Knowledge/prefixed-linker.md`,
+  "---\ntype: concept\nstatus: draft\n---\n# Prefixed Linker\n\nSee [[Projects/Target Project]] for details.\n"
+);
+await fs.writeFile(
+  `${VAULT}/Knowledge/bare-linker.md`,
+  "---\ntype: concept\nstatus: draft\n---\n# Bare Linker\n\nSee [[Target Project]] for details.\n"
+);
+
+r = await tool(19, "list_links", { path: "Projects/Target Project.md" });
+d = parse(r);
+check(
+  "list_links — a folder-prefixed inbound link ([[Projects/Target Project]]) registers as a backlink",
+  d.inbound?.includes("Knowledge/prefixed-linker.md"),
+  `inbound: ${JSON.stringify(d.inbound)}`
+);
+check(
+  "list_links — a bare inbound link ([[Target Project]]) still registers as a backlink",
+  d.inbound?.includes("Knowledge/bare-linker.md"),
+  `inbound: ${JSON.stringify(d.inbound)}`
+);
+
+r = await tool(20, "list_links", { path: "Knowledge/prefixed-linker.md" });
+d = parse(r);
+check(
+  "list_links — the prefixed link still appears in its own note's outbound list (this direction always worked)",
+  d.outbound?.includes("Projects/Target Project")
+);
+
 // ── Results ───────────────────────────────────────────────────────────────────
 server.kill();
 await fs.rm(VAULT, { recursive: true, force: true });

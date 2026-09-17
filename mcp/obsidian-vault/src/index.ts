@@ -354,7 +354,14 @@ async function listLinks(notePath: string): Promise<object> {
     if (file === notePath) continue;
     const other = await tryReadNote(file);
     if (!other.ok) { skipped.push({ path: file, error: other.error }); continue; }
-    if (extractWikilinks(other.body).some((l) => l.toLowerCase() === noteName.toLowerCase())) {
+    // A wikilink's bracket text may be a bare filename ("Foo") or a
+    // folder-prefixed path ("Projects/Foo") -- Obsidian resolves both to the
+    // same note, so the backlink match has to strip any folder prefix off the
+    // link text before comparing, the same way `noteName` already strips it
+    // off the target note's own path. Comparing the raw, unstripped link text
+    // against a bare basename silently missed every prefixed link (all of
+    // Projects/'s inbound links, for one) until this fix.
+    if (extractWikilinks(other.body).some((l) => path.basename(l).toLowerCase() === noteName.toLowerCase())) {
       inbound.push(file);
     }
   }
