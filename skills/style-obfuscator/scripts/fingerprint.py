@@ -28,6 +28,13 @@ Usage:
                                                                           # JSON, for piping
                                                                           # into privacy-
                                                                           # threat-oracle
+    fingerprint.py --file draft.md --reference known.md --log-dir ~/.style-obfuscator-log
+    fingerprint.py --file draft.md --reference known.md --show-phrase-text  # reveal the
+                                                                              # verbatim
+                                                                              # repeated
+                                                                              # phrases
+                                                                              # (redacted
+                                                                              # by default)
 
 Every numeric feature is a rate per 1,000 words, not a raw count — that's what makes a
 280-word LinkedIn post and a 4,000-word README comparable at all.
@@ -47,7 +54,9 @@ import math
 import os
 import re
 import sys
+import uuid
 from collections import Counter
+from datetime import datetime, timezone
 
 # Topic-independent, closed-class words — the actual basis of real stylometry research
 # (Mosteller & Wallace's Federalist Papers study, Burrows' Delta) specifically because
@@ -251,6 +260,21 @@ EMIT_FINDINGS_MEDIUM = 70.0
 EMIT_FINDINGS_HIGH = 85.0
 
 
+def severity_for_score(score, threshold=EMIT_FINDINGS_DEFAULT_THRESHOLD):
+    """Classifies a similarity score into "none"/"low"/"medium"/"high" —
+    shared by emit_findings() (which drops "none" entirely, since a weak
+    match isn't a finding) and write_run_log() (which keeps "none", since a
+    trend log needs every run, not just the flagged ones, to show whether
+    similarity is rising or falling over time)."""
+    if score < threshold:
+        return "none"
+    if score >= EMIT_FINDINGS_HIGH:
+        return "high"
+    if score >= EMIT_FINDINGS_MEDIUM:
+        return "medium"
+    return "low"
+
+
 def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRESHOLD):
     """Returns a list of 0 or 1 dicts shaped exactly like privacy-linter's
     scan_diff.py Finding (severity, leak_class, finding, reason, location) —
@@ -259,14 +283,9 @@ def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRES
     shape keeps this a real Finding, not a lookalike). Below `threshold`,
     returns [] rather than a low-severity finding."""
     score = similarity_score(fp, reference_fp)
-    if score < threshold:
+    severity = severity_for_score(score, threshold)
+    if severity == "none":
         return []
-    if score >= EMIT_FINDINGS_HIGH:
-        severity = "high"
-    elif score >= EMIT_FINDINGS_MEDIUM:
-        severity = "medium"
-    else:
-        severity = "low"
 
     deltas = [row for row in feature_deltas(fp, reference_fp) if row[1] != 0 or row[2] != 0]
     top_features = ", ".join(_feature_label(key) for key, *_rest in deltas[:3]) or "no single feature dominates"
@@ -280,6 +299,36 @@ def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRES
                   "this draft back to the reference corpus.",
         "location": label,
     }]
+
+
+# --- Run logging (for longitudinal trend tracking) ------------------------------------
+# Mirrors privacy-linter's own --log-dir discipline exactly: one durable timestamped
+# record per run, score/severity/labels only — never the fingerprint's numeric feature
+# vector (which is itself a real stylometric signal, the whole point of this tool) and
+# never top_phrases (verbatim substrings of the actual draft). A trend log that leaked
+# either would undermine the reason this tool exists in the first place.
+
+def write_run_log(log_dir, label, reference_label, score, severity):
+    """Appends one timestamped JSON record under log_dir. Silently creates
+    log_dir if it doesn't exist yet. Never raises on a write failure — a
+    full disk or a permissions problem here must never block or crash an
+    actual fingerprint run, same discipline as privacy-linter's own
+    write_run_log()."""
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        now = datetime.now(timezone.utc)
+        filename = now.strftime("%Y%m%dT%H%M%S%f") + f"-{uuid.uuid4().hex[:8]}.json"
+        record = {
+            "timestamp": now.isoformat(),
+            "label": label,
+            "reference_label": reference_label,
+            "similarity_score": score,
+            "severity": severity,
+        }
+        with open(os.path.join(log_dir, filename), "w", encoding="utf-8") as f:
+            json.dump(record, f)
+    except OSError as e:
+        print(f"Warning: could not write run log to {log_dir}: {e}", file=sys.stderr)
 
 
 def _feature_label(key):
@@ -327,12 +376,31 @@ def load_reference_text(path):
         return f.read()
 
 
-def print_report(label, fp, reference_label=None, reference_fp=None, json_out=False):
+def _redacted_phrases(top_phrases):
+    """top_phrases holds verbatim 3-4 word substrings of the actual draft —
+    a real content-leak vector if a fingerprint report is ever shared,
+    logged, or piped somewhere (undermining the exact thing this tool is
+    for). Redacted by default in both the text and --json report: shown as
+    a count + n-gram-length summary, never the phrase text itself, unless
+    --show-phrase-text opts in for the user's own interactive terminal."""
+    if not top_phrases:
+        return {"count": 0, "lengths": [], "redacted": True}
+    lengths = sorted({len(phrase.split()) for phrase, _count in top_phrases})
+    return {"count": len(top_phrases), "lengths": lengths, "redacted": True}
+
+
+def _fingerprint_for_report(fp, show_phrase_text):
+    if show_phrase_text:
+        return fp
+    return {k: (v if k != "top_phrases" else _redacted_phrases(v)) for k, v in fp.items()}
+
+
+def print_report(label, fp, reference_label=None, reference_fp=None, json_out=False, show_phrase_text=False):
     if json_out:
-        payload = {"label": label, "fingerprint": fp}
+        payload = {"label": label, "fingerprint": _fingerprint_for_report(fp, show_phrase_text)}
         if reference_fp is not None:
             payload["reference_label"] = reference_label
-            payload["reference_fingerprint"] = reference_fp
+            payload["reference_fingerprint"] = _fingerprint_for_report(reference_fp, show_phrase_text)
             payload["similarity_score"] = similarity_score(fp, reference_fp)
         print(json.dumps(payload, indent=2))
         return
@@ -351,10 +419,19 @@ def print_report(label, fp, reference_label=None, reference_fp=None, json_out=Fa
     print(f"Approx. passive voice rate: {fp['passive_voice_per_1k']} / 1,000 words (heuristic, not POS-based)")
     top_fw = sorted(FUNCTION_WORDS, key=lambda w: -fp[f"fw_{w}_per_1k"])[:8]
     print("Most frequent function words: " + ", ".join(f"{w} ({fp[f'fw_{w}_per_1k']})" for w in top_fw))
-    if fp["top_phrases"]:
-        print("Repeated phrases: " + "; ".join(f'"{p}" ({c}x)' for p, c in fp["top_phrases"]))
+    if show_phrase_text:
+        if fp["top_phrases"]:
+            print("Repeated phrases: " + "; ".join(f'"{p}" ({c}x)' for p, c in fp["top_phrases"]))
+        else:
+            print("Repeated phrases: none found")
     else:
-        print("Repeated phrases: none found")
+        summary = _redacted_phrases(fp["top_phrases"])
+        if summary["count"]:
+            lengths = "/".join(str(n) for n in summary["lengths"])
+            print(f"Repeated phrases: {summary['count']} found ({lengths}-word, text redacted — "
+                  "pass --show-phrase-text to reveal)")
+        else:
+            print("Repeated phrases: none found")
 
     if reference_fp is not None:
         score = similarity_score(fp, reference_fp)
@@ -387,11 +464,24 @@ def main():
     parser.add_argument("--emit-findings-threshold", type=float, default=EMIT_FINDINGS_DEFAULT_THRESHOLD,
                          help=f"Minimum similarity score (0-100) to emit a finding at all "
                               f"(default: {EMIT_FINDINGS_DEFAULT_THRESHOLD}).")
+    parser.add_argument("--show-phrase-text", action="store_true",
+                         help="Show the actual text of repeated phrases in the report/--json output. "
+                              "Off by default — top_phrases is verbatim draft text, redacted unless "
+                              "you explicitly opt in for your own terminal.")
+    parser.add_argument("--log-dir", metavar="DIR",
+                         help="Append this run's score/severity as a timestamped JSON record under DIR, "
+                              "for trend-tracking over time. Never writes the fingerprint's numeric "
+                              "feature vector or top_phrases — score and severity only. Requires --reference.")
     args = parser.parse_args()
 
     if args.emit_findings and not args.reference:
         print("style-obfuscator: --emit-findings requires --reference "
               "(nothing to compare the draft against).", file=sys.stderr)
+        return 2
+
+    if args.log_dir and not args.reference:
+        print("style-obfuscator: --log-dir requires --reference "
+              "(nothing to compare the draft against, so no score to log).", file=sys.stderr)
         return 2
 
     if args.text == "-":
@@ -420,12 +510,18 @@ def main():
             print(f"style-obfuscator: no words found under --reference {args.reference}.", file=sys.stderr)
             return 2
 
+    if args.log_dir:
+        score = similarity_score(fp, reference_fp)
+        severity = severity_for_score(score, threshold=args.emit_findings_threshold)
+        write_run_log(args.log_dir, label, reference_label, score, severity)
+
     if args.emit_findings:
         findings = emit_findings(label, fp, reference_fp, threshold=args.emit_findings_threshold)
         print(json.dumps(findings, indent=2))
         return 0
 
-    print_report(label, fp, reference_label=reference_label, reference_fp=reference_fp, json_out=args.json)
+    print_report(label, fp, reference_label=reference_label, reference_fp=reference_fp,
+                 json_out=args.json, show_phrase_text=args.show_phrase_text)
     return 0
 
 
