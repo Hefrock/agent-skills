@@ -35,6 +35,13 @@ Usage:
                                                                               # phrases
                                                                               # (redacted
                                                                               # by default)
+    fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/  # pool many of
+                                                                          # your own
+                                                                          # pseudonymous
+                                                                          # posts into one
+                                                                          # fingerprint +
+                                                                          # report the
+                                                                          # aggregation gap
 
 Every numeric feature is a rate per 1,000 words, not a raw count — that's what makes a
 280-word LinkedIn post and a 4,000-word README comparable at all.
@@ -275,13 +282,15 @@ def severity_for_score(score, threshold=EMIT_FINDINGS_DEFAULT_THRESHOLD):
     return "low"
 
 
-def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRESHOLD):
+def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRESHOLD, extra_note=None):
     """Returns a list of 0 or 1 dicts shaped exactly like privacy-linter's
     scan_diff.py Finding (severity, leak_class, finding, reason, location) —
     the wire format privacy-threat-oracle's --from-linter-json already reads
     (it only requires a string "leak_class" field, but matching the full
     shape keeps this a real Finding, not a lookalike). Below `threshold`,
-    returns [] rather than a low-severity finding."""
+    returns [] rather than a low-severity finding. `extra_note`, if given, is
+    appended to the reason — used by --corpus mode to carry the aggregation-
+    gap sentence through into the Finding the oracle actually sees."""
     score = similarity_score(fp, reference_fp)
     severity = severity_for_score(score, threshold)
     if severity == "none":
@@ -290,13 +299,17 @@ def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRES
     deltas = [row for row in feature_deltas(fp, reference_fp) if row[1] != 0 or row[2] != 0]
     top_features = ", ".join(_feature_label(key) for key, *_rest in deltas[:3]) or "no single feature dominates"
 
+    reason = (f"Draft's writing style matches the reference on: {top_features}. "
+              "A match this close is what an authorship matcher would key on to link "
+              "this draft back to the reference corpus.")
+    if extra_note:
+        reason += f" {extra_note}"
+
     return [{
         "severity": severity,
         "leak_class": "stylometric",
         "finding": f"Stylometric similarity to reference corpus: {score}%",
-        "reason": f"Draft's writing style matches the reference on: {top_features}. "
-                  "A match this close is what an authorship matcher would key on to link "
-                  "this draft back to the reference corpus.",
+        "reason": reason,
         "location": label,
     }]
 
@@ -308,12 +321,16 @@ def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRES
 # never top_phrases (verbatim substrings of the actual draft). A trend log that leaked
 # either would undermine the reason this tool exists in the first place.
 
-def write_run_log(log_dir, label, reference_label, score, severity):
+def write_run_log(log_dir, label, reference_label, score, severity, document_count=None):
     """Appends one timestamped JSON record under log_dir. Silently creates
     log_dir if it doesn't exist yet. Never raises on a write failure — a
     full disk or a permissions problem here must never block or crash an
     actual fingerprint run, same discipline as privacy-linter's own
-    write_run_log()."""
+    write_run_log(). `document_count`, when given (--corpus mode), records
+    how many pooled documents this run's score covers — re-running --corpus
+    periodically with --log-dir attached is how drift over time gets tracked,
+    with no separate trend engine needed: just this field plus a growing set
+    of timestamped records to read back later."""
     try:
         os.makedirs(log_dir, exist_ok=True)
         now = datetime.now(timezone.utc)
@@ -324,6 +341,8 @@ def write_run_log(log_dir, label, reference_label, score, severity):
             "reference_label": reference_label,
             "similarity_score": score,
             "severity": severity,
+            "mode": "corpus" if document_count is not None else "single",
+            "document_count": document_count,
         }
         with open(os.path.join(log_dir, filename), "w", encoding="utf-8") as f:
             json.dump(record, f)
@@ -376,6 +395,54 @@ def load_reference_text(path):
         return f.read()
 
 
+def load_corpus_files(path):
+    """For --corpus: returns [(file_path, text), ...] for a directory's
+    .md/.txt files (or a single file, treated as a one-document corpus).
+    Unlike load_reference_text(), this keeps each document separate rather
+    than pre-concatenating — --corpus mode needs both the pooled text (join
+    these) AND each individual document's own fingerprint, to compute the
+    aggregation gap between them (see aggregation_gap()). Unreadable
+    individual files are skipped with a stderr warning, never a crash, same
+    discipline as load_reference_text()."""
+    paths = walk_text_files(path) if os.path.isdir(path) else [path]
+    docs = []
+    for file_path in paths:
+        try:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
+                docs.append((file_path, f.read()))
+        except OSError as e:
+            print(f"Warning: skipping unreadable corpus file {file_path}: {e}", file=sys.stderr)
+    return docs
+
+
+# How many points higher the pooled corpus has to score than its own highest-scoring
+# individual document before the aggregation-gap report treats it as a real finding
+# rather than noise. Same "starting point, not calibrated science, exposed as a
+# document-level detail rather than hardcoded as settled" spirit as EMIT_FINDINGS_*.
+AGGREGATION_GAP_NOTABLE = 10.0
+
+
+def aggregation_gap(corpus_docs, reference_fp):
+    """The whole point of --corpus: scores each document in corpus_docs
+    individually against reference_fp and returns (path, score) for the
+    highest-scoring one — the number the pooled/aggregate score (computed
+    separately, by the caller, via similarity_score() on the pooled
+    fingerprint) gets compared against. A pooled score well above the best
+    individual score means the corpus is collectively more identifying than
+    any single post in it — exactly the cluster-based deanonymization blind
+    spot a one-document-at-a-time check structurally can't see. Returns None
+    if no document in the corpus has any words to score."""
+    scored = []
+    for path, text in corpus_docs:
+        doc_fp = compute_fingerprint(text)
+        if doc_fp["word_count"] == 0:
+            continue
+        scored.append((path, similarity_score(doc_fp, reference_fp)))
+    if not scored:
+        return None
+    return max(scored, key=lambda pair: pair[1])
+
+
 def _redacted_phrases(top_phrases):
     """top_phrases holds verbatim 3-4 word substrings of the actual draft —
     a real content-leak vector if a fingerprint report is ever shared,
@@ -395,13 +462,25 @@ def _fingerprint_for_report(fp, show_phrase_text):
     return {k: (v if k != "top_phrases" else _redacted_phrases(v)) for k, v in fp.items()}
 
 
-def print_report(label, fp, reference_label=None, reference_fp=None, json_out=False, show_phrase_text=False):
+def print_report(label, fp, reference_label=None, reference_fp=None, json_out=False,
+                  show_phrase_text=False, corpus_document_count=None, aggregation_best=None):
+    """`corpus_document_count`/`aggregation_best` are --corpus mode's already-
+    computed values (aggregation_gap() is called once, by main(), and threaded
+    through here and into emit_findings()'s extra_note -- never recomputed,
+    so a corpus never gets re-scored twice for one invocation)."""
     if json_out:
         payload = {"label": label, "fingerprint": _fingerprint_for_report(fp, show_phrase_text)}
         if reference_fp is not None:
             payload["reference_label"] = reference_label
             payload["reference_fingerprint"] = _fingerprint_for_report(reference_fp, show_phrase_text)
             payload["similarity_score"] = similarity_score(fp, reference_fp)
+        if corpus_document_count is not None:
+            payload["corpus_document_count"] = corpus_document_count
+            if aggregation_best is not None:
+                best_path, best_score = aggregation_best
+                payload["highest_individual_score"] = best_score
+                payload["highest_individual_document"] = best_path
+                payload["aggregation_gap"] = round(payload["similarity_score"] - best_score, 1)
         print(json.dumps(payload, indent=2))
         return
 
@@ -450,11 +529,37 @@ def print_report(label, fp, reference_label=None, reference_fp=None, json_out=Fa
         for key, a, b, pct in deltas[-5:]:
             print(f"  {_feature_label(key)}: draft {a} vs reference {b} ({pct}% match)")
 
+        if corpus_document_count is not None:
+            print(f"\n--- Aggregation gap ({corpus_document_count} document(s) pooled) ---")
+            if aggregation_best is None:
+                print("No individual document in the corpus had any words to score.")
+            else:
+                best_path, best_score = aggregation_best
+                gap = round(score - best_score, 1)
+                print(f"Pooled corpus similarity: {score}%")
+                print(f"Highest individual document: {best_score}% ({best_path})")
+                if gap >= AGGREGATION_GAP_NOTABLE:
+                    print(f"Aggregation gap: +{gap} points — the pooled corpus is more identifying "
+                          "than any single document in it. This is the blind spot a cluster-based "
+                          "stylometric match exploits: no single post triggers a check, but pooled "
+                          "together they would.")
+                else:
+                    print(f"Aggregation gap: {'+' if gap >= 0 else ''}{gap} points — pooling doesn't "
+                          "reveal much beyond what your highest individual document already would.")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--file", help="Path to the draft to fingerprint.")
     parser.add_argument("--text", help="Read the draft from stdin (pass '-').")
+    parser.add_argument("--corpus", metavar="DIR_OR_FILE",
+                         help="A directory (or single file) of your own pseudonymous writing, "
+                              "pooled into one aggregate fingerprint -- an alternative to --file/"
+                              "--text. Paired with --reference, also reports the 'aggregation gap': "
+                              "how much higher the pooled corpus scores than its own highest-"
+                              "scoring individual document -- the blind spot a cluster-based "
+                              "stylometric match exploits that checking one document at a time "
+                              "can't see.")
     parser.add_argument("--reference", help="A file or directory of your own known writing to compare against.")
     parser.add_argument("--json", action="store_true", help="Emit the fingerprint (and comparison, if any) as JSON.")
     parser.add_argument("--emit-findings", action="store_true",
@@ -484,6 +589,7 @@ def main():
               "(nothing to compare the draft against, so no score to log).", file=sys.stderr)
         return 2
 
+    corpus_docs = None
     if args.text == "-":
         text = sys.stdin.read()
         label = "<stdin>"
@@ -491,8 +597,15 @@ def main():
         with open(args.file, encoding="utf-8", errors="replace") as f:
             text = f.read()
         label = args.file
+    elif args.corpus:
+        corpus_docs = load_corpus_files(args.corpus)
+        if not corpus_docs:
+            print(f"style-obfuscator: no readable files found under --corpus {args.corpus}.", file=sys.stderr)
+            return 2
+        text = "\n\n".join(doc_text for _path, doc_text in corpus_docs)
+        label = f"{args.corpus} ({len(corpus_docs)} file(s) pooled)"
     else:
-        print("style-obfuscator: pass --file PATH or --text -", file=sys.stderr)
+        print("style-obfuscator: pass --file PATH, --text -, or --corpus DIR", file=sys.stderr)
         return 2
 
     fp = compute_fingerprint(text)
@@ -510,18 +623,37 @@ def main():
             print(f"style-obfuscator: no words found under --reference {args.reference}.", file=sys.stderr)
             return 2
 
+    corpus_document_count = len(corpus_docs) if corpus_docs is not None else None
+    aggregation_best = None
+    aggregation_note = None
+    if corpus_docs is not None and reference_fp is not None:
+        aggregation_best = aggregation_gap(corpus_docs, reference_fp)
+        if aggregation_best is not None:
+            best_path, best_score = aggregation_best
+            pooled_score = similarity_score(fp, reference_fp)
+            gap = round(pooled_score - best_score, 1)
+            if gap >= AGGREGATION_GAP_NOTABLE:
+                aggregation_note = (f"Pooled across {corpus_document_count} document(s), this scores "
+                                     f"{gap} points higher than its own highest-scoring individual "
+                                     f"document ({best_score}%) -- an aggregation gap this large means "
+                                     "the corpus is collectively more identifying than any single post "
+                                     "in it would suggest.")
+
     if args.log_dir:
         score = similarity_score(fp, reference_fp)
         severity = severity_for_score(score, threshold=args.emit_findings_threshold)
-        write_run_log(args.log_dir, label, reference_label, score, severity)
+        write_run_log(args.log_dir, label, reference_label, score, severity,
+                      document_count=corpus_document_count)
 
     if args.emit_findings:
-        findings = emit_findings(label, fp, reference_fp, threshold=args.emit_findings_threshold)
+        findings = emit_findings(label, fp, reference_fp, threshold=args.emit_findings_threshold,
+                                 extra_note=aggregation_note)
         print(json.dumps(findings, indent=2))
         return 0
 
     print_report(label, fp, reference_label=reference_label, reference_fp=reference_fp,
-                 json_out=args.json, show_phrase_text=args.show_phrase_text)
+                 json_out=args.json, show_phrase_text=args.show_phrase_text,
+                 corpus_document_count=corpus_document_count, aggregation_best=aggregation_best)
     return 0
 
 

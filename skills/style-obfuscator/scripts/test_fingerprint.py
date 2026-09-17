@@ -5,9 +5,12 @@ expected values are hand-verifiable, not just "the script agrees with itself."
 
 Stdlib only (unittest). Run: python test_fingerprint.py"""
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -233,6 +236,70 @@ class EmitFindings(unittest.TestCase):
         self.assertLess(fingerprint.EMIT_FINDINGS_MEDIUM, fingerprint.EMIT_FINDINGS_HIGH)
 
 
+class PrintReportAggregationGap(unittest.TestCase):
+    def test_notable_gap_shows_warning_language(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fingerprint.print_report("corpus (3 file(s) pooled)", fp, reference_label="ref.md", reference_fp=fp,
+                                      corpus_document_count=3, aggregation_best=("weakest.md", 40.0))
+        out = buf.getvalue()
+        self.assertIn("Aggregation gap: +60.0 points", out)
+        self.assertIn("blind spot a cluster-based stylometric match exploits", out)
+
+    def test_small_gap_shows_reassuring_language(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fingerprint.print_report("corpus (3 file(s) pooled)", fp, reference_label="ref.md", reference_fp=fp,
+                                      corpus_document_count=3, aggregation_best=("close.md", 97.0))
+        out = buf.getvalue()
+        self.assertIn("doesn't reveal much beyond", out)
+        self.assertNotIn("blind spot", out)
+
+    def test_no_scoreable_document_reports_that_clearly(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fingerprint.print_report("corpus (1 file(s) pooled)", fp, reference_label="ref.md", reference_fp=fp,
+                                      corpus_document_count=1, aggregation_best=None)
+        out = buf.getvalue()
+        self.assertIn("No individual document in the corpus had any words to score", out)
+
+    def test_json_output_includes_aggregation_fields(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fingerprint.print_report("corpus (3 file(s) pooled)", fp, reference_label="ref.md", reference_fp=fp,
+                                      json_out=True, corpus_document_count=3,
+                                      aggregation_best=("weakest.md", 40.0))
+        data = json.loads(buf.getvalue())
+        self.assertEqual(data["corpus_document_count"], 3)
+        self.assertEqual(data["highest_individual_score"], 40.0)
+        self.assertEqual(data["highest_individual_document"], "weakest.md")
+        self.assertEqual(data["aggregation_gap"], 60.0)
+
+    def test_no_aggregation_section_without_corpus_document_count(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            fingerprint.print_report("draft.md", fp, reference_label="ref.md", reference_fp=fp)
+        self.assertNotIn("Aggregation gap", buf.getvalue())
+
+
+class EmitFindingsExtraNote(unittest.TestCase):
+    def test_extra_note_appended_to_reason(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        findings = fingerprint.emit_findings("corpus.md", fp, fp, threshold=50.0,
+                                              extra_note="Pooled across 3 documents, notably higher than any one.")
+        self.assertIn("Pooled across 3 documents", findings[0]["reason"])
+
+    def test_no_extra_note_by_default(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        findings = fingerprint.emit_findings("draft.md", fp, fp, threshold=50.0)
+        self.assertNotIn("Pooled across", findings[0]["reason"])
+
+
 class WriteRunLog(unittest.TestCase):
     def test_writes_one_json_record(self):
         with tempfile.TemporaryDirectory() as d:
@@ -255,6 +322,24 @@ class WriteRunLog(unittest.TestCase):
             self.assertNotIn("fingerprint", record)
             self.assertNotIn("top_phrases", record)
 
+    def test_single_mode_by_default(self):
+        with tempfile.TemporaryDirectory() as d:
+            fingerprint.write_run_log(d, "draft.md", "reference.md", 82.5, "high")
+            files = os.listdir(d)
+            with open(os.path.join(d, files[0])) as f:
+                record = json.load(f)
+            self.assertEqual(record["mode"], "single")
+            self.assertIsNone(record["document_count"])
+
+    def test_corpus_mode_when_document_count_given(self):
+        with tempfile.TemporaryDirectory() as d:
+            fingerprint.write_run_log(d, "corpus/", "reference.md", 82.5, "high", document_count=5)
+            files = os.listdir(d)
+            with open(os.path.join(d, files[0])) as f:
+                record = json.load(f)
+            self.assertEqual(record["mode"], "corpus")
+            self.assertEqual(record["document_count"], 5)
+
     def test_creates_log_dir_if_missing(self):
         with tempfile.TemporaryDirectory() as d:
             nested = os.path.join(d, "nested", "log")
@@ -269,6 +354,70 @@ class WriteRunLog(unittest.TestCase):
             with open(blocked, "w") as f:
                 f.write("not a directory")
             fingerprint.write_run_log(blocked, "draft.md", "reference.md", 10.0, "none")
+
+
+class LoadCorpusFiles(unittest.TestCase):
+    def test_directory_returns_one_entry_per_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "a.md"), "w") as f:
+                f.write("first document")
+            with open(os.path.join(d, "b.txt"), "w") as f:
+                f.write("second document")
+            docs = fingerprint.load_corpus_files(d)
+            self.assertEqual(len(docs), 2)
+            texts = {text for _path, text in docs}
+            self.assertEqual(texts, {"first document", "second document"})
+
+    def test_single_file_returns_one_entry(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("solo document")
+            path = f.name
+        try:
+            docs = fingerprint.load_corpus_files(path)
+            self.assertEqual(docs, [(path, "solo document")])
+        finally:
+            os.unlink(path)
+
+    def test_skips_dotfiles_and_dotdirs(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, ".git"))
+            with open(os.path.join(d, ".git", "hidden.md"), "w") as f:
+                f.write("hidden")
+            with open(os.path.join(d, "visible.md"), "w") as f:
+                f.write("visible")
+            docs = fingerprint.load_corpus_files(d)
+            self.assertEqual(docs, [(os.path.join(d, "visible.md"), "visible")])
+
+    def test_empty_directory_returns_empty_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(fingerprint.load_corpus_files(d), [])
+
+
+class AggregationGap(unittest.TestCase):
+    def test_returns_highest_scoring_document(self):
+        ref_fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        docs = [
+            ("weak.md", "The quarterly results were announced today across all regions."),
+            ("strong.md", "This is a moderately long piece of sample text for testing here."),
+        ]
+        best_path, best_score = fingerprint.aggregation_gap(docs, ref_fp)
+        self.assertEqual(best_path, "strong.md")
+        self.assertEqual(best_score, 100.0)
+
+    def test_skips_zero_word_documents(self):
+        ref_fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing here.")
+        docs = [("empty.md", "   \n  "), ("real.md", "some real words here for the corpus today now")]
+        best_path, _best_score = fingerprint.aggregation_gap(docs, ref_fp)
+        self.assertEqual(best_path, "real.md")
+
+    def test_returns_none_when_no_document_has_words(self):
+        ref_fp = fingerprint.compute_fingerprint("some reference text here today")
+        docs = [("empty1.md", ""), ("empty2.md", "   ")]
+        self.assertIsNone(fingerprint.aggregation_gap(docs, ref_fp))
+
+    def test_returns_none_for_empty_corpus(self):
+        ref_fp = fingerprint.compute_fingerprint("some reference text here today")
+        self.assertIsNone(fingerprint.aggregation_gap([], ref_fp))
 
 
 class LoadReferenceText(unittest.TestCase):
@@ -312,7 +461,10 @@ class Cli(unittest.TestCase):
 
     def tearDown(self):
         for p in self._paths:
-            os.unlink(p)
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+            else:
+                os.unlink(p)
 
     def make_file(self, content):
         fd, path = tempfile.mkstemp(suffix=".txt")
@@ -462,6 +614,90 @@ class Cli(unittest.TestCase):
                 record = json.load(f)
             self.assertEqual(record["severity"], "high")
             self.assertNotIn("fingerprint", record)
+
+    def make_corpus(self, *contents):
+        d = tempfile.mkdtemp()
+        self._paths.append(d)
+        for i, content in enumerate(contents):
+            with open(os.path.join(d, f"post{i}.md"), "w") as f:
+                f.write(content)
+        return d
+
+    def test_corpus_standalone_report(self):
+        d = self.make_corpus(
+            "First pseudonymous post with a few sentences in it today.",
+            "Second pseudonymous post with a few more sentences right here.",
+        )
+        proc = run_script("--corpus", d)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("2 file(s) pooled", proc.stdout)
+
+    def test_corpus_with_reference_shows_aggregation_gap_section(self):
+        d = self.make_corpus(
+            "First pseudonymous post with a few sentences in it today.",
+            "Second pseudonymous post with a few more sentences right here.",
+        )
+        reference = self.make_file("Some known writing sample for the reference side of this test today.")
+        proc = run_script("--corpus", d, "--reference", reference)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("Aggregation gap", proc.stdout)
+
+    def test_corpus_without_reference_has_no_aggregation_section(self):
+        d = self.make_corpus("Just one pseudonymous post here with a few sentences in it today.")
+        proc = run_script("--corpus", d)
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn("Aggregation gap", proc.stdout)
+
+    def test_corpus_json_includes_document_count(self):
+        d = self.make_corpus(
+            "First pseudonymous post with a few sentences in it today.",
+            "Second pseudonymous post with a few more sentences right here.",
+        )
+        reference = self.make_file("Some known writing sample for the reference side of this test today.")
+        proc = run_script("--corpus", d, "--reference", reference, "--json")
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["corpus_document_count"], 2)
+
+    def test_corpus_single_file_works_like_a_one_document_corpus(self):
+        path = self.make_file("A single file used directly as a --corpus argument here today.")
+        proc = run_script("--corpus", path)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("1 file(s) pooled", proc.stdout)
+
+    def test_empty_corpus_directory_errors_cleanly(self):
+        d = tempfile.mkdtemp()
+        self._paths.append(d)
+        proc = run_script("--corpus", d)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--corpus", proc.stderr)
+
+    def test_corpus_emit_findings_pipes_into_a_finding_shaped_like_privacy_linter(self):
+        d = self.make_corpus(
+            "First pseudonymous post with a few sentences in it today.",
+            "Second pseudonymous post with a few more sentences right here.",
+        )
+        reference = self.make_file("First pseudonymous post with a few sentences in it today.")
+        proc = run_script("--corpus", d, "--reference", reference, "--emit-findings",
+                           "--emit-findings-threshold", "1")
+        self.assertEqual(proc.returncode, 0)
+        findings = json.loads(proc.stdout)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("(2 file(s) pooled)", findings[0]["location"])
+
+    def test_corpus_log_dir_records_document_count(self):
+        d = self.make_corpus(
+            "First pseudonymous post with a few sentences in it today.",
+            "Second pseudonymous post with a few more sentences right here.",
+        )
+        reference = self.make_file("Some known writing sample for the reference side of this test today.")
+        with tempfile.TemporaryDirectory() as log_dir:
+            proc = run_script("--corpus", d, "--reference", reference, "--log-dir", log_dir)
+            self.assertEqual(proc.returncode, 0)
+            files = os.listdir(log_dir)
+            with open(os.path.join(log_dir, files[0])) as f:
+                record = json.load(f)
+            self.assertEqual(record["mode"], "corpus")
+            self.assertEqual(record["document_count"], 2)
 
 
 if __name__ == "__main__":
