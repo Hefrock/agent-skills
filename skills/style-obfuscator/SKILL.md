@@ -55,13 +55,21 @@ python scripts/fingerprint.py --file draft.md --reference ~/vault/Journal/
 python scripts/fingerprint.py --text -
 python scripts/fingerprint.py --file draft.md --reference known.md --json
 python scripts/fingerprint.py --file draft.md --reference known.md --emit-findings
+python scripts/fingerprint.py --file draft.md --reference known.md --log-dir ~/.style-obfuscator-log
+python scripts/fingerprint.py --file draft.md --show-phrase-text
 ```
 
 1. **Fingerprint the draft.** Reports word/sentence/paragraph counts, mean sentence
    length and its standard deviation, vocabulary richness (type-token ratio), em-dash
    rate, comma/semicolon/exclamation rates, contraction rate, an *approximate*
    passive-voice rate (a regex heuristic — see the caveat below, not real POS tagging),
-   the most frequent function words, and any 3-4 word phrase that repeats.
+   the most frequent function words, and any 3-4 word phrase that repeats. Repeated
+   phrases are **redacted by default** in both the text and `--json` report — shown
+   only as a count + n-gram length ("3 found (3/4-word, text redacted...)") — because
+   `top_phrases` is verbatim draft text, and a fingerprint report that leaks the actual
+   phrases undermines the reason this tool exists if that report is ever shared, pasted,
+   or logged. Pass `--show-phrase-text` to reveal the real phrases for your own
+   terminal.
 2. **Compare against a reference, if given** (`--reference`, a single file or a
    directory — a directory's `.md`/`.txt` files are concatenated into one corpus,
    since a reference is "everything I know is really you," not one sample). Reports
@@ -81,6 +89,14 @@ python scripts/fingerprint.py --file draft.md --reference known.md --emit-findin
    low-severity finding — the same "report nothing for clean content" convention
    `privacy-linter` uses. Requires `--reference`; there's nothing to fingerprint-match
    without one.
+5. **`--log-dir DIR`** appends one timestamped JSON record per run — `{timestamp,
+   label, reference_label, similarity_score, severity}` — for trend-tracking whether a
+   draft's stylometric distinctiveness is rising or falling over time. It never writes
+   the fingerprint's numeric feature vector or `top_phrases`: even the feature rates,
+   while not literal draft text, ARE the stylometric signal this tool exists to expose,
+   so a durable log of them (unlike a one-off report you read and discard) is exactly
+   the kind of data-at-rest this tool should minimize, not accumulate. Also requires
+   `--reference`.
 
 ## A concrete example of the reference-corpus workflow
 
@@ -147,6 +163,15 @@ python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
 - Report the passive-voice rate as a heuristic every time it's shown, never bare —
   the same "don't let a degraded/approximate check look like a precise one" discipline
   `privacy-linter` already applies to its Pillow-unavailable metadata fallback.
+- Never print `top_phrases`' verbatim text by default, in either the human report or
+  `--json` — a tool meant to help you avoid becoming identifiable shouldn't itself leak
+  identifying substrings in its own output. `--show-phrase-text` opts in explicitly, for
+  your own terminal only.
+- Never write the fingerprint feature vector or `top_phrases` to `--log-dir` — a
+  durable trend log should hold the minimum needed to answer "is this getting more or
+  less distinctive over time," not accumulate a second historical copy of the actual
+  writing signal, the same "findings/score only, never the content" discipline
+  `privacy-linter`'s own `--log-dir` established first.
 
 ## Files
 

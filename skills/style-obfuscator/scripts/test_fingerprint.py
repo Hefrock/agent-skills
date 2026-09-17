@@ -174,6 +174,38 @@ class FeatureDeltas(unittest.TestCase):
         self.assertEqual(pcts, sorted(pcts, reverse=True))
 
 
+class SeverityForScore(unittest.TestCase):
+    def test_below_threshold_is_none(self):
+        self.assertEqual(fingerprint.severity_for_score(50.0, threshold=60.0), "none")
+
+    def test_at_threshold_is_low(self):
+        self.assertEqual(fingerprint.severity_for_score(60.0, threshold=60.0), "low")
+
+    def test_medium_boundary(self):
+        self.assertEqual(fingerprint.severity_for_score(70.0), "medium")
+
+    def test_high_boundary(self):
+        self.assertEqual(fingerprint.severity_for_score(85.0), "high")
+
+    def test_max_score_is_high(self):
+        self.assertEqual(fingerprint.severity_for_score(100.0), "high")
+
+
+class RedactedPhrases(unittest.TestCase):
+    def test_no_phrases(self):
+        self.assertEqual(fingerprint._redacted_phrases([]), {"count": 0, "lengths": [], "redacted": True})
+
+    def test_never_includes_verbatim_text(self):
+        summary = fingerprint._redacted_phrases([("a secret phrase here", 2), ("another one there", 3)])
+        self.assertNotIn("a secret phrase here", str(summary))
+        self.assertNotIn("another one there", str(summary))
+        self.assertEqual(summary["count"], 2)
+
+    def test_lengths_reflect_word_counts(self):
+        summary = fingerprint._redacted_phrases([("three word one", 2), ("four word phrase here", 2)])
+        self.assertEqual(summary["lengths"], [3, 4])
+
+
 class EmitFindings(unittest.TestCase):
     def test_below_threshold_returns_empty_list(self):
         fp_a = fingerprint.compute_fingerprint("I think this works — but it's worth double-checking honestly.")
@@ -199,6 +231,44 @@ class EmitFindings(unittest.TestCase):
     def test_severity_thresholds_are_ordered(self):
         self.assertLess(fingerprint.EMIT_FINDINGS_DEFAULT_THRESHOLD, fingerprint.EMIT_FINDINGS_MEDIUM)
         self.assertLess(fingerprint.EMIT_FINDINGS_MEDIUM, fingerprint.EMIT_FINDINGS_HIGH)
+
+
+class WriteRunLog(unittest.TestCase):
+    def test_writes_one_json_record(self):
+        with tempfile.TemporaryDirectory() as d:
+            fingerprint.write_run_log(d, "draft.md", "reference.md", 82.5, "high")
+            files = os.listdir(d)
+            self.assertEqual(len(files), 1)
+            with open(os.path.join(d, files[0])) as f:
+                record = json.load(f)
+            self.assertEqual(record["label"], "draft.md")
+            self.assertEqual(record["reference_label"], "reference.md")
+            self.assertEqual(record["similarity_score"], 82.5)
+            self.assertEqual(record["severity"], "high")
+
+    def test_never_writes_fingerprint_or_phrase_fields(self):
+        with tempfile.TemporaryDirectory() as d:
+            fingerprint.write_run_log(d, "draft.md", "reference.md", 82.5, "high")
+            files = os.listdir(d)
+            with open(os.path.join(d, files[0])) as f:
+                record = json.load(f)
+            self.assertNotIn("fingerprint", record)
+            self.assertNotIn("top_phrases", record)
+
+    def test_creates_log_dir_if_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            nested = os.path.join(d, "nested", "log")
+            fingerprint.write_run_log(nested, "draft.md", "reference.md", 10.0, "none")
+            self.assertTrue(os.path.isdir(nested))
+
+    def test_does_not_raise_on_unwritable_dir(self):
+        # A file where a directory is expected -> os.makedirs raises OSError,
+        # caught internally; must not propagate.
+        with tempfile.TemporaryDirectory() as d:
+            blocked = os.path.join(d, "blocked")
+            with open(blocked, "w") as f:
+                f.write("not a directory")
+            fingerprint.write_run_log(blocked, "draft.md", "reference.md", 10.0, "none")
 
 
 class LoadReferenceText(unittest.TestCase):
@@ -334,6 +404,64 @@ class Cli(unittest.TestCase):
                            "--emit-findings-threshold", "99")
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(json.loads(proc.stdout), [])
+
+    def test_repeated_phrases_redacted_by_default_in_text_report(self):
+        path = self.make_file(
+            "worth noting that this matters here worth noting that this matters again "
+            "and one more time worth noting that this matters truly here today now."
+        )
+        proc = run_script("--file", path)
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn("worth noting that", proc.stdout)
+        self.assertIn("text redacted", proc.stdout)
+
+    def test_show_phrase_text_reveals_verbatim_phrases(self):
+        path = self.make_file(
+            "worth noting that this matters here worth noting that this matters again "
+            "and one more time worth noting that this matters truly here today now."
+        )
+        proc = run_script("--file", path, "--show-phrase-text")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("worth noting that", proc.stdout)
+
+    def test_json_report_redacts_phrase_text_by_default(self):
+        path = self.make_file(
+            "worth noting that this matters here worth noting that this matters again "
+            "and one more time worth noting that this matters truly here today now."
+        )
+        proc = run_script("--file", path, "--json")
+        data = json.loads(proc.stdout)
+        self.assertNotIn("worth noting that", proc.stdout)
+        self.assertTrue(data["fingerprint"]["top_phrases"]["redacted"])
+
+    def test_json_report_show_phrase_text_includes_verbatim_list(self):
+        path = self.make_file(
+            "worth noting that this matters here worth noting that this matters again "
+            "and one more time worth noting that this matters truly here today now."
+        )
+        proc = run_script("--file", path, "--json", "--show-phrase-text")
+        data = json.loads(proc.stdout)
+        self.assertIn(["worth noting that", 3], data["fingerprint"]["top_phrases"])
+
+    def test_log_dir_requires_reference(self):
+        path = self.make_file("Some draft text with no reference given at all here today.")
+        with tempfile.TemporaryDirectory() as d:
+            proc = run_script("--file", path, "--log-dir", d)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--reference", proc.stderr)
+
+    def test_log_dir_writes_a_record_and_still_prints_report(self):
+        draft = self.make_file("This is a moderately long piece of sample text for testing purposes here.")
+        with tempfile.TemporaryDirectory() as d:
+            proc = run_script("--file", draft, "--reference", draft, "--log-dir", d)
+            self.assertEqual(proc.returncode, 0)
+            self.assertIn("Stylometric Fingerprint", proc.stdout)
+            files = os.listdir(d)
+            self.assertEqual(len(files), 1)
+            with open(os.path.join(d, files[0])) as f:
+                record = json.load(f)
+            self.assertEqual(record["severity"], "high")
+            self.assertNotIn("fingerprint", record)
 
 
 if __name__ == "__main__":
