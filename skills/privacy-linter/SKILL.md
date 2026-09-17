@@ -165,6 +165,11 @@ it writes; it never overwrites an existing hook without confirmation.
   each commit's actual file content, not just its diff, real scope beyond this pass.
   Merge commits are skipped (their content already arrived via a scanned non-merge
   ancestor). See `references/leak-taxonomy.md`.
+- **Any presence at the actual point of disclosure** (a GitHub PR box or LinkedIn post
+  composer typed directly in-browser, never touching a file this hook or CLI can see).
+  A structural property of this whole stack's file-based architecture, not something
+  fixable in this skill alone — see `privacy-threat-oracle/SKILL.md`'s "What's NOT
+  built here" for the full writeup and what was considered and deferred.
 
 ## Output discipline
 
