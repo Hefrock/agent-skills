@@ -174,6 +174,33 @@ class FeatureDeltas(unittest.TestCase):
         self.assertEqual(pcts, sorted(pcts, reverse=True))
 
 
+class EmitFindings(unittest.TestCase):
+    def test_below_threshold_returns_empty_list(self):
+        fp_a = fingerprint.compute_fingerprint("I think this works — but it's worth double-checking honestly.")
+        fp_b = fingerprint.compute_fingerprint("The quarterly results were announced today. Revenue increased overall.")
+        findings = fingerprint.emit_findings("draft.md", fp_a, fp_b, threshold=99.0)
+        self.assertEqual(findings, [])
+
+    def test_at_or_above_threshold_returns_one_finding_shaped_like_privacy_linter(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing purposes here.")
+        findings = fingerprint.emit_findings("draft.md", fp, fp, threshold=50.0)
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(set(finding.keys()), {"severity", "leak_class", "finding", "reason", "location"})
+        self.assertEqual(finding["leak_class"], "stylometric")
+        self.assertEqual(finding["location"], "draft.md")
+        self.assertIn(finding["severity"], ("low", "medium", "high"))
+
+    def test_identical_fingerprints_score_high_severity(self):
+        fp = fingerprint.compute_fingerprint("This is a moderately long piece of sample text for testing purposes here.")
+        findings = fingerprint.emit_findings("draft.md", fp, fp, threshold=50.0)
+        self.assertEqual(findings[0]["severity"], "high")
+
+    def test_severity_thresholds_are_ordered(self):
+        self.assertLess(fingerprint.EMIT_FINDINGS_DEFAULT_THRESHOLD, fingerprint.EMIT_FINDINGS_MEDIUM)
+        self.assertLess(fingerprint.EMIT_FINDINGS_MEDIUM, fingerprint.EMIT_FINDINGS_HIGH)
+
+
 class LoadReferenceText(unittest.TestCase):
     def test_single_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -285,6 +312,28 @@ class Cli(unittest.TestCase):
         path = self.make_file("Short text here.")
         proc = run_script("--file", path)
         self.assertIn("under 100 words", proc.stdout)
+
+    def test_emit_findings_requires_reference(self):
+        path = self.make_file("Some draft text with no reference given at all here today.")
+        proc = run_script("--file", path, "--emit-findings")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--reference", proc.stderr)
+
+    def test_emit_findings_outputs_finding_list_json(self):
+        draft = self.make_file("This is a moderately long piece of sample text for testing purposes here.")
+        proc = run_script("--file", draft, "--reference", draft, "--emit-findings")
+        self.assertEqual(proc.returncode, 0)
+        findings = json.loads(proc.stdout)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["leak_class"], "stylometric")
+
+    def test_emit_findings_below_threshold_outputs_empty_list(self):
+        draft = self.make_file("I think this works — but it's worth double-checking honestly today.")
+        reference = self.make_file("The quarterly results were announced today. Revenue increased overall this year.")
+        proc = run_script("--file", draft, "--reference", reference, "--emit-findings",
+                           "--emit-findings-threshold", "99")
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(json.loads(proc.stdout), [])
 
 
 if __name__ == "__main__":

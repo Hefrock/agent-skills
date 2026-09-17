@@ -23,6 +23,11 @@ Usage:
                                                                        # concatenated
     fingerprint.py --text -                                          # stdin
     fingerprint.py --file draft.md --reference known.md --json
+    fingerprint.py --file draft.md --reference known.md --emit-findings  # privacy-linter-
+                                                                          # shaped Finding
+                                                                          # JSON, for piping
+                                                                          # into privacy-
+                                                                          # threat-oracle
 
 Every numeric feature is a rate per 1,000 words, not a raw count — that's what makes a
 280-word LinkedIn post and a 4,000-word README comparable at all.
@@ -234,6 +239,49 @@ def feature_deltas(draft_fp, reference_fp):
     return rows
 
 
+# Severity tiers for --emit-findings. Below EMIT_FINDINGS_DEFAULT_THRESHOLD, no finding
+# is emitted at all — a weak similarity score isn't a stylometric matching cue, the same
+# way privacy-linter's scan_diff.py reports nothing for clean content instead of a
+# synthetic all-clear entry. Above it, severity scales with how strong the match is.
+# These are a starting point, not calibrated science — see privacy-threat-oracle's own
+# decision-rubric.md on the same open question — which is exactly why the threshold is a
+# CLI flag and not hardcoded as settled.
+EMIT_FINDINGS_DEFAULT_THRESHOLD = 60.0
+EMIT_FINDINGS_MEDIUM = 70.0
+EMIT_FINDINGS_HIGH = 85.0
+
+
+def emit_findings(label, fp, reference_fp, threshold=EMIT_FINDINGS_DEFAULT_THRESHOLD):
+    """Returns a list of 0 or 1 dicts shaped exactly like privacy-linter's
+    scan_diff.py Finding (severity, leak_class, finding, reason, location) —
+    the wire format privacy-threat-oracle's --from-linter-json already reads
+    (it only requires a string "leak_class" field, but matching the full
+    shape keeps this a real Finding, not a lookalike). Below `threshold`,
+    returns [] rather than a low-severity finding."""
+    score = similarity_score(fp, reference_fp)
+    if score < threshold:
+        return []
+    if score >= EMIT_FINDINGS_HIGH:
+        severity = "high"
+    elif score >= EMIT_FINDINGS_MEDIUM:
+        severity = "medium"
+    else:
+        severity = "low"
+
+    deltas = [row for row in feature_deltas(fp, reference_fp) if row[1] != 0 or row[2] != 0]
+    top_features = ", ".join(_feature_label(key) for key, *_rest in deltas[:3]) or "no single feature dominates"
+
+    return [{
+        "severity": severity,
+        "leak_class": "stylometric",
+        "finding": f"Stylometric similarity to reference corpus: {score}%",
+        "reason": f"Draft's writing style matches the reference on: {top_features}. "
+                  "A match this close is what an authorship matcher would key on to link "
+                  "this draft back to the reference corpus.",
+        "location": label,
+    }]
+
+
 def _feature_label(key):
     for k, label in BASE_NUMERIC_FEATURES:
         if k == key:
@@ -332,7 +380,19 @@ def main():
     parser.add_argument("--text", help="Read the draft from stdin (pass '-').")
     parser.add_argument("--reference", help="A file or directory of your own known writing to compare against.")
     parser.add_argument("--json", action="store_true", help="Emit the fingerprint (and comparison, if any) as JSON.")
+    parser.add_argument("--emit-findings", action="store_true",
+                         help="Emit a privacy-linter-shaped Finding list (JSON) instead of a report — "
+                              "pipe straight into privacy-threat-oracle's --from-linter-json. "
+                              "Requires --reference; emits [] if similarity is below the threshold.")
+    parser.add_argument("--emit-findings-threshold", type=float, default=EMIT_FINDINGS_DEFAULT_THRESHOLD,
+                         help=f"Minimum similarity score (0-100) to emit a finding at all "
+                              f"(default: {EMIT_FINDINGS_DEFAULT_THRESHOLD}).")
     args = parser.parse_args()
+
+    if args.emit_findings and not args.reference:
+        print("style-obfuscator: --emit-findings requires --reference "
+              "(nothing to compare the draft against).", file=sys.stderr)
+        return 2
 
     if args.text == "-":
         text = sys.stdin.read()
@@ -359,6 +419,11 @@ def main():
         if reference_fp["word_count"] == 0:
             print(f"style-obfuscator: no words found under --reference {args.reference}.", file=sys.stderr)
             return 2
+
+    if args.emit_findings:
+        findings = emit_findings(label, fp, reference_fp, threshold=args.emit_findings_threshold)
+        print(json.dumps(findings, indent=2))
+        return 0
 
     print_report(label, fp, reference_label=reference_label, reference_fp=reference_fp, json_out=args.json)
     return 0
