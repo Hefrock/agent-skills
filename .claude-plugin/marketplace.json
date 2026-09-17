@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
-    "version": "0.12.0"
+    "version": "0.13.0"
   },
   "plugins": [
     {
@@ -89,6 +89,18 @@
       "strict": false,
       "skills": [
         "./privacy-threat-oracle"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "style-obfuscator",
+      "description": "Computes a deterministic stylometric fingerprint of a draft — function-word frequency, sentence-length distribution, punctuation habits, approximate passive-voice rate, repeated-phrase detection — and scores its similarity against a reference corpus of your own known writing. No model or network call. Flags what a stylometric matcher would key on; never rewrites the text.",
+      "author": { "name": "Hefrock" },
+      "category": "privacy",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./style-obfuscator"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },

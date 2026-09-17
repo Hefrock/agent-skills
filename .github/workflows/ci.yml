@@ -235,6 +235,9 @@ jobs:
         # gap: the suite existed (25 tests) but was never wired into CI.
         run: python skills/privacy-threat-oracle/scripts/test_oracle.py
 
+      - name: style-obfuscator — fingerprint.py test suite (stdlib unittest)
+        run: python skills/style-obfuscator/scripts/test_fingerprint.py
+
       - name: broadcast — dedup_store.py regression suite (stdlib unittest)
         run: python skills/broadcast/scripts/test_dedup_store.py
 
