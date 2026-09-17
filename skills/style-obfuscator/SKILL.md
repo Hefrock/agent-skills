@@ -128,6 +128,11 @@ python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
   stripped before analysis — this is built for prose (a LinkedIn draft, a PR
   description, README prose), and heavily-structured markdown will skew the sentence/
   paragraph statistics. Run it against the prose portions.
+- **Any presence at the actual point of disclosure** (a LinkedIn post editor or GitHub
+  PR box typed directly in-browser, never touching a file `fingerprint.py` can read).
+  A structural property of this whole stack's file-based architecture, not something
+  fixable in this skill alone — see `privacy-threat-oracle/SKILL.md`'s "What's NOT
+  built here" for the full writeup and what was considered and deferred.
 
 ## Pairing
 
