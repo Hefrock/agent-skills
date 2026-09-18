@@ -57,6 +57,31 @@ def load_threat_model(path: str = THREAT_MODEL_PATH) -> dict:
         return json.load(f)
 
 
+def compartment_choices(threat_model: dict) -> list[str]:
+    return [c["id"] for c in threat_model["compartments"]]
+
+
+def target_exposure_choices(threat_model: dict) -> list[str]:
+    return list(threat_model["target_exposure_map"].keys())
+
+
+def content_class_choices(threat_model: dict) -> list[str]:
+    return list(threat_model["content_sensitivity_tiers"].keys())
+
+
+# Derived once at import time from threat-model.json, not hardcoded -- the exact drift
+# risk this closes: these choices used to be separate literal lists in main()'s
+# argparse setup (and a third copy in test_oracle.py), with nothing to catch them
+# silently diverging from the JSON if a compartment/exposure/content-class was ever
+# added there and the CLI validation wasn't updated to match. "A living threat model...
+# encoded as data" (SKILL.md) is only true in practice if the CLI actually reads from
+# the data instead of duplicating it by hand.
+_CHOICES_THREAT_MODEL = load_threat_model()
+COMPARTMENT_CHOICES = compartment_choices(_CHOICES_THREAT_MODEL)
+TARGET_EXPOSURE_CHOICES = target_exposure_choices(_CHOICES_THREAT_MODEL)
+CONTENT_CLASS_CHOICES = content_class_choices(_CHOICES_THREAT_MODEL)
+
+
 def content_classes_from_linter_json(raw: str) -> tuple[list[str], str | None]:
     """Extract a deduped list of content classes from a privacy-linter --json payload
     (a list of Finding objects each carrying a "leak_class" field -- see scan_diff.py's
@@ -65,8 +90,9 @@ def content_classes_from_linter_json(raw: str) -> tuple[list[str], str | None]:
     an oracle call should degrade gracefully, not crash, if the linter's output shape
     ever changes -- but the caller MUST NOT treat a non-None error the same as "the
     linter genuinely found nothing": evaluate()'s parse_error flag forces the
-    sensitivity floor to "high" instead, so a broken pipe fails closed (silent
-    'proceed') rather than open (silent 'proceed')."""
+    sensitivity floor to "high" instead, so a broken pipe fails closed (forced toward
+    'decline'/'proceed_with_modification') rather than open (silently reporting
+    'proceed' as if nothing sensitive were found)."""
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError) as e:
@@ -225,11 +251,11 @@ def format_human(result: dict) -> str:
 
 def main():
     ap = argparse.ArgumentParser(description="Deterministic privacy threat-model oracle.")
-    ap.add_argument("--source-compartment", required=True, choices=["public_professional", "personal", "sensitive_research"])
-    ap.add_argument("--target-compartment", required=True, choices=["public_professional", "personal", "sensitive_research"])
-    ap.add_argument("--target-exposure", required=True, choices=["public_internet", "specific_person", "close_group", "employer_visible"])
+    ap.add_argument("--source-compartment", required=True, choices=COMPARTMENT_CHOICES)
+    ap.add_argument("--target-compartment", required=True, choices=COMPARTMENT_CHOICES)
+    ap.add_argument("--target-exposure", required=True, choices=TARGET_EXPOSURE_CHOICES)
     ap.add_argument("--content-class", action="append", default=[],
-                     choices=["direct_pii", "secret", "metadata", "inference_cue", "stylometric", "none"],
+                     choices=CONTENT_CLASS_CHOICES,
                      help="Repeatable. Omit (or pass 'none') for content with no flagged sensitivity.")
     ap.add_argument("--from-linter-json", metavar="PATH",
                      help="Read a privacy-linter --json payload ('-' for stdin) and add its finding classes to --content-class.")
