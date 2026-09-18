@@ -1,5 +1,30 @@
 [
   {
+    "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
+    "verdict": "drift",
+    "title": "\"Reuses privacy-linter's exact content-class vocabulary\" overstates provenance for 2 of 5 classes",
+    "source_refs": [
+      {
+        "file": "skills/privacy-threat-oracle/SKILL.md",
+        "hash": "12d2590381b1597ed5ecf9704b6671264e2f833f58c2e06bc17e6241d045438f"
+      },
+      {
+        "file": "skills/privacy-threat-oracle/references/decision-rubric.md",
+        "hash": "3e0921dd0feacf4044ea194ee161b059aa42977970ae85a80db3c782083de64c"
+      },
+      {
+        "file": "skills/privacy-linter/scripts/scan_diff.py",
+        "hash": "b810938492fb22512634943716de1c500ed992d876287d22e5b2ddf111dfef46"
+      },
+      {
+        "file": "skills/style-obfuscator/scripts/fingerprint.py",
+        "hash": "202d7f6834cf736047b9323edbe62f97af0f5e0620c0c61a155d4429d73fe543"
+      }
+    ],
+    "last_verified_commit": null,
+    "notes": "direct_pii/secret/metadata are genuinely privacy-linter's vocabulary (grep-confirmed: scan_diff.py only ever emits these 3 leak_class values). stylometric is NOT privacy-linter's -- it's produced by style-obfuscator's --emit-findings bridge, a different skill. inference_cue is produced by nothing anywhere in the repo -- privacy-linter's own SKILL.md explicitly says it does NOT cover inference-cue leaks (blocked on a local-model decision). The phrase 'reuses privacy-linter's exact content-class vocabulary' is repeated near-verbatim in decision-rubric.md's Inputs table. Medium severity: someone integrating privacy-linter alone with oracle could reasonably expect a privacy-linter scan to eventually surface all 5 classes -- it never will for 2 of them."
+  },
+  {
     "fingerprint": "repo-pincer:silent:track-findings-commit-field-inert",
     "verdict": "silent",
     "title": "track_findings.py's --commit/last_verified_commit field is write-only, never read back",
