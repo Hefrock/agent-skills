@@ -1,0 +1,15 @@
+[
+  {
+    "fingerprint": "repo-pincer:silent:track-findings-commit-field-inert",
+    "verdict": "silent",
+    "title": "track_findings.py's --commit/last_verified_commit field is write-only, never read back",
+    "source_refs": [
+      {
+        "file": "skills/repo-pincer/scripts/track_findings.py",
+        "hash": "f5805412b2ef8efc00b7ead2456ed95bf6cb6564c90e0d287789bbb2124ceea9"
+      }
+    ],
+    "last_verified_commit": null,
+    "notes": "Stored in every record via upsert_finding() but never compared or referenced in check_ledger() -- purely decorative today. Also missing --help text unlike --source-ref. Low severity: trivial internal detail, no user-facing consequence either way. Found during a repo-pincer self-audit."
+  }
+]
