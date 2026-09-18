@@ -13,10 +13,13 @@ actually run both orderings, so "always run both orderings" was something
 a future eval either remembered to do by hand or, more likely, skipped.
 
 This runs the comparison twice per case — once with each output in each
-position — reconciles the two positional answers back to which actual
-output won, and reports disagreement between orderings explicitly rather
-than quietly averaging it away. See references/pairwise-comparison.md for
-the full rationale, the prompt template, and the scoring convention.
+position, fired concurrently rather than back-to-back since the two calls
+share no state (see judge_pairwise()'s docstring for why that's a real
+wall-clock win, not just apparent concurrency) — reconciles the two
+positional answers back to which actual output won, and reports
+disagreement between orderings explicitly rather than quietly averaging
+it away. See references/pairwise-comparison.md for the full rationale,
+the prompt template, and the scoring convention.
 
 Usage:
     export ANTHROPIC_API_KEY=...
@@ -45,6 +48,7 @@ of surfacing case-by-case after some judge budget is already spent.
 Stdlib only. Run: python run_pairwise.py ..."""
 
 import argparse
+import concurrent.futures
 import functools
 import json
 import os
@@ -135,20 +139,35 @@ def judge_pairwise(case: dict, template: str, api_key: str, judge_fn=run_judge.c
     "rationale": str, "input_tokens": int, "output_tokens": int,
     "latency_ms": float} — a case-level result, not yet flattened to
     score_eval.py's schema (that's run_pairwise()'s job, same split as
-    run_judge.flatten_judge_response() vs run_judge.run_judge())."""
-    start = time.perf_counter()
+    run_judge.flatten_judge_response() vs run_judge.run_judge()).
 
+    The two orderings are independent judge calls (different prompts, no
+    shared state) and are fired concurrently via a 2-worker thread pool
+    rather than back-to-back — halving per-case wall-clock latency, which
+    matters here specifically because this skill treats latency as a
+    gated metric elsewhere (score_eval.py's --fail-on-latency-regression).
+    A real request thread blocked on network I/O releases the GIL, so
+    this is a genuine wall-clock win, not just apparent concurrency.
+    Whichever ordering's future.result() is consumed first re-raises that
+    call's exception if it failed — future_1 first, same as the previous
+    sequential code's effective priority — so a single-ordering failure
+    still aborts this case exactly as before, just faster."""
     prompt_1 = fill_pairwise_template(template, case, "a", "b")
-    response_1 = judge_fn(prompt_1, api_key, model)
+    prompt_2 = fill_pairwise_template(template, case, "b", "a")
+
+    start = time.perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        future_1 = pool.submit(judge_fn, prompt_1, api_key, model)
+        future_2 = pool.submit(judge_fn, prompt_2, api_key, model)
+        response_1 = future_1.result()
+        response_2 = future_2.result()
+    latency_ms = (time.perf_counter() - start) * 1000
+
     winner_1, rationale_1 = _parse_winner(response_1["text"])
     winner_1_ab = _remap_to_ab(winner_1, "a", "b")
-
-    prompt_2 = fill_pairwise_template(template, case, "b", "a")
-    response_2 = judge_fn(prompt_2, api_key, model)
     winner_2, rationale_2 = _parse_winner(response_2["text"])
     winner_2_ab = _remap_to_ab(winner_2, "b", "a")
 
-    latency_ms = (time.perf_counter() - start) * 1000
     position_bias_detected = winner_1_ab != winner_2_ab
 
     if position_bias_detected:

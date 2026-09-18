@@ -142,6 +142,39 @@ class JudgePairwise(unittest.TestCase):
         self.assertEqual(result["input_tokens"], 20)
         self.assertEqual(result["output_tokens"], 10)
 
+    def test_orderings_run_concurrently_not_sequentially(self):
+        # Each ordering "blocks" for SLEEP_S (simulating network latency).
+        # Sequential execution would take >= 2 * SLEEP_S; concurrent
+        # execution should take close to 1 * SLEEP_S. Assert against a
+        # midpoint threshold rather than a tight bound, to stay robust to
+        # thread-scheduling jitter on a loaded CI runner.
+        import time as time_mod
+        SLEEP_S = 0.15
+
+        def slow_judge_fn(prompt, api_key, model):
+            time_mod.sleep(SLEEP_S)
+            return {"text": json.dumps({"winner": "tie", "rationale": "x"}), "input_tokens": 1, "output_tokens": 1}
+
+        case = {"id": "p1", "input": "t", "output_a": "A", "output_b": "B"}
+        start = time_mod.perf_counter()
+        run_pairwise_mod.judge_pairwise(case, TEMPLATE, "fake-key", judge_fn=slow_judge_fn)
+        elapsed = time_mod.perf_counter() - start
+        self.assertLess(elapsed, SLEEP_S * 1.5, "two orderings took long enough to suggest they ran sequentially, not concurrently")
+
+    def test_failure_in_one_ordering_still_raises_with_both_dispatched(self):
+        # Confirms the concurrent version preserves the old sequential
+        # version's behavior: a failure in either ordering propagates
+        # (and is caught by run_pairwise()'s per-case try/except), it
+        # doesn't hang or silently swallow the error.
+        def one_fails(prompt, api_key, model):
+            if "Response 1: A" in prompt:
+                raise ConnectionError("down")
+            return {"text": json.dumps({"winner": "tie", "rationale": "x"}), "input_tokens": 1, "output_tokens": 1}
+
+        case = {"id": "p1", "input": "t", "output_a": "A", "output_b": "B"}
+        with self.assertRaises(ConnectionError):
+            run_pairwise_mod.judge_pairwise(case, TEMPLATE, "fake-key", judge_fn=one_fails)
+
 
 class RunPairwise(unittest.TestCase):
     def _agree_a_wins(self, prompt, api_key, model):
