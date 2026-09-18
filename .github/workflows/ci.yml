@@ -130,6 +130,9 @@ jobs:
       - name: repo-pincer — check_structural_claims.py as a direct CI gate (--fail-on-drift, real README)
         run: python skills/repo-pincer/scripts/check_structural_claims.py --claims-file README.md --skills-dir skills --fail-on-drift
 
+      - name: repo-pincer — track_findings.py test suite (stdlib unittest)
+        run: python skills/repo-pincer/scripts/test_track_findings.py
+
       - name: issue-reconciler — find_closing_references.py test suite (stdlib unittest)
         run: python skills/issue-reconciler/scripts/test_find_closing_references.py
 
