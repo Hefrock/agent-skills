@@ -124,6 +124,9 @@ jobs:
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
 
+      - name: issue-reconciler — find_closing_references.py test suite (stdlib unittest)
+        run: python skills/issue-reconciler/scripts/test_find_closing_references.py
+
       - name: privacy-linter — run test suite (stdlib unittest, incl. real temp-git-repo tests)
         run: python skills/privacy-linter/scripts/test_scan_diff.py
 
