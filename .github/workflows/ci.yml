@@ -113,7 +113,7 @@ jobs:
       - name: agent-redteam — score adversarial set with a CI gate
         # Demonstrates the DevSecOps pattern: the scorer exits non-zero if the
         # adversarial pass rate falls below the gate, failing the build.
-        run: python skills/agent-redteam/scripts/score_eval.py skills/agent-redteam/examples/adversarial_results.jsonl --fail-under 0.5
+        run: python skills/agent-eval/scripts/score_eval.py skills/agent-redteam/examples/adversarial_results.jsonl --fail-under 0.5
 
       - name: agent-redteam — verify promoted regressions are honest and unmodified
         # SKILL.md step 5's own file — checks every promoted case is a
