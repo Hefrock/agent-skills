@@ -19,10 +19,29 @@ Two independent passes that must reconcile. Do not let the second pass be inform
 
 ### Pass 2 — Bottom-up (reality)
 
+0. **Run the mechanical check first, before any reading.** `scripts/check_structural_claims.py`
+   verifies one narrow, high-value claim type — "N-test suite" / "N-test regression suite"
+   claims — by actually running the referenced tests and comparing counts, not estimating:
+   ```bash
+   python scripts/check_structural_claims.py --claims-file README.md --skills-dir skills
+   ```
+   This exists because exact-number claims are simultaneously the cheapest to verify (one
+   command, no judgment) and the most likely to drift silently — nobody re-counts "26 tests"
+   by hand every time a test gets added. Confirmed empirically: a repo-wide pass against this
+   very repo found three real Drift findings this way in seconds, before any conversational
+   tracing started. Narrow on purpose — see "What's NOT built here."
 1. Identify entry points first: exported/public functions, CLI commands, API routes, error-handling paths. Start here, not with every private helper — this is where claims are made and where drift matters most.
 2. For each entry point, read the actual implementation. Record real behavior — inputs, outputs, side effects, error handling — from the code itself, not from comments or docstrings (those are claims, and belong in Pass 1 if load-bearing).
 3. Trace the call graph outward from each entry point only as far as needed to confirm or refute a specific claim — not exhaustively. Depth follows the claim being checked, not a fixed crawl.
 4. Build the **as-built model**: what the system actually does and how the pieces actually connect, independent of what Pass 1 said.
+5. **Silent findings are the most expensive direction to check, and the first thing to get
+   skipped under time pressure.** Finding an undocumented capability means reading code
+   looking for behavior nobody claimed exists — there's no claim to start from, unlike
+   Confirmed/Drift/Aspirational, which all start from something already written down. At
+   repo scale (many targets, limited time), this is exactly the direction that silently
+   gets shortchanged first. If time pressure forces a choice, say so in the report's "Open
+   questions" section rather than letting thin Silent-coverage look the same as thorough
+   coverage.
 
 ### Pass 3 — Reconciliation
 
@@ -41,10 +60,19 @@ Two independent passes that must reconcile. Do not let the second pass be inform
 
 Default scope is a single skill/module/directory, not the whole repo — widen only if asked, since a full pass on a large repo in one shot is rarely what's useful.
 
-Depth controls how far Pass 2 traces:
+Depth controls how far Pass 2 traces *within one target*:
 - `quick` — top-level README + entry points only, no call-graph tracing
 - `standard` (default) — trace only as far as needed to confirm or refute each ledger claim
 - `thorough` — trace the full call graph from every entry point
+
+**None of these address breadth** — how to allocate effort *across* many targets when a
+repo-wide pass genuinely is what's asked for, despite the default guidance above. Depth is
+about one target; a multi-target pass needs a different strategy, found only by actually
+running this against a real large repo, not by reading the methodology: run the mechanical
+check (Pass 2 step 0) across every target first, then spend conversational tracing effort
+on the highest-authority sources (root README, top-level manifests) before per-module
+depth, rather than attempting uniform `standard`-depth tracing across everything at once —
+that doesn't scale and produces thin, uneven coverage without ever admitting it's thin.
 
 1. Run Pass 1, then Pass 2, then Pass 3, in that order.
 2. Compose the output (see schema below).
@@ -72,9 +100,45 @@ Body sections:
 
 If no vault is connected, present the same structure directly in the conversation rather than writing a file.
 
+## What's NOT built here
+
+- **`check_structural_claims.py` only checks test-count claims.** Not path-existence
+  claims, not any other kind of specific number (tool counts, rule counts) — those were
+  checked by hand in the pass that motivated this script and found no drift, but
+  auto-extracting "things that look like a path" from arbitrary backtick spans in prose
+  is meaningfully noisier (backticks cover code snippets and command names too, not just
+  paths) and risks false positives if generalized carelessly. A real, scoped follow-up,
+  not attempted here.
+- **Tuned to this repo's own documentation conventions**, not portable to an arbitrary
+  target repo's arbitrary claim phrasing. It assumes a claim and its skill-directory name
+  share one line, tree-block style (`├── name/  # ... N-test suite`). An honest limit,
+  not really a meaningful one in practice — a different repo phrases these claims
+  differently regardless, so a checker built for one repo's convention was never going to
+  be zero-effort to point at another one.
+- **No semantic or behavioral checking whatsoever.** Never touches Silent findings or
+  whether code still does what it claims to do — that stays Pass 2's conversational job,
+  unchanged. This script only accelerates the narrow, exact-number slice of it.
+- **Can't verify a test-count claim about `repo-pincer` itself.** Its own test file
+  includes a live check that re-invokes this script against the real README — counting
+  it via subprocess would recurse (verify the claim → run the test file → which runs
+  this script again → which tries to verify the same claim → ...). Caught as an actual
+  runaway subprocess tree while first verifying this script, not a hypothetical risk.
+  `count_actual_tests()` excludes `test_check_structural_claims.py` by name
+  unconditionally, so this fails safe (reports "no test files found") rather than
+  recursing even if a numbered claim is ever written for `repo-pincer` again — which is
+  exactly why the README describes this skill's own suite generically ("test suite"),
+  not with a number this tool would just report as unverifiable.
+
 ## Output discipline
 
 - Never present a Pass 1 claim as verified until Pass 2 has actually checked it. A claims ledger is an input, not a finding.
 - Never trace exhaustively when a targeted check would confirm or refute a claim faster.
 - Lead with High-severity discrepancies. A report with one High finding buried at the bottom is worse than a short one that leads with it.
 - If nothing to reconcile is found — the docs are accurate and complete for the scope checked — say so plainly. Don't manufacture findings to seem thorough.
+
+## Files
+
+| Path | What it is |
+|---|---|
+| `scripts/check_structural_claims.py` | Pass 2's mechanical accelerant — verifies test-count claims by actually running the tests |
+| `scripts/test_check_structural_claims.py` | Unit + CLI test suite (stdlib unittest), including a live check against this repo's own current README.md |

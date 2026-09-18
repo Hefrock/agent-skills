@@ -124,6 +124,9 @@ jobs:
       - name: deid-reid-harness — run test suite (stdlib unittest)
         run: python skills/deid-reid-harness/scripts/test_harness.py
 
+      - name: repo-pincer — check_structural_claims.py test suite (stdlib unittest, incl. live README check)
+        run: python skills/repo-pincer/scripts/test_check_structural_claims.py
+
       - name: issue-reconciler — find_closing_references.py test suite (stdlib unittest)
         run: python skills/issue-reconciler/scripts/test_find_closing_references.py
 
