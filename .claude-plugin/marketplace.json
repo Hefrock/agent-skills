@@ -58,7 +58,7 @@
     },
     {
       "name": "repo-pincer",
-      "description": "Reverse-engineers a codebase by reconciling top-down claims (docs, README, API surface) against bottom-up reality (actual implementation) — classifies every claim as Confirmed, Drift, Aspirational, or Silent. Runs standalone; optionally compiles into an Obsidian vault via wiki-operator's /source.",
+      "description": "Reverse-engineers a codebase by reconciling top-down claims (docs, README, API surface) against bottom-up reality (actual implementation) — classifies every claim as Confirmed, Drift, Aspirational, or Silent. check_structural_claims.py mechanically verifies test-count claims by actually running the tests, before any conversational tracing starts. Runs standalone; optionally compiles into an Obsidian vault via wiki-operator's /source.",
       "author": { "name": "Hefrock" },
       "category": "agent-design",
       "source": "./skills",
