@@ -1,6 +1,6 @@
 ---
 name: privacy-threat-oracle
-description: Deterministic, rule-based privacy decision engine — evaluates a proposed action (which identity/compartment it's taken from, who can see it, what sensitive content it contains) against a threat model of adversary classes and identity compartments, and reports a recommendation (proceed / proceed_with_modification / decline) with a stated residual risk and reason. Reuses privacy-linter's exact content-class vocabulary (direct_pii, secret, metadata, inference_cue, stylometric) so its --json output plugs in directly as the content-sensitivity input. Runs entirely locally, no model or network call — a rule table over a fixed schema, not an LLM judgment call. Use when the user wants to check whether sharing/posting something crosses an identity-compartment boundary, asks "should I post this under my real name," "is this safe to share publicly," "does this leak across my compartments," or wants a structured second opinion before a disclosure decision. Triggers on "check this against my threat model," "will this cross compartments," "is this safe to post/share," "privacy decision check," and the script oracle.py. Does not parse free-text proposed actions (see "What's NOT built here") or replace privacy-linter's own content detection — this is the decision layer on top of it, not a second scanner.
+description: Deterministic, rule-based privacy decision engine — evaluates a proposed action (which identity/compartment it's taken from, who can see it, what sensitive content it contains) against a threat model of adversary classes and identity compartments, and reports a recommendation (proceed / proceed_with_modification / decline) with a stated residual risk and reason. Its five-class content-sensitivity vocabulary (direct_pii, secret, metadata, inference_cue, stylometric) matches privacy-linter's own leak_class values for the first three, so privacy-linter's --json output plugs in directly as the content-sensitivity input via --from-linter-json; stylometric matches style-obfuscator's --emit-findings bridge instead, and inference_cue is a reserved class neither tool currently produces (see "How this works" for the full breakdown). Runs entirely locally, no model or network call — a rule table over a fixed schema, not an LLM judgment call. Use when the user wants to check whether sharing/posting something crosses an identity-compartment boundary, asks "should I post this under my real name," "is this safe to share publicly," "does this leak across my compartments," or wants a structured second opinion before a disclosure decision. Triggers on "check this against my threat model," "will this cross compartments," "is this safe to post/share," "privacy decision check," and the script oracle.py. Does not parse free-text proposed actions (see "What's NOT built here") or replace privacy-linter's own content detection — this is the decision layer on top of it, not a second scanner.
 ---
 
 # Privacy Threat Oracle
@@ -14,9 +14,10 @@ disclosure happen at all."
 
 ## Why this is deterministic-only, not model-based
 
-Unlike `privacy-linter`'s inference-cue/stylometric classes (which genuinely need a
-model and are blocked on a local-model decision that hasn't been made), this project's
-core design doesn't have the same wall: v1 evaluates *already-structured* facts about a
+Unlike `privacy-linter`'s own still-unbuilt inference-cue class (`privacy-linter`'s
+`SKILL.md` names it as deliberately out of scope, blocked on a local-model decision that
+hasn't been made — nothing in this repo produces it yet), this project's core design
+doesn't have the same wall: v1 evaluates *already-structured* facts about a
 proposed action (which compartment, which exposure, which content classes) against a
 fixed rule table — not raw disclosure content run past an external model. See
 `references/decision-rubric.md` for why the rule table is a ranked ordering rather than
@@ -71,6 +72,22 @@ python scripts/oracle.py \
    read (malformed JSON, wrong shape), the oracle fails **closed**, not open: it warns on
    stderr, sets `linter_json_parse_error: true`, and forces the sensitivity floor to
    `high` rather than silently falling back to "nothing sensitive found."
+
+   **Where each of the five content classes actually comes from** — this only matters
+   once, but matters precisely, since two of the five aren't what the earlier framing
+   implied:
+   - `direct_pii`, `secret`, `metadata` — confirmed (grep) as the only `leak_class`
+     values `privacy-linter`'s `scan_diff.py` ever emits. `--from-linter-json` genuinely
+     plugs in directly for these three.
+   - `stylometric` — **not** produced by `privacy-linter`. It's `style-obfuscator`'s
+     `--emit-findings` bridge that emits it (`scripts/fingerprint.py`), a separate skill
+     with its own invocation. Piping `privacy-linter`'s output alone will never produce
+     this class.
+   - `inference_cue` — produced by nothing in this repo yet. `privacy-linter`'s own
+     `SKILL.md` names it explicitly as out of scope, blocked on a local-model decision
+     that hasn't been made. It's accepted as a `--content-class` value here so the rule
+     table and `threat-model.json`'s sensitivity tiers are ready for it, not because
+     anything currently populates it automatically.
 7. **`--json`** for machine-readable output; default is a short human-readable report.
 
 This exits 0 by default — `decline` is the rule table's most severe label, not an

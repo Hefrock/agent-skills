@@ -1,16 +1,16 @@
 [
   {
     "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
-    "verdict": "drift",
-    "title": "\"Reuses privacy-linter's exact content-class vocabulary\" overstates provenance for 2 of 5 classes",
+    "verdict": "confirmed",
+    "title": "Content-class vocabulary provenance is now accurately described (was overstated)",
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "12d2590381b1597ed5ecf9704b6671264e2f833f58c2e06bc17e6241d045438f"
+        "hash": "8b7cd0fdef23dba9bf388de327ac6ed8d4406da7f2f8a0470c5aad15d4f6b1ef"
       },
       {
         "file": "skills/privacy-threat-oracle/references/decision-rubric.md",
-        "hash": "3e0921dd0feacf4044ea194ee161b059aa42977970ae85a80db3c782083de64c"
+        "hash": "628d38329d5e49e30151166e7bc14210ffdb470cc4eb5fee06f208e0fbed12e8"
       },
       {
         "file": "skills/privacy-linter/scripts/scan_diff.py",
@@ -22,7 +22,7 @@
       }
     ],
     "last_verified_commit": null,
-    "notes": "direct_pii/secret/metadata are genuinely privacy-linter's vocabulary (grep-confirmed: scan_diff.py only ever emits these 3 leak_class values). stylometric is NOT privacy-linter's -- it's produced by style-obfuscator's --emit-findings bridge, a different skill. inference_cue is produced by nothing anywhere in the repo -- privacy-linter's own SKILL.md explicitly says it does NOT cover inference-cue leaks (blocked on a local-model decision). The phrase 'reuses privacy-linter's exact content-class vocabulary' is repeated near-verbatim in decision-rubric.md's Inputs table. Medium severity: someone integrating privacy-linter alone with oracle could reasonably expect a privacy-linter scan to eventually surface all 5 classes -- it never will for 2 of them."
+    "notes": "Fixed: SKILL.md frontmatter, the 'Why this is deterministic-only' section, How-this-works step 6, decision-rubric.md's Inputs table, and marketplace.json's description all now correctly attribute direct_pii/secret/metadata to privacy-linter, stylometric to style-obfuscator's --emit-findings bridge, and inference_cue to neither tool. Re-upserted as confirmed with refreshed hashes after fixing -- was Drift as of the prior entry."
   },
   {
     "fingerprint": "repo-pincer:silent:track-findings-commit-field-inert",

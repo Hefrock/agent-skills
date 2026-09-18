@@ -94,7 +94,7 @@
     },
     {
       "name": "privacy-threat-oracle",
-      "description": "Deterministic, rule-based privacy decision engine — evaluates a proposed action (identity compartment, exposure, content sensitivity) against an adversary/compartment threat model (8 adversary classes, including autonomous AI scraping agents) and recommends proceed/proceed_with_modification/decline with residual risk. Reuses privacy-linter's content-class vocabulary so its --json output plugs in directly, and fails closed (not open) if that input can't be parsed. Optional --block-on gate for unattended callers. No model or network call.",
+      "description": "Deterministic, rule-based privacy decision engine — evaluates a proposed action (identity compartment, exposure, content sensitivity) against an adversary/compartment threat model (8 adversary classes, including autonomous AI scraping agents) and recommends proceed/proceed_with_modification/decline with residual risk. Three of its five content classes (direct_pii, secret, metadata) match privacy-linter's own leak_class values, so privacy-linter's --json output plugs in directly via --from-linter-json; stylometric matches style-obfuscator's --emit-findings bridge instead, and inference_cue is a reserved class neither tool produces yet. Fails closed (not open) if --from-linter-json input can't be parsed. Optional --block-on gate for unattended callers. No model or network call.",
       "author": { "name": "Hefrock" },
       "category": "privacy",
       "source": "./skills",
