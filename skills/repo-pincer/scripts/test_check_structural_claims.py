@@ -157,13 +157,19 @@ class CountActualTests(unittest.TestCase):
         # verification: a numbered claim naming "repo-pincer" caused this
         # script to shell out to test_check_structural_claims.py, which
         # itself re-invokes this script against the real README -- an
-        # actual runaway subprocess tree, not a hypothetical. Asserts the
-        # real repo-pincer skill directory (which does contain this exact
-        # test file) reports zero regardless, never hangs, never recurses.
+        # actual runaway subprocess tree, not a hypothetical. The safety
+        # property under test is narrower than "reports zero": it's that
+        # test_check_structural_claims.py specifically is never walked or
+        # run, regardless of what other test files legitimately share the
+        # skill directory (track_findings.py's own test file, added later,
+        # is correctly counted -- excluding it would be wrong, it isn't the
+        # recursive one). Asserts no hang, and the specific exclusion.
         real_skills_dir = os.path.join(REPO_ROOT, "skills")
         total, files, errored = csc.count_actual_tests(real_skills_dir, "repo-pincer")
-        self.assertEqual(total, 0)
-        self.assertEqual(files, [])
+        self.assertNotIn(
+            os.path.join(real_skills_dir, "repo-pincer", "scripts", "test_check_structural_claims.py"),
+            files,
+        )
         self.assertEqual(errored, [])
 
     def test_crashed_test_file_is_reported_as_errored_not_zero_tests(self):
