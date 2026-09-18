@@ -21,6 +21,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | [`agent-redteam`](./skills/agent-redteam) | Generates adversarial test cases to check that an agent fails safely — refuses, hedges, or degrades gracefully — instead of confidently getting it wrong. Pairs with `agent-eval` for scoring. |
 | [`deid-reid-harness`](./skills/deid-reid-harness) | Stress-tests a clinical de-identification pipeline by trying to re-identify the patients afterward, across three attack types plus a privacy/utility tradeoff score. Runs offline with real statistical confidence intervals. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
 | [`repo-pincer`](./skills/repo-pincer) | Reverse-engineers a codebase: reads what the docs claim, reads what the code actually does, and reports exactly where they disagree. |
+| [`issue-reconciler`](./skills/issue-reconciler) | Finds GitHub issues that are actually already resolved but never got closed — a merged PR that said "Closes #N" but didn't take effect, or a skill that quietly got built with nobody linking the PR. Proposes closures with evidence; never closes anything on its own. |
 
 ### Privacy — catch leaks before they happen
 
@@ -100,6 +101,7 @@ agent-skills/
 │   ├── agent-redteam/           # adversarial case generation, pairs with agent-eval
 │   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 31-test suite
 │   ├── repo-pincer/             # codebase reverse-engineering — claims vs. reality reconciliation
+│   ├── issue-reconciler/        # GitHub issues vs. reality reconciliation — scripts/find_closing_references.py, test suite
 │   ├── privacy-linter/          # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite
 │   ├── privacy-threat-oracle/   # rule-based compartment/adversary decision engine — scripts/oracle.py, test suite
 │   ├── style-obfuscator/        # stylometric fingerprint + reference-corpus similarity — scripts/fingerprint.py, test suite

@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
-    "version": "0.13.0"
+    "version": "0.14.0"
   },
   "plugins": [
     {
@@ -65,6 +65,18 @@
       "strict": false,
       "skills": [
         "./repo-pincer"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "issue-reconciler",
+      "description": "Finds GitHub issues that are actually already resolved but never got closed — a merged PR that used a closing keyword but didn't auto-close, or a skill/fix that shipped with nobody linking the PR. A deterministic scan (find_closing_references.py) catches the first case; a documented judgment methodology covers the second. Always proposes closures with evidence; never closes an issue on its own.",
+      "author": { "name": "Hefrock" },
+      "category": "agent-design",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./issue-reconciler"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },
