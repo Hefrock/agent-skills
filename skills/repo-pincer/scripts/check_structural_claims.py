@@ -25,6 +25,9 @@ Usage (from this script's own directory, skills/repo-pincer/scripts/):
     python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills
     python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills --json
 
+    # As a CI gate -- exits 1 on Drift or Errored findings instead of just reporting them:
+    python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills --fail-on-drift
+
 Assumes this repo's own tree-block convention: a claim like "392-test suite"
 shares a line with the skill directory name it describes (e.g.
 "├── broadcast/  # ... 392-test suite"), and the directory name is the
@@ -272,6 +275,13 @@ def main() -> int:
     parser.add_argument("--skills-dir", required=True, metavar="DIR",
                          help="Root directory containing one subdirectory per skill.")
     parser.add_argument("--json", action="store_true", help="Emit the report as JSON instead of text.")
+    parser.add_argument("--fail-on-drift", action="store_true",
+                         help="Exit 1 if any claim is Drift or Errored (a numeric mismatch, or a "
+                              "test file that crashed/timed out and made the count untrustworthy). "
+                              "Missing-skill and no-tests-found findings do not gate -- those more "
+                              "often mean the line's association is ambiguous than that something "
+                              "regressed. Without this flag, findings are only reported, matching "
+                              "this script's previous behavior of always exiting 0.")
     args = parser.parse_args()
 
     try:
@@ -288,6 +298,9 @@ def main() -> int:
     claims = extract_test_count_claims(markdown_text)
     report = check_claims(claims, args.skills_dir)
     print_report(report, len(claims), args.json)
+
+    if args.fail_on_drift and (report["drift"] or report["errored"]):
+        return 1
     return 0
 
 
