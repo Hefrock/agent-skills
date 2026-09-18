@@ -19,7 +19,6 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 |---|---|
 | [`agent-eval`](./skills/agent-eval) | Turns "does this agent actually work?" into a repeatable score: rubrics, LLM-as-judge grading, and regression sets that catch when a prompt change made things worse. |
 | [`agent-redteam`](./skills/agent-redteam) | Generates adversarial test cases to check that an agent fails safely — refuses, hedges, or degrades gracefully — instead of confidently getting it wrong. Pairs with `agent-eval` for scoring. |
-| [`deid-reid-harness`](./skills/deid-reid-harness) | Stress-tests a clinical de-identification pipeline by trying to re-identify the patients afterward, across three attack types plus a privacy/utility tradeoff score. Runs offline with real statistical confidence intervals. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
 | [`repo-pincer`](./skills/repo-pincer) | Reverse-engineers a codebase: reads what the docs claim, reads what the code actually does, and reports exactly where they disagree. |
 | [`issue-reconciler`](./skills/issue-reconciler) | Finds GitHub issues that are actually already resolved but never got closed — a merged PR that said "Closes #N" but didn't take effect, or a skill that quietly got built with nobody linking the PR. Proposes closures with evidence; never closes anything on its own. |
 
@@ -28,6 +27,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | Skill | What it does |
 |---|---|
 | [`privacy-linter`](./skills/privacy-linter) | Scans a git diff before you commit for leaked emails, SSNs, credit cards, API keys, and photo GPS metadata — entirely offline, no model call. Can strip EXIF metadata outright, dig through commit history for old leaks, track your leak rate over time, and block a commit on high-severity findings (the installed pre-commit hook does this by default). |
+| [`deid-reid-harness`](./skills/deid-reid-harness) | Stress-tests a clinical de-identification pipeline by trying to re-identify the patients afterward, across three attack types plus a privacy/utility tradeoff score. Runs offline with real statistical confidence intervals. Moved here from Agent design — once real DUA-governed patient data is in scope (see the open safety-hardening issue), this is part of the privacy-sensitive data chain, not just an eval harness that happens to score PHI. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
 | [`privacy-threat-oracle`](./skills/privacy-threat-oracle) | A rule-based second opinion on "is it safe to share this?" — weighs which identity of yours it's coming from, who could actually see it, and what's in it against a threat model of real adversaries, and gives a clear proceed / modify / decline. Plugs directly into `privacy-linter`'s output. |
 | [`wiki-privacy-audit`](./skills/wiki-privacy-audit) | Runs `privacy-linter` across your entire Obsidian vault instead of one diff, so a stray SSN or API key pasted into a journal entry doesn't sit there forever. Has a wrapper for unattended/scheduled runs. |
 | [`style-obfuscator`](./skills/style-obfuscator) | Computes a stylometric fingerprint of a draft (function-word frequency, punctuation habits, sentence stats) and scores its similarity against your own known writing — so you know what a matcher would key on before posting something you don't want traced back to you. Flags only; never rewrites. |
@@ -96,7 +96,7 @@ agent-skills/
 ├── docs/
 │   └── stalled-work-tracking.md # how the blocked-human / dated-followup convention works
 ├── skills/                     # flat — one folder per skill, no category nesting
-│   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 392-test suite
+│   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 563-test suite
 │   ├── agent-eval/              # rubric-based evals, LLM-as-judge, regression test sets
 │   ├── agent-redteam/           # adversarial case generation, pairs with agent-eval
 │   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 31-test suite
@@ -107,8 +107,8 @@ agent-skills/
 │   ├── style-obfuscator/        # stylometric fingerprint + reference-corpus similarity — scripts/fingerprint.py, test suite
 │   ├── wiki-operator/           # on-demand vault operations
 │   ├── wiki-synthesizer/        # journal preprocessing + concept page compilation
-│   ├── wiki-librarian/          # structural health audits — scripts/check_vault.py, 26-test regression suite
-│   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 16-test regression suite
+│   ├── wiki-librarian/          # structural health audits — scripts/check_vault.py, 28-test regression suite
+│   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 18-test regression suite
 │   ├── wiki-teacher/            # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
 │   ├── wiki-warehouse/          # raw-document cold storage (external repo) + vault pointers
 │   ├── research-ledger/         # deep-research claim ledger, warehoused ahead of synthesis
