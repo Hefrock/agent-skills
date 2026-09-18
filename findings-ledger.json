@@ -1,5 +1,18 @@
 [
   {
+    "fingerprint": "privacy-threat-oracle:drift:pairing-section-vocabulary-wording-missed",
+    "verdict": "drift",
+    "title": "Pairing section's 'content-class vocabulary is shared, not reinvented' still overstates provenance",
+    "source_refs": [
+      {
+        "file": "skills/privacy-threat-oracle/SKILL.md",
+        "hash": "8b7cd0fdef23dba9bf388de327ac6ed8d4406da7f2f8a0470c5aad15d4f6b1ef"
+      }
+    ],
+    "last_verified_commit": null,
+    "notes": "Missed by the prior fix (PR #142): the Pairing section's privacy-linter bullet still implies the full 5-class vocabulary is shared with privacy-linter, when only 3 of 5 (direct_pii/secret/metadata) actually are per the same fix's own step 6 breakdown. Also: style-obfuscator isn't listed in Pairing at all, despite now being named in step 6 as the actual source of the stylometric class -- a real dependency missing from the section whose whole job is to list dependencies. Found on a deliberate re-run specifically to test whether the prior fix was complete -- it wasn't, on the first pass. Low-Medium: same underlying claim-accuracy issue as the fixed finding, smaller surface (one bullet), but the same 'could cause a wrong integration expectation' cost applies."
+  },
+  {
     "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
     "verdict": "confirmed",
     "title": "Content-class vocabulary provenance is now accurately described (was overstated)",
