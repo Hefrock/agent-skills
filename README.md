@@ -29,7 +29,6 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | [`privacy-linter`](./skills/privacy-linter) | Scans a git diff before you commit for leaked emails, SSNs, credit cards, API keys, and photo GPS metadata — entirely offline, no model call. Can strip EXIF metadata outright, dig through commit history for old leaks, track your leak rate over time, and block a commit on high-severity findings (the installed pre-commit hook does this by default). |
 | [`deid-reid-harness`](./skills/deid-reid-harness) | Stress-tests a clinical de-identification pipeline by trying to re-identify the patients afterward, across three attack types plus a privacy/utility tradeoff score. Runs offline with real statistical confidence intervals. Moved here from Agent design — once real DUA-governed patient data is in scope (see the open safety-hardening issue), this is part of the privacy-sensitive data chain, not just an eval harness that happens to score PHI. ([sample results](./skills/deid-reid-harness/RESULTS.md)) |
 | [`privacy-threat-oracle`](./skills/privacy-threat-oracle) | A rule-based second opinion on "is it safe to share this?" — weighs which identity of yours it's coming from, who could actually see it, and what's in it against a threat model of real adversaries, and gives a clear proceed / modify / decline. Plugs directly into `privacy-linter`'s output. |
-| [`wiki-privacy-audit`](./skills/wiki-privacy-audit) | Runs `privacy-linter` across your entire Obsidian vault instead of one diff, so a stray SSN or API key pasted into a journal entry doesn't sit there forever. Has a wrapper for unattended/scheduled runs. |
 | [`style-obfuscator`](./skills/style-obfuscator) | Computes a stylometric fingerprint of a draft (function-word frequency, punctuation habits, sentence stats) and scores its similarity against your own known writing — so you know what a matcher would key on before posting something you don't want traced back to you. Flags only; never rewrites. |
 
 ### Knowledge management — a personal wiki that maintains itself
@@ -38,6 +37,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 |---|---|
 | [`wiki-operator`](./skills/wiki-operator) | Your everyday interface to the vault — `/learn`, `/update`, `/connect`, `/ask`, `/review`, `/quiz`, `/map`, `/source`, `/clean`, `/health`. |
 | [`wiki-synthesizer`](./skills/wiki-synthesizer) | Turns raw journal entries and saved sources into proper, linked knowledge pages. Run after a learning session. |
+| [`wiki-privacy-audit`](./skills/wiki-privacy-audit) | Runs `privacy-linter` across your entire Obsidian vault instead of one diff, so a stray SSN or API key pasted into a journal entry doesn't sit there forever. Has a wrapper for unattended/scheduled runs. |
 | [`wiki-librarian`](./skills/wiki-librarian) | Weekly housekeeping — finds broken links, orphaned notes, duplicates, and contradictions, and proposes fixes for you to confirm. |
 | [`wiki-governor`](./skills/wiki-governor) | Runs the librarian, synthesizer, and warehouse on a schedule, then grades the vault's own health against its own rules and tracks a knowledge-gap queue. |
 | [`wiki-teacher`](./skills/wiki-teacher) | A weekly `/checkin` that looks across several ongoing projects and surfaces the 1-2 that genuinely need your attention — never a dump of everything at once. |
@@ -111,8 +111,8 @@ agent-skills/
 │   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 18-test regression suite
 │   ├── wiki-teacher/            # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
 │   ├── wiki-warehouse/          # raw-document cold storage (external repo) + vault pointers
-│   ├── research-ledger/         # deep-research claim ledger, warehoused ahead of synthesis
-│   └── wiki-privacy-audit/      # vault-wide PII/secret audit — reuses privacy-linter's scanner
+│   ├── wiki-privacy-audit/      # vault-wide PII/secret audit — reuses privacy-linter's scanner
+│   └── research-ledger/         # deep-research claim ledger, warehoused ahead of synthesis
 ├── mcp/
 │   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
