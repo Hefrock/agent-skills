@@ -141,7 +141,15 @@ note for why this is opt-in rather than a default-behavior change: nothing invok
 ## Pairing
 
 - **privacy-linter** — `--from-linter-json` consumes its `--json` output directly;
-  content-class vocabulary is shared, not reinvented.
+  3 of the 5 content classes (`direct_pii`/`secret`/`metadata`) are genuinely its
+  vocabulary, reused rather than reinvented — see "How this works" step 6 for the
+  other two.
+- **style-obfuscator** — the actual source of the `stylometric` content class, via its
+  `--emit-findings` bridge (not `privacy-linter`, despite the similar-looking
+  `--json`-payload shape both tools produce). Not currently wired together as a
+  documented pipeline the way `privacy-linter` is — piping `fingerprint.py
+  --emit-findings` output into `--from-linter-json` works today (the bridge targets
+  the same `{"leak_class": ...}` shape), but nothing here shows that command yet.
 - **wiki-privacy-audit** — a natural next integration (not built): running the oracle
   over a vault-wide audit's findings the same way it already runs over a single
   linter scan.

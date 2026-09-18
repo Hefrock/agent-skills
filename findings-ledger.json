@@ -1,25 +1,25 @@
 [
   {
     "fingerprint": "privacy-threat-oracle:drift:pairing-section-vocabulary-wording-missed",
-    "verdict": "drift",
-    "title": "Pairing section's 'content-class vocabulary is shared, not reinvented' still overstates provenance",
+    "verdict": "confirmed",
+    "title": "Pairing section now accurately describes vocabulary provenance and lists style-obfuscator",
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "8b7cd0fdef23dba9bf388de327ac6ed8d4406da7f2f8a0470c5aad15d4f6b1ef"
+        "hash": "c444accc44d84c0accde498003a8e77a22bb43427008e5a790c588b0174e794f"
       }
     ],
     "last_verified_commit": null,
-    "notes": "Missed by the prior fix (PR #142): the Pairing section's privacy-linter bullet still implies the full 5-class vocabulary is shared with privacy-linter, when only 3 of 5 (direct_pii/secret/metadata) actually are per the same fix's own step 6 breakdown. Also: style-obfuscator isn't listed in Pairing at all, despite now being named in step 6 as the actual source of the stylometric class -- a real dependency missing from the section whose whole job is to list dependencies. Found on a deliberate re-run specifically to test whether the prior fix was complete -- it wasn't, on the first pass. Low-Medium: same underlying claim-accuracy issue as the fixed finding, smaller surface (one bullet), but the same 'could cause a wrong integration expectation' cost applies."
+    "notes": "Fixed: privacy-linter's Pairing bullet now says '3 of the 5 content classes' instead of implying the whole vocabulary is shared. Added a new style-obfuscator bullet naming it as the real source of the stylometric class. Empirically verified the full style-obfuscator -> oracle pipeline works end to end before documenting it as working: piped fingerprint.py --emit-findings output (a real 62.4%-similarity finding from two genuinely different writing samples) into oracle.py --from-linter-json, got a correct medium-sensitivity result, no parse errors."
   },
   {
     "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
     "verdict": "confirmed",
-    "title": "Content-class vocabulary provenance is now accurately described (was overstated)",
+    "title": "Content-class vocabulary provenance is accurately described everywhere (was overstated)",
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "8b7cd0fdef23dba9bf388de327ac6ed8d4406da7f2f8a0470c5aad15d4f6b1ef"
+        "hash": "c444accc44d84c0accde498003a8e77a22bb43427008e5a790c588b0174e794f"
       },
       {
         "file": "skills/privacy-threat-oracle/references/decision-rubric.md",
@@ -35,7 +35,7 @@
       }
     ],
     "last_verified_commit": null,
-    "notes": "Fixed: SKILL.md frontmatter, the 'Why this is deterministic-only' section, How-this-works step 6, decision-rubric.md's Inputs table, and marketplace.json's description all now correctly attribute direct_pii/secret/metadata to privacy-linter, stylometric to style-obfuscator's --emit-findings bridge, and inference_cue to neither tool. Re-upserted as confirmed with refreshed hashes after fixing -- was Drift as of the prior entry."
+    "notes": "Refreshed baseline after the Pairing-section fix touched the same SKILL.md file. Step 6's breakdown (the actual fix content) is unchanged; only the Pairing section below it was edited in this pass."
   },
   {
     "fingerprint": "repo-pincer:silent:track-findings-commit-field-inert",
