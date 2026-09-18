@@ -15,7 +15,7 @@ the trigger to revisit — not a default assumption now.
 | `source_compartment` | `public_professional`, `personal`, `sensitive_research` | Which identity is taking the action |
 | `target_compartment` | same three | Which identity context the content would effectively be attributed to |
 | `target_exposure` | `public_internet`, `specific_person`, `close_group`, `employer_visible` | Who can actually see it — drives which adversary classes are reachable |
-| `content_classes` | zero or more of `direct_pii`, `secret`, `metadata`, `inference_cue`, `stylometric`, or `none` | What's actually in the content — same vocabulary `privacy-linter` uses, so its `--json` output plugs in directly |
+| `content_classes` | zero or more of `direct_pii`, `secret`, `metadata`, `inference_cue`, `stylometric`, or `none` | What's actually in the content. Only `direct_pii`/`secret`/`metadata` are `privacy-linter`'s own vocabulary (`--json` plugs in directly for these three); `stylometric` comes from `style-obfuscator`'s `--emit-findings` bridge instead; `inference_cue` is produced by neither tool today — see `SKILL.md`'s "How this works" step 6 |
 | `reversible` | bool, default `false` | Can this be deleted/retracted after the fact |
 
 Free-text proposed-action parsing (the original design's "I want to post this to my
