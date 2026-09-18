@@ -20,6 +20,11 @@ Usage:
     python run_judge.py cases.jsonl --template judge_prompt.txt --out results.jsonl \\
         --input-price-per-mtok 3.00 --output-price-per-mtok 15.00
 
+    # Grades up to 5 cases concurrently by default (see run_judge()'s
+    # docstring) — raise for a large case set on a high rate limit, lower
+    # if you're seeing 429s:
+    python run_judge.py cases.jsonl --template judge_prompt.txt --out results.jsonl --concurrency 10
+
 Case input format (JSONL, one JSON object per line) — one row per case to
 grade:
     {"id": "case_001", "input": "...", "output": "...", "category": "accuracy"}
@@ -79,6 +84,7 @@ only worked with one vendor's API sat oddly against that.
 Stdlib only (urllib), matching this repo's other reference tooling."""
 
 import argparse
+import concurrent.futures
 import functools
 import json
 import os
@@ -388,6 +394,64 @@ def call_judge(prompt: str, api_key: str, model: str = DEFAULT_MODEL, provider: 
     return _PROVIDER_CALLERS[provider](prompt, api_key, model, max_tokens, timeout)
 
 
+DEFAULT_CONCURRENCY = 5
+
+
+def _grade_one(
+    case: dict,
+    template: str,
+    api_key: str,
+    judge_fn,
+    model: str,
+    default_category: str | None,
+    input_price_per_mtok: float | None,
+    output_price_per_mtok: float | None,
+) -> dict | None:
+    """Grades exactly one case, split out of run_judge()'s old sequential
+    loop body so it can be dispatched to a thread-pool worker. Returns a
+    flattened result row, or None if this case should be dropped — same
+    three independent failure points (template-fill, judge_fn raising,
+    unparseable response) the original loop handled inline, each still
+    reported to stderr from wherever it's caught so a warning stays
+    attributable to its own case regardless of which worker hits it or
+    what order workers finish in. Never raises — run_judge() relies on
+    that to call future.result() without its own try/except."""
+    try:
+        prompt = fill_template(template, case)
+    except Exception as e:
+        print(f"Warning: skipping case {case['id']} — couldn't fill template: {e}", file=sys.stderr)
+        return None
+
+    start = time.perf_counter()
+    try:
+        response = judge_fn(prompt, api_key, model)
+    except Exception as e:
+        print(f"Warning: skipping case {case['id']} — judge call failed: {e}", file=sys.stderr)
+        return None
+    latency_ms = (time.perf_counter() - start) * 1000
+
+    try:
+        parsed = _extract_json(response["text"])
+        flattened = flatten_judge_response(parsed)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+        print(f"Warning: skipping case {case['id']} — couldn't parse judge response: {e}", file=sys.stderr)
+        return None
+
+    row = {
+        "id": case["id"],
+        "score": flattened["score"],
+        "rationale": flattened["rationale"],
+        "latency_ms": round(latency_ms, 1),
+    }
+    category = case.get("category", default_category)
+    if category is not None:
+        row["category"] = category
+    if input_price_per_mtok is not None and output_price_per_mtok is not None:
+        cost = (response["input_tokens"] / 1_000_000) * input_price_per_mtok + (response["output_tokens"] / 1_000_000) * output_price_per_mtok
+        row["cost_usd"] = round(cost, 6)
+    return row
+
+
 def run_judge(
     cases: list[dict],
     template: str,
@@ -397,61 +461,56 @@ def run_judge(
     default_category: str | None = None,
     input_price_per_mtok: float | None = None,
     output_price_per_mtok: float | None = None,
+    concurrency: int = DEFAULT_CONCURRENCY,
 ) -> list[dict]:
     """Pure orchestration over judge_fn — no direct network access here,
     so this is fully testable with a fake judge_fn standing in for a real
     API call, same convention as orchestrate.run_episode()'s injected
     fetch_fn/embed_fn/synth_fn.
 
+    Dispatches up to `concurrency` cases at once via a thread pool — a
+    real request thread blocked on network I/O releases the GIL, so an
+    eval set of N cases no longer costs N sequential round-trips (the
+    calibration cadence SKILL.md itself names, "every 25-50 judge calls,"
+    made that cost routine, not an edge case). `concurrency` is bounded
+    (default 5, not "as many cases as there are") specifically because
+    this hits a real, possibly rate-limited external API — unbounded
+    fan-out would trade one problem (slow) for a worse one (429s), same
+    reasoning run_pairwise.py's 2-worker pool follows for its own two
+    calls per case. Results are collected by original case index and
+    returned in that order regardless of which worker finished first, so
+    output ordering (and therefore results.jsonl's diffability run over
+    run) doesn't depend on network timing.
+
     A per-case failure — template-filling (e.g. a malformed "turns" entry
     missing "role"/"content", see format_turns_as_transcript()), judge_fn
     raising, or the response not parsing into flatten_judge_response()'s
     expected shape — is reported to stderr and that case is dropped from
-    the returned list. Real, live-found bug this guards against: an
-    earlier version of this function called fill_template() outside any
-    try/except, so one malformed case crashed the entire batch and
-    silently discarded every result already computed for cases before
-    it — not just that one case, the way every other failure mode here
-    is handled. cost_usd is included only when both price arguments are
-    given; latency_ms is always real wall-clock time around the judge_fn
-    call, whether or not pricing is known."""
-    results = []
-    for case in cases:
-        try:
-            prompt = fill_template(template, case)
-        except Exception as e:
-            print(f"Warning: skipping case {case['id']} — couldn't fill template: {e}", file=sys.stderr)
-            continue
-
-        start = time.perf_counter()
-        try:
-            response = judge_fn(prompt, api_key, model)
-        except Exception as e:
-            print(f"Warning: skipping case {case['id']} — judge call failed: {e}", file=sys.stderr)
-            continue
-        latency_ms = (time.perf_counter() - start) * 1000
-
-        try:
-            parsed = _extract_json(response["text"])
-            flattened = flatten_judge_response(parsed)
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-            print(f"Warning: skipping case {case['id']} — couldn't parse judge response: {e}", file=sys.stderr)
-            continue
-
-        row = {
-            "id": case["id"],
-            "score": flattened["score"],
-            "rationale": flattened["rationale"],
-            "latency_ms": round(latency_ms, 1),
+    the returned list; see _grade_one()'s docstring for the per-failure
+    detail. Real, live-found bug this still guards against even under
+    concurrency: an earlier version of this function called
+    fill_template() outside any try/except, so one malformed case crashed
+    the entire batch and silently discarded every result already computed
+    for cases before it — not just that one case, the way every other
+    failure mode here is handled. cost_usd is included only when both
+    price arguments are given; latency_ms is always real wall-clock time
+    around that case's own judge_fn call, unaffected by how many other
+    cases happen to be in flight at the same time."""
+    results_by_index: dict[int, dict] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        future_to_index = {
+            pool.submit(
+                _grade_one, case, template, api_key, judge_fn, model,
+                default_category, input_price_per_mtok, output_price_per_mtok,
+            ): i
+            for i, case in enumerate(cases)
         }
-        category = case.get("category", default_category)
-        if category is not None:
-            row["category"] = category
-        if input_price_per_mtok is not None and output_price_per_mtok is not None:
-            cost = (response["input_tokens"] / 1_000_000) * input_price_per_mtok + (response["output_tokens"] / 1_000_000) * output_price_per_mtok
-            row["cost_usd"] = round(cost, 6)
-        results.append(row)
-    return results
+        for future in concurrent.futures.as_completed(future_to_index):
+            row = future.result()
+            if row is not None:
+                results_by_index[future_to_index[future]] = row
+
+    return [results_by_index[i] for i in sorted(results_by_index)]
 
 
 def main() -> int:
@@ -466,6 +525,7 @@ def main() -> int:
     parser.add_argument("--input-price-per-mtok", type=float, help="USD per 1M input tokens — set both prices to get cost_usd in the output.")
     parser.add_argument("--output-price-per-mtok", type=float, help="USD per 1M output tokens — see --input-price-per-mtok.")
     parser.add_argument("--skip-invalid", action="store_true", help="Grade only cases that pass preflight validation instead of aborting when problems are found.")
+    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY, help=f"Max concurrent judge calls in flight at once (default: {DEFAULT_CONCURRENCY}). Higher risks rate-limiting on a large case set.")
     args = parser.parse_args()
 
     cases = load_cases(args.cases)
@@ -491,6 +551,7 @@ def main() -> int:
     results = run_judge(
         cases, template, api_key, judge_fn=judge_fn, model=model, default_category=args.category,
         input_price_per_mtok=args.input_price_per_mtok, output_price_per_mtok=args.output_price_per_mtok,
+        concurrency=args.concurrency,
     )
 
     with open(args.out, "w", encoding="utf-8") as f:

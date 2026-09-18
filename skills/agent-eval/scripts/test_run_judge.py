@@ -312,6 +312,69 @@ class RunJudge(unittest.TestCase):
             results = run_judge_mod.run_judge(cases, "{input}{output}", "fake-key", judge_fn=one_bad_one_good)
         self.assertEqual([r["id"] for r in results], ["good"])
 
+    def test_cases_graded_concurrently_not_sequentially(self):
+        # Each case "blocks" for SLEEP_S (simulating network latency).
+        # Sequential grading of 5 cases would take >= 5 * SLEEP_S; with
+        # the default concurrency (5) they should all run at once, close
+        # to 1 * SLEEP_S. Assert against a midpoint threshold, not a tight
+        # bound, to stay robust to thread-scheduling jitter on a loaded
+        # CI runner.
+        import time as time_mod
+        SLEEP_S = 0.15
+
+        def slow_judge_fn(prompt, api_key, model):
+            time_mod.sleep(SLEEP_S)
+            return self._fake_judge_fn(prompt, api_key, model)
+
+        cases = [{"id": f"c{i}", "input": "x", "output": "y"} for i in range(5)]
+        start = time_mod.perf_counter()
+        results = run_judge_mod.run_judge(cases, "{input}{output}", "fake-key", judge_fn=slow_judge_fn)
+        elapsed = time_mod.perf_counter() - start
+        self.assertEqual(len(results), 5)
+        self.assertLess(elapsed, SLEEP_S * 3, "5 cases took long enough to suggest they ran sequentially, not concurrently")
+
+    def test_concurrency_flag_bounds_in_flight_calls(self):
+        # With concurrency=1, 3 cases must take close to 3 * SLEEP_S —
+        # proving the bound actually limits fan-out rather than being a
+        # no-op kwarg.
+        import threading
+        import time as time_mod
+        SLEEP_S = 0.1
+        max_in_flight = 0
+        current_in_flight = 0
+        lock = threading.Lock()
+
+        def tracking_judge_fn(prompt, api_key, model):
+            nonlocal max_in_flight, current_in_flight
+            with lock:
+                current_in_flight += 1
+                max_in_flight = max(max_in_flight, current_in_flight)
+            time_mod.sleep(SLEEP_S)
+            with lock:
+                current_in_flight -= 1
+            return self._fake_judge_fn(prompt, api_key, model)
+
+        cases = [{"id": f"c{i}", "input": "x", "output": "y"} for i in range(3)]
+        run_judge_mod.run_judge(cases, "{input}{output}", "fake-key", judge_fn=tracking_judge_fn, concurrency=1)
+        self.assertEqual(max_in_flight, 1)
+
+    def test_results_returned_in_original_case_order_regardless_of_finish_order(self):
+        # Cases with shorter sleeps finish first under concurrency — the
+        # returned list must still match input order, not completion order,
+        # since results.jsonl's diffability run-over-run depends on it.
+        import time as time_mod
+
+        def variable_delay_judge_fn(prompt, api_key, model):
+            # Reverse-order delay: case "c0" sleeps longest, "c4" shortest,
+            # so completion order is the exact reverse of input order.
+            index = int(prompt.split("input:")[1][0])
+            time_mod.sleep(0.05 * (5 - index))
+            return self._fake_judge_fn(prompt, api_key, model)
+
+        cases = [{"id": f"c{i}", "input": f"input:{i}", "output": "y"} for i in range(5)]
+        results = run_judge_mod.run_judge(cases, "{input}{output}", "fake-key", judge_fn=variable_delay_judge_fn)
+        self.assertEqual([r["id"] for r in results], ["c0", "c1", "c2", "c3", "c4"])
+
 
 class CallJudgeProvider(unittest.TestCase):
     """call_judge()'s own provider dispatch — no real network access,
