@@ -21,6 +21,15 @@ Deliberately narrow -- see SKILL.md's "What's NOT built here" for what this does
 NOT attempt (path-existence claims, claims in a differently-formatted doc, any
 form of semantic/behavioral checking).
 
+TRUST BOUNDARY WARNING: this script executes every test_*.py file it finds under the
+target's skill directories via subprocess, with no sandboxing -- no network isolation,
+no resource limits, no filesystem restriction (only a per-file wall-clock timeout). Safe
+against a target you already trust (this repo's own skills, a codebase you maintain).
+NOT safe as a way to evaluate an unvetted third-party or vendor repo -- one of
+repo-pincer's own documented use cases -- since that target's test files are exactly the
+untrusted code the audit exists to evaluate, and running them here hands them this
+session's full privileges.
+
 Usage (from this script's own directory, skills/repo-pincer/scripts/):
     python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills
     python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills --json

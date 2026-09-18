@@ -19,6 +19,19 @@ Two independent passes that must reconcile. Do not let the second pass be inform
 
 ### Pass 2 — Bottom-up (reality)
 
+**⚠ Trust boundary — read before running the mechanical check on an unvetted target.**
+`check_structural_claims.py` executes every `test_*.py` file it finds under the target's
+skill directories via `subprocess.run()`, with no sandboxing — no network isolation, no
+resource limits, no restricted filesystem access. That's safe against a target you already
+trust (this repo's own skills, a codebase you maintain), because you're just running code
+you already trust in a different way. It is **not** safe against "evaluating a dependency
+or vendor repo before committing to it" — one of this skill's own documented use cases —
+because that target's test files are exactly the untrusted code the audit exists to
+evaluate, and running them unsandboxed hands them this session's full privileges. Only run
+the mechanical check against a target you'd already be willing to run arbitrary code from;
+for a genuinely unvetted target, read Pass 2's entry points and tests statically instead of
+executing them, at least until they've been read.
+
 0. **Run the mechanical check first, before any reading.** `scripts/check_structural_claims.py`
    verifies one narrow, high-value claim type — "N-test suite" / "N-test regression suite"
    claims — by actually running the referenced tests and comparing counts, not estimating:
@@ -148,6 +161,11 @@ If no vault is connected, present the same structure directly in the conversatio
   using a different runner would currently show up as `errored` (no recognized "ran"
   line), not silently miscounted, but it's still a real scope boundary, not a hypothetical
   one, if a future skill's tests are ever written differently.
+- **No sandboxing around the code it executes.** `count_actual_tests()`'s `subprocess.run()`
+  has a timeout but no network isolation, no resource limits, and no filesystem
+  restriction — see the trust-boundary warning at the top of Pass 2 for what this means
+  in practice: safe against a target you already trust, not safe as a way to evaluate an
+  unvetted third-party repo's code by running it.
 
 ## Output discipline
 
