@@ -61,11 +61,11 @@ wasn't captured is gone the same way yesterday's run's raw claims were.
    `references/ledger-schema.md`.
 3. **Warehouse it.** Hand the file to `wiki-warehouse`'s `/ingest` flow (same
    `intake.py` pathway used for PDFs) so it gets a content-hash `doc_id` and lives
-   in `knowledge-warehouse` alongside the sources it references. JSON ledgers need
-   `intake.py`'s plaintext-extraction path to index as searchable text — confirm the
-   warehouse repo's `bin/intake.py` handles `.json` before relying on this (see
-   `references/ledger-schema.md`'s note on this); if it doesn't yet, that's a
-   one-line fix to `extract()`'s dispatch, not a reason to skip warehousing.
+   in `knowledge-warehouse` alongside the sources it references. `intake.py`'s
+   `extract()` dispatch handles `.json` as plaintext (fixed and regression-tested in
+   `knowledge-warehouse` commit `feca3a7`, after this skill's own doc flagged it as
+   unconfirmed) — a JSON ledger indexes as searchable text like any other, no
+   workaround needed.
 4. **Point the vault at it.** Write a thin Source note under `Sources/Research/`
    (create the folder if needed) carrying the warehouse frontmatter
    (`doc_id`/`warehouse_path`/`text_path`) plus a one-paragraph summary of what the

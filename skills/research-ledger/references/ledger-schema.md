@@ -69,17 +69,7 @@ research pass) and `claims` (every claim it surfaced, confirmed or not).
 
 ## `intake.py` extraction support for `.json`
 
-As of this skill's creation, `knowledge-warehouse/bin/intake.py`'s `extract()`
-dispatch handles `.pdf`, `.txt`/`.md`/`.markdown`/`.text`, and `.html`/`.htm` — a
-bare `.json` file falls through to the `unsupported-type` branch, which still
-stores and hashes the original but leaves its `text_path` empty (no searchable
-text). Either:
-
-- Save the ledger with a `.md` extension containing the JSON inside a fenced code
-  block (picks up the `plaintext` extraction path, keeps it searchable), or
-- Add a one-line case to `extract()` treating `.json` like `.txt` (read directly,
-  `"plaintext"` method) — the more correct long-term fix, since it keeps the raw
-  file's extension honest about its actual type.
-
-Check which is true in the warehouse repo's current `bin/intake.py` before
-ingesting a ledger; don't assume either without looking.
+Fixed in `knowledge-warehouse` commit `feca3a7`: `extract()`'s dispatch now handles
+`.json` the same way as `.txt`/`.md` (read directly, `"plaintext"` method), so a
+ledger's `text_path` is populated and searchable like any other document. No
+workaround needed — ingest the ledger as a plain `.json` file.
