@@ -21,9 +21,9 @@ Deliberately narrow -- see SKILL.md's "What's NOT built here" for what this does
 NOT attempt (path-existence claims, claims in a differently-formatted doc, any
 form of semantic/behavioral checking).
 
-Usage:
-    python check_structural_claims.py --claims-file ../../README.md --skills-dir ../../skills
-    python check_structural_claims.py --claims-file ../../README.md --skills-dir ../../skills --json
+Usage (from this script's own directory, skills/repo-pincer/scripts/):
+    python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills
+    python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills --json
 
 Assumes this repo's own tree-block convention: a claim like "392-test suite"
 shares a line with the skill directory name it describes (e.g.

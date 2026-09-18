@@ -23,7 +23,7 @@ Two independent passes that must reconcile. Do not let the second pass be inform
    verifies one narrow, high-value claim type — "N-test suite" / "N-test regression suite"
    claims — by actually running the referenced tests and comparing counts, not estimating:
    ```bash
-   python scripts/check_structural_claims.py --claims-file README.md --skills-dir skills
+   python skills/repo-pincer/scripts/check_structural_claims.py --claims-file README.md --skills-dir skills
    ```
    This exists because exact-number claims are simultaneously the cheapest to verify (one
    command, no judgment) and the most likely to drift silently — nobody re-counts "26 tests"
