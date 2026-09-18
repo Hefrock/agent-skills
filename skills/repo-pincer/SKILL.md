@@ -84,7 +84,40 @@ executing them, at least until they've been read.
      something not yet implemented — a TODO in disguise).
    - Walk the **as-built model** for anything with no corresponding claim at all.
      That's **Silent** — reality does something the docs never mention.
-2. Rank each Drift/Aspirational/Silent finding **High/Medium/Low**: High if it sits on a write path or a safety/security-relevant boundary; Low if it's cosmetic (a stale README line, a renamed variable with no behavior change).
+2. Rank each Drift/Aspirational/Silent finding **High/Medium/Low** against concrete
+   consequences, not a vague sense of how bad it feels — borrowed from
+   `cloudflare/security-audit-skill`'s severity-anchor pattern (outcome anchors, not
+   adjectives) and re-grounded in what a documentation/reality mismatch actually costs:
+
+   For **Drift** and **Aspirational** (there's a specific false claim — ask what a reader
+   loses by trusting it):
+   - **High** — trusting the claim leads to a wrong safety- or security-relevant
+     assumption, or a wrong assumption about a write/destructive path: a doc says input
+     is sanitized here and it isn't, says something is encrypted at rest and it isn't
+     built, says a script only reads and it actually writes or deletes.
+   - **Medium** — trusting the claim costs real time or produces a real but recoverable
+     mistake, with nothing safety/security-relevant at stake: a documented capability
+     doesn't exist (someone builds around a phantom feature, or files a duplicate issue
+     for something already claimed-but-missing), a documented behavior differs enough to
+     break an integration built against the doc.
+   - **Low** — cosmetic: stale prose, a renamed variable, an outdated example whose
+     surface syntax drifted but whose actual usage is still correct. No reader reaches a
+     materially wrong outcome from trusting it.
+
+   For **Silent** (there's no claim to trust — ask what not knowing costs instead):
+   - **High** — the undocumented behavior sits on a write path or touches
+     security/safety-relevant behavior: silently sends data externally, deletes or
+     mutates something, bypasses a documented safeguard — and nobody would know without
+     reading the code.
+   - **Medium** — a real, useful capability that's genuinely undocumented but inert or
+     non-destructive: an extra CLI flag nobody knows exists.
+   - **Low** — a trivial internal implementation detail with no user-facing consequence
+     either way, documented or not.
+
+   The discriminator, same shape as Cloudflare's "if you can't state the concrete damage,
+   the severity is lower than it feels": if you can't name what a reader would get wrong,
+   lose, or break by trusting a Drift/Aspirational claim — or what goes unnoticed because
+   a Silent behavior stayed undocumented — the severity is lower than it feels, not higher.
 3. The ranked discrepancy list is the primary deliverable — report it before either summary. Confirmed claims aren't listed individually; note them only in aggregate ("14 of 18 claims confirmed").
 4. **Record each new or changed Drift/Aspirational/Silent/Confirmed finding in the findings
    ledger**, so a later run against this same target doesn't re-derive it from scratch:
