@@ -26,11 +26,14 @@ Two independent passes that must reconcile. Do not let the second pass be inform
 
 ### Pass 3 — Reconciliation
 
-1. Walk the claims ledger against the as-built model. Classify every claim:
-   - **Confirmed** — matches reality
-   - **Drift** — was true once; reality has since moved (version skew, partial refactor)
-   - **Aspirational** — describes something not yet implemented (a TODO in disguise)
-   - **Silent** — reality does something the docs never mention
+1. Two directions, not one — a Silent finding has no claim to walk from, so it can't
+   surface from the claims ledger alone:
+   - Walk the **claims ledger** against the as-built model. Classify each claim as
+     **Confirmed** (matches reality), **Drift** (was true once; reality has since
+     moved — version skew, partial refactor), or **Aspirational** (describes
+     something not yet implemented — a TODO in disguise).
+   - Walk the **as-built model** for anything with no corresponding claim at all.
+     That's **Silent** — reality does something the docs never mention.
 2. Rank each Drift/Aspirational/Silent finding **High/Medium/Low**: High if it sits on a write path or a safety/security-relevant boundary; Low if it's cosmetic (a stale README line, a renamed variable with no behavior change).
 3. The ranked discrepancy list is the primary deliverable — report it before either summary. Confirmed claims aren't listed individually; note them only in aggregate ("14 of 18 claims confirmed").
 

@@ -40,13 +40,13 @@ import statistics
 import sys
 from collections import defaultdict
 
-# realpath, not abspath: this file is also reached via a real symlink
-# (skills/agent-redteam/scripts/score_eval.py -> ../../agent-eval/scripts/
-# score_eval.py, see that skill's Files table) — __file__ under a symlink
-# invocation reflects the symlink's own path, not the real one, so abspath
-# alone would look for jsonl_io.py next to the symlink and fail to find
-# it. realpath resolves through the symlink to this file's actual
-# directory regardless of which path was used to invoke it.
+# realpath, not abspath: agent-redteam calls this script via a relative
+# cross-skill path (../agent-eval/scripts/score_eval.py, see that skill's
+# SKILL.md step 3) rather than a copy or symlink, but realpath is kept as
+# the defensive default regardless — it resolves to this file's actual
+# directory even if some future invocation path (a symlink, a packaged
+# copy) doesn't match this file's own location, so jsonl_io.py is always
+# found next to the real script, not wherever it was invoked from.
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 import jsonl_io  # noqa: E402
