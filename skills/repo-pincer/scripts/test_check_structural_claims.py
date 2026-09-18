@@ -288,6 +288,72 @@ class Cli(unittest.TestCase):
         self.assertIn("errored", data)
         self.assertIn("confirmed_count", data)
 
+    def test_fail_on_drift_exits_1_when_drift_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts_dir = os.path.join(tmp, "myskill", "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "test_x.py"), "w") as f:
+                f.write(
+                    "import unittest\n"
+                    "class T(unittest.TestCase):\n"
+                    "    def test_a(self): pass\n"
+                    "if __name__ == '__main__': unittest.main()\n"
+                )
+            path = self.make_md_file("├── myskill/   # 5-test suite")
+            proc = run_script("--claims-file", path, "--skills-dir", tmp, "--fail-on-drift")
+            self.assertEqual(proc.returncode, 1)
+
+    def test_fail_on_drift_exits_1_on_errored_finding_too(self):
+        # Errored (crashed/timed-out) findings gate the same as Drift --
+        # an untrustworthy count is not something --fail-on-drift should
+        # wave through just because it isn't a plain numeric mismatch.
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts_dir = os.path.join(tmp, "crashy", "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "test_x.py"), "w") as f:
+                f.write("raise RuntimeError('boom')\n")
+            path = self.make_md_file("├── crashy/   # 5-test suite")
+            proc = run_script("--claims-file", path, "--skills-dir", tmp, "--fail-on-drift")
+            self.assertEqual(proc.returncode, 1)
+
+    def test_fail_on_drift_exits_0_when_claims_are_confirmed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts_dir = os.path.join(tmp, "myskill", "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "test_x.py"), "w") as f:
+                f.write(
+                    "import unittest\n"
+                    "class T(unittest.TestCase):\n"
+                    "    def test_a(self): pass\n"
+                    "if __name__ == '__main__': unittest.main()\n"
+                )
+            path = self.make_md_file("├── myskill/   # 1-test suite")
+            proc = run_script("--claims-file", path, "--skills-dir", tmp, "--fail-on-drift")
+            self.assertEqual(proc.returncode, 0)
+
+    def test_without_fail_on_drift_flag_drift_still_exits_0(self):
+        # Preserves the pre-existing default: findings are only reported
+        # unless the caller explicitly opts into the gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts_dir = os.path.join(tmp, "myskill", "scripts")
+            os.makedirs(scripts_dir)
+            with open(os.path.join(scripts_dir, "test_x.py"), "w") as f:
+                f.write(
+                    "import unittest\n"
+                    "class T(unittest.TestCase):\n"
+                    "    def test_a(self): pass\n"
+                    "if __name__ == '__main__': unittest.main()\n"
+                )
+            path = self.make_md_file("├── myskill/   # 5-test suite")
+            proc = run_script("--claims-file", path, "--skills-dir", tmp)
+            self.assertEqual(proc.returncode, 0)
+
+    def test_fail_on_drift_against_real_readme_is_currently_clean(self):
+        readme = os.path.join(REPO_ROOT, "README.md")
+        skills_dir = os.path.join(REPO_ROOT, "skills")
+        proc = run_script("--claims-file", readme, "--skills-dir", skills_dir, "--fail-on-drift")
+        self.assertEqual(proc.returncode, 0)
+
     def test_against_this_repos_real_current_readme(self):
         # Empirical, not just fixture-based: the real README.md, checked
         # against the real skills/ directory, right now. As of this test

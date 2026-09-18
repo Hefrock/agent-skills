@@ -33,6 +33,10 @@ Two independent passes that must reconcile. Do not let the second pass be inform
    crashed or timed out, so the actual count isn't trustworthy enough to call a numeric
    mismatch; that's a different, usually more urgent finding worth its own line in the report,
    not one folded silently into a Drift number. Narrow on purpose — see "What's NOT built here."
+   Add `--fail-on-drift` to use this as a direct CI gate — it exits 1 if any claim is Drift
+   or Errored, rather than only ever reporting and exiting 0. Missing-skill and no-tests-found
+   findings don't gate: those more often mean the line's skill-directory association is
+   ambiguous than that something regressed, so they stay report-only either way.
 1. Identify entry points first: exported/public functions, CLI commands, API routes, error-handling paths. Start here, not with every private helper — this is where claims are made and where drift matters most.
 2. For each entry point, read the actual implementation. Record real behavior — inputs, outputs, side effects, error handling — from the code itself, not from comments or docstrings (those are claims, and belong in Pass 1 if load-bearing).
 3. Trace the call graph outward from each entry point only as far as needed to confirm or refute a specific claim — not exhaustively. Depth follows the claim being checked, not a fixed crawl.
