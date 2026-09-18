@@ -287,9 +287,6 @@ score never depends on one model's blind spots.
 - `references/statistical-rigor.md` — why the bootstrap resamples records (not spans), the
   bootstrap vs. seed-sweep distinction, and the paired significance test. Read before
   changing `bootstrap.py` or `score_stats.py`, or before citing a number in a writeup.
-- `references/expert-determination.md` — the Track 2 risk model: quasi-identifiers,
-  equivalence classes, k-anonymity, and the three attackers (prosecutor/journalist/
-  marketer). Read before changing `qi_model.py` or `score_reid.py`.
 
 ## Standard traceability
 
