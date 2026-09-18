@@ -93,7 +93,12 @@ class CompartmentIsolationIsFullyMutual(unittest.TestCase):
     lists can't silently reopen that ambiguity. See decision-rubric.md's Step 1."""
 
     def test_every_ordered_pair_of_distinct_compartments_is_a_violation(self):
-        compartments = ["public_professional", "personal", "sensitive_research"]
+        # Derived from the real threat model, not hardcoded -- this used to be its own
+        # third independent copy of the compartment list (see ChoicesMatchThreatModel
+        # below for the drift risk that created). Deriving it means this regression
+        # lock now automatically covers a future fourth compartment too, not just the
+        # three that existed when it was written.
+        compartments = oracle.compartment_choices(oracle.load_threat_model())
         for source in compartments:
             for target in compartments:
                 if source == target:
@@ -262,6 +267,36 @@ class BlockOnGate(unittest.TestCase):
         self.assertTrue(oracle.check_gate("decline", "proceed_with_modification"))
         self.assertTrue(oracle.check_gate("proceed_with_modification", "proceed_with_modification"))
         self.assertFalse(oracle.check_gate("proceed", "proceed_with_modification"))
+
+
+class ChoicesMatchThreatModel(unittest.TestCase):
+    """Regression guard for the exact drift risk this closes: --source-compartment/
+    --target-compartment/--target-exposure/--content-class's argparse choices used to
+    be separate hardcoded lists (three independent copies across oracle.py and this
+    test file), with nothing to catch them silently diverging if threat-model.json
+    ever gained a new compartment, exposure, or content class. Choices are now derived
+    from the JSON at import time -- these tests assert that derivation actually
+    happened, and stay a real regression lock: they fail immediately if a future edit
+    reintroduces a hardcoded list that drifts from the data."""
+
+    def test_compartment_choices_match_threat_model(self):
+        tm = oracle.load_threat_model()
+        self.assertEqual(oracle.COMPARTMENT_CHOICES, [c["id"] for c in tm["compartments"]])
+
+    def test_target_exposure_choices_match_threat_model(self):
+        tm = oracle.load_threat_model()
+        self.assertEqual(oracle.TARGET_EXPOSURE_CHOICES, list(tm["target_exposure_map"].keys()))
+
+    def test_content_class_choices_match_threat_model(self):
+        tm = oracle.load_threat_model()
+        self.assertEqual(oracle.CONTENT_CLASS_CHOICES, list(tm["content_sensitivity_tiers"].keys()))
+
+    def test_a_new_compartment_would_be_accepted_without_code_changes(self):
+        # The actual property that matters: not just "do the constants match today,"
+        # but "would a genuinely new entry in the JSON become usable automatically."
+        tm = oracle.load_threat_model()
+        tm["compartments"].append({"id": "new_compartment", "may_reference": ["new_compartment"]})
+        self.assertIn("new_compartment", oracle.compartment_choices(tm))
 
 
 class Cli(unittest.TestCase):
