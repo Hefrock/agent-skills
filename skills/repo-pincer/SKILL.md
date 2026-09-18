@@ -13,6 +13,17 @@ Two independent passes that must reconcile. Do not let the second pass be inform
 
 ### Pass 1 — Top-down (claims)
 
+0. **If a findings ledger exists from a prior run against this target, load it first:**
+   ```bash
+   python skills/repo-pincer/scripts/track_findings.py --ledger-file findings-ledger.json --repo-root . check
+   ```
+   Every `unchanged` record's conclusion still holds — its cited source hasn't moved since it
+   was last verified, so don't re-derive it from scratch; carry it straight into this run's
+   report. Only `changed` and `missing_source` records need fresh Pass 2/3 judgment, same as
+   a brand-new claim. This is the expensive-judgment analog of Pass 2 step 0's mechanical
+   check: that script skips re-deriving a cheap fact when nothing's changed, this one skips
+   re-deriving an expensive one. No prior ledger is the common case for a first run — say so
+   and proceed normally.
 1. Read outward-facing claims in order of authority: root README → architecture/design docs → package manifests (`package.json`, `pyproject.toml`, `Cargo.toml`, etc.) → per-module docs → public API/CLI surface (exported symbols, defined commands).
 2. Build a **claims ledger**: for each claim, record what it asserts, exactly where (file + line or section), and how falsifiable it is. A specific claim ("retries 3× with exponential backoff") is worth more than a vague one ("handles errors gracefully") — note the difference, don't just list claims flatly.
 3. Do not verify anything yet. This pass only records what the system says about itself.
@@ -75,6 +86,23 @@ executing them, at least until they've been read.
      That's **Silent** — reality does something the docs never mention.
 2. Rank each Drift/Aspirational/Silent finding **High/Medium/Low**: High if it sits on a write path or a safety/security-relevant boundary; Low if it's cosmetic (a stale README line, a renamed variable with no behavior change).
 3. The ranked discrepancy list is the primary deliverable — report it before either summary. Confirmed claims aren't listed individually; note them only in aggregate ("14 of 18 claims confirmed").
+4. **Record each new or changed Drift/Aspirational/Silent/Confirmed finding in the findings
+   ledger**, so a later run against this same target doesn't re-derive it from scratch:
+   ```bash
+   python skills/repo-pincer/scripts/track_findings.py --ledger-file findings-ledger.json --repo-root . upsert \
+     --fingerprint <skill-or-area>:<verdict>:<short-slug> --verdict drift \
+     --title "<one-line summary>" --source-ref <file that this conclusion depends on> \
+     [--source-ref <another file>] --notes "<why, briefly>"
+   ```
+   Pick the fingerprint once and keep it stable across runs — it's how the next run recognizes
+   "this is the same finding," not a hash it computes for you. `--source-ref` is every file
+   whose current content this specific conclusion depends on; if any of them changes before
+   the next run, `check` (Pass 1 step 0) will flag it for revalidation instead of silently
+   carrying forward a conclusion the changed source might have invalidated. A `Confirmed`
+   claim worth recording is one specific enough that a later change to its source would be
+   worth knowing about — most Confirmed claims aren't, and don't need an entry. `changed`/
+   `missing_source` records from Pass 1 step 0 that were revalidated this run get re-upserted
+   here like any other finding, refreshing their evidence baseline.
 
 ## /pincer [path or repo] [--depth quick|standard|thorough]
 
@@ -166,6 +194,21 @@ If no vault is connected, present the same structure directly in the conversatio
   restriction — see the trust-boundary warning at the top of Pass 2 for what this means
   in practice: safe against a target you already trust, not safe as a way to evaluate an
   unvetted third-party repo's code by running it.
+- **`track_findings.py` hashes whole files, not line ranges.** An unrelated edit anywhere
+  in a cited file reports `changed` even if the specific fact the finding depends on didn't
+  move — a false positive, but the safe direction to be wrong in: it costs an unnecessary
+  revalidation, never a silently stale carry-forward. Line-range hashing would be more
+  precise and is a real, scoped follow-up, not attempted here — same relationship as
+  `check_structural_claims.py`'s own path-existence-claims gap.
+- **Nothing extracts findings into the ledger automatically.** Recording a finding is an
+  explicit `upsert` call Pass 3 makes for each one — there's no step that reads a written
+  report and back-fills the ledger from it. Skipping the `upsert` step doesn't lose the
+  finding from that run's report, only from the *next* run's cross-run memory of it.
+- **The ledger has no notion of "this finding was fixed."** A `changed` or `missing_source`
+  record just means its evidence moved, not which direction — Pass 3 still has to look and
+  decide whether the finding still holds, was fixed, or needs a new fingerprint entirely
+  (e.g. a Drift finding that got fixed and is now Confirmed should be re-`upsert`ed with
+  the same fingerprint but a new verdict, not treated as resolved by omission).
 
 ## Output discipline
 
@@ -180,3 +223,5 @@ If no vault is connected, present the same structure directly in the conversatio
 |---|---|
 | `scripts/check_structural_claims.py` | Pass 2's mechanical accelerant — verifies test-count claims by actually running the tests |
 | `scripts/test_check_structural_claims.py` | Unit + CLI test suite (stdlib unittest), including a live check against this repo's own current README.md |
+| `scripts/track_findings.py` | Cross-run fingerprint tracking for Pass 3 findings — records a finding's cited source-file hashes, and later reports whether they're still unchanged (carry forward), changed, or missing (both need revalidation) |
+| `scripts/test_track_findings.py` | Unit + CLI test suite (stdlib unittest) |
