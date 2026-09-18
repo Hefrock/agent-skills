@@ -29,7 +29,10 @@ Two independent passes that must reconcile. Do not let the second pass be inform
    command, no judgment) and the most likely to drift silently — nobody re-counts "26 tests"
    by hand every time a test gets added. Confirmed empirically: a repo-wide pass against this
    very repo found three real Drift findings this way in seconds, before any conversational
-   tracing started. Narrow on purpose — see "What's NOT built here."
+   tracing started. A fourth output bucket, `errored`, is not Drift — it means a test file
+   crashed or timed out, so the actual count isn't trustworthy enough to call a numeric
+   mismatch; that's a different, usually more urgent finding worth its own line in the report,
+   not one folded silently into a Drift number. Narrow on purpose — see "What's NOT built here."
 1. Identify entry points first: exported/public functions, CLI commands, API routes, error-handling paths. Start here, not with every private helper — this is where claims are made and where drift matters most.
 2. For each entry point, read the actual implementation. Record real behavior — inputs, outputs, side effects, error handling — from the code itself, not from comments or docstrings (those are claims, and belong in Pass 1 if load-bearing).
 3. Trace the call graph outward from each entry point only as far as needed to confirm or refute a specific claim — not exhaustively. Depth follows the claim being checked, not a fixed crawl.
@@ -128,6 +131,19 @@ If no vault is connected, present the same structure directly in the conversatio
   recursing even if a numbered claim is ever written for `repo-pincer` again — which is
   exactly why the README describes this skill's own suite generically ("test suite"),
   not with a number this tool would just report as unverifiable.
+- **A per-test-file timeout (`TEST_FILE_TIMEOUT_SECONDS`, 30s) is the general backstop**
+  for the class of bug the recursion above turned out to be one instance of. The filename
+  exclusion defuses that one specific known trigger; the timeout defends against any
+  *other* future test file that blocks — a stray network call, a leftover `input()`, an
+  unrelated infinite loop — turning a hang into a reported `errored` finding instead of a
+  wedged process. Confirmed with a deliberately-hanging fixture test file in
+  `test_check_structural_claims.py`.
+- **Only recognizes stdlib `unittest`'s own summary line** (`"Ran N tests"`) as evidence a
+  test file ran. Every skill in this repo uses `unittest` today, so this is untested
+  against any other runner's output format (e.g. pytest's `"N passed"`) — a test file
+  using a different runner would currently show up as `errored` (no recognized "ran"
+  line), not silently miscounted, but it's still a real scope boundary, not a hypothetical
+  one, if a future skill's tests are ever written differently.
 
 ## Output discipline
 
