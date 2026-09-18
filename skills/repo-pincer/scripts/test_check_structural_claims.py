@@ -73,6 +73,28 @@ class ExtractTestCountClaims(unittest.TestCase):
     def test_empty_text_returns_empty_list(self):
         self.assertEqual(csc.extract_test_count_claims(""), [])
 
+    def test_stray_earlier_slash_token_in_prose_does_not_steal_the_association(self):
+        # Regression test: the old whole-line search picked up the FIRST
+        # "word/" token anywhere on the line, so a prose line mentioning an
+        # unrelated directory before the real skill name would silently
+        # misattribute the claim (here, to "scripts" instead of "broadcast").
+        # The line no longer starts with a directory token at all, so this
+        # must now be skipped entirely -- never guessed at, per this
+        # script's own "skip, don't guess" philosophy.
+        claims = csc.extract_test_count_claims(
+            "The scripts/ directory in broadcast/ has a 392-test suite"
+        )
+        self.assertEqual(claims, [])
+
+    def test_nested_tree_prefix_with_box_drawing_chars_still_matches(self):
+        # Real README lines look like "│   ├── broadcast/  # ..." -- box
+        # drawing characters and indentation before the real token must not
+        # block the (now-anchored) match.
+        claims = csc.extract_test_count_claims(
+            "│   ├── broadcast/              # pipeline, 392-test suite"
+        )
+        self.assertEqual(claims[0]["skill"], "broadcast")
+
 
 class CountActualTests(unittest.TestCase):
     def setUp(self):
@@ -111,21 +133,24 @@ class CountActualTests(unittest.TestCase):
             "test_one.py": two_test_case,
             "test_two.py": three_test_case,
         })
-        total, files = csc.count_actual_tests(skills_dir, "myskill")
+        total, files, errored = csc.count_actual_tests(skills_dir, "myskill")
         self.assertEqual(total, 5)
         self.assertEqual(len(files), 2)
+        self.assertEqual(errored, [])
 
     def test_no_test_files_returns_zero_and_empty_list(self):
         skill_dir = os.path.join(self.tmpdir.name, "emptyskill")
         os.makedirs(skill_dir)
-        total, files = csc.count_actual_tests(self.tmpdir.name, "emptyskill")
+        total, files, errored = csc.count_actual_tests(self.tmpdir.name, "emptyskill")
         self.assertEqual(total, 0)
         self.assertEqual(files, [])
+        self.assertEqual(errored, [])
 
     def test_nonexistent_skill_directory_returns_zero_and_empty_list(self):
-        total, files = csc.count_actual_tests(self.tmpdir.name, "doesnotexist")
+        total, files, errored = csc.count_actual_tests(self.tmpdir.name, "doesnotexist")
         self.assertEqual(total, 0)
         self.assertEqual(files, [])
+        self.assertEqual(errored, [])
 
     def test_never_recurses_on_its_own_test_file(self):
         # Regression test for a real bug caught during this script's own
@@ -136,9 +161,41 @@ class CountActualTests(unittest.TestCase):
         # real repo-pincer skill directory (which does contain this exact
         # test file) reports zero regardless, never hangs, never recurses.
         real_skills_dir = os.path.join(REPO_ROOT, "skills")
-        total, files = csc.count_actual_tests(real_skills_dir, "repo-pincer")
+        total, files, errored = csc.count_actual_tests(real_skills_dir, "repo-pincer")
         self.assertEqual(total, 0)
         self.assertEqual(files, [])
+        self.assertEqual(errored, [])
+
+    def test_crashed_test_file_is_reported_as_errored_not_zero_tests(self):
+        # Regression test for a real bug: a test file that crashes at
+        # import time (broken import, syntax error, uncaught exception)
+        # prints no "Ran N tests" line, and the previous version silently
+        # counted that as "0 tests", indistinguishable from a genuinely
+        # shrunk suite. It must now show up in errored_files instead.
+        skills_dir = self.make_skill("crashy", {
+            "test_x.py": "raise RuntimeError('import-time crash')\n",
+        })
+        total, files, errored = csc.count_actual_tests(skills_dir, "crashy")
+        self.assertEqual(total, 0)
+        self.assertEqual(len(files), 1)
+        self.assertEqual(len(errored), 1)
+        self.assertEqual(errored[0]["reason"], "crashed")
+        self.assertIn("RuntimeError", errored[0]["detail"])
+
+    def test_hanging_test_file_times_out_instead_of_hanging_forever(self):
+        # General guard against the whole class of bug the recursion
+        # incident turned out to be one instance of: any test file that
+        # blocks indefinitely (not just the one excluded-by-name recursion
+        # trigger) must be caught by a timeout, not left to hang the
+        # checker forever.
+        skills_dir = self.make_skill("hangs", {
+            "test_x.py": "import time\ntime.sleep(5)\n",
+        })
+        total, files, errored = csc.count_actual_tests(skills_dir, "hangs", timeout_seconds=0.2)
+        self.assertEqual(total, 0)
+        self.assertEqual(len(files), 1)
+        self.assertEqual(len(errored), 1)
+        self.assertEqual(errored[0]["reason"], "timed_out")
 
 
 class CheckClaims(unittest.TestCase):
@@ -185,6 +242,17 @@ class CheckClaims(unittest.TestCase):
         self.assertEqual(len(report["no_tests_found"]), 1)
         self.assertEqual(report["drift"], [])
 
+    def test_crashed_test_file_reported_as_errored_never_as_drift(self):
+        skill_dir = os.path.join(self.tmpdir.name, "crashy", "scripts")
+        os.makedirs(skill_dir)
+        with open(os.path.join(skill_dir, "test_x.py"), "w") as f:
+            f.write("raise RuntimeError('boom')\n")
+        claims = [{"skill": "crashy", "claimed_count": 5, "line": "..."}]
+        report = csc.check_claims(claims, self.tmpdir.name)
+        self.assertEqual(len(report["errored"]), 1)
+        self.assertEqual(report["drift"], [])
+        self.assertEqual(report["confirmed_count"], 0)
+
 
 class Cli(unittest.TestCase):
     def setUp(self):
@@ -217,6 +285,7 @@ class Cli(unittest.TestCase):
         proc = run_script("--claims-file", path, "--skills-dir", REPO_ROOT + "/skills", "--json")
         data = json.loads(proc.stdout)
         self.assertIn("drift", data)
+        self.assertIn("errored", data)
         self.assertIn("confirmed_count", data)
 
     def test_against_this_repos_real_current_readme(self):
@@ -233,6 +302,7 @@ class Cli(unittest.TestCase):
         data = json.loads(proc.stdout)
         self.assertEqual(data["drift"], [], f"README.md test-count claims have drifted: {data['drift']}")
         self.assertEqual(data["missing_skill"], [])
+        self.assertEqual(data["errored"], [], f"a real skill's tests crashed or hung: {data['errored']}")
 
 
 if __name__ == "__main__":

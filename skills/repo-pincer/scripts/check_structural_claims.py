@@ -21,18 +21,21 @@ Deliberately narrow -- see SKILL.md's "What's NOT built here" for what this does
 NOT attempt (path-existence claims, claims in a differently-formatted doc, any
 form of semantic/behavioral checking).
 
-Usage:
-    python check_structural_claims.py --claims-file ../../README.md --skills-dir ../../skills
-    python check_structural_claims.py --claims-file ../../README.md --skills-dir ../../skills --json
+Usage (from this script's own directory, skills/repo-pincer/scripts/):
+    python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills
+    python check_structural_claims.py --claims-file ../../../README.md --skills-dir ../../../skills --json
 
 Assumes this repo's own tree-block convention: a claim like "392-test suite"
 shares a line with the skill directory name it describes (e.g.
-"├── broadcast/  # ... 392-test suite"), and the directory name is the first
-"word/" token on that line -- true here because the tree entry itself always
-comes before any path mentioned in the trailing comment. A differently
-formatted README would need this re-tuned; that's an accepted, named limit,
-not a silent one -- every repo phrases these claims differently, so a checker
-tuned to one repo's convention was never going to be zero-effort to port anyway.
+"├── broadcast/  # ... 392-test suite"), and the directory name is the
+"word/" token at the START of that line, immediately after any tree
+box-drawing characters -- true here because every tree entry begins its own
+line. A differently formatted README would need this re-tuned; that's an
+accepted, named limit, not a silent one -- every repo phrases these claims
+differently, so a checker tuned to one repo's convention was never going to
+be zero-effort to port anyway. Only tests one narrow class of runner output
+("Ran N tests", stdlib unittest's own summary line) -- see SKILL.md's "What's
+NOT built here" for what a differently-instrumented test file would do here.
 """
 
 import argparse
@@ -45,11 +48,25 @@ import sys
 # Matches "392-test suite", "26-test regression suite", "31-test suite", etc.
 TEST_COUNT_RE = re.compile(r"(\d+)-test(?:\s+regression)?\s+suite", re.IGNORECASE)
 
-# The first "word/" token on a line -- assumed to be the skill directory name,
-# per this repo's tree-block convention (see module docstring).
-DIR_TOKEN_RE = re.compile(r"([A-Za-z0-9_-]+)/(?:\s|$)")
+# The directory-name token at the START of a line, per this repo's tree-block
+# convention (see module docstring) -- e.g. "│   ├── broadcast/  # ...". Only
+# whitespace and box-drawing characters may precede it, so a distractor
+# "word/" token appearing later in a line's trailing prose comment (e.g. "the
+# scripts/ directory in broadcast/ has a 392-test suite") can never be picked
+# up instead of the real one -- confirmed as a real, silent misattribution
+# risk with the old whole-line search before this anchor was added.
+DIR_TOKEN_RE = re.compile(r"^[\s│├└─]*([A-Za-z0-9_-]+)/(?:\s|$)")
 
 RAN_TESTS_RE = re.compile(r"Ran (\d+) tests?")
+
+# Wall-clock budget per test file. This is the general guard against the
+# whole class of bug the recursion incident (see count_actual_tests) turned
+# out to be one instance of: the excluded filename defuses that one specific
+# trigger, but nothing else stopped some *other* future test file (a stray
+# network call, an accidental input(), an unrelated infinite loop) from
+# hanging this "run first, fast, mechanical" checker just as badly. A timeout
+# turns any such hang into a reported finding instead of a wedged process.
+TEST_FILE_TIMEOUT_SECONDS = 30
 
 
 def extract_test_count_claims(markdown_text: str) -> list[dict]:
@@ -75,18 +92,36 @@ def extract_test_count_claims(markdown_text: str) -> list[dict]:
     return claims
 
 
-def count_actual_tests(skills_dir: str, skill: str) -> tuple[int, list[str]]:
+def _last_nonempty_line(text: str) -> str:
+    for line in reversed(text.splitlines()):
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def count_actual_tests(
+    skills_dir: str, skill: str, timeout_seconds: float = TEST_FILE_TIMEOUT_SECONDS
+) -> tuple[int, list[str], list[dict]]:
     """Sums "Ran N tests" across every test_*.py under skills_dir/skill/,
     summed rather than taken from a single file -- confirmed necessary in
     practice: broadcast's one claimed number represents the sum of 16
-    separate test files, not one. Returns (total, [file paths run]); a
-    skill directory with zero test files returns (0, []), distinct from a
-    numeric mismatch -- the caller reports this case separately since it
-    likely means the association found the wrong directory, or the tests
-    were deleted entirely, not just under-counted."""
+    separate test files, not one. Returns (total, [file paths run],
+    [errored-file details]); a skill directory with zero test files returns
+    (0, [], []), distinct from a numeric mismatch -- the caller reports this
+    case separately since it likely means the association found the wrong
+    directory, or the tests were deleted entirely, not just under-counted.
+
+    A test file that crashes (import error, uncaught exception, any exit
+    with no "Ran N tests" line) or hangs past TEST_FILE_TIMEOUT_SECONDS
+    contributes nothing to the total and is reported in errored-file
+    details, never silently folded into total as a plain 0 -- confirmed as
+    a real bug in the previous version: a crashed test file and a genuinely
+    shrunk test suite produced an identical "actual_count lower than
+    claimed" Drift finding, even though they mean completely different
+    things and call for completely different follow-up."""
     skill_dir = os.path.join(skills_dir, skill)
     if not os.path.isdir(skill_dir):
-        return 0, []
+        return 0, [], []
 
     test_files = []
     for dirpath, _dirnames, filenames in os.walk(skill_dir):
@@ -108,22 +143,52 @@ def count_actual_tests(skills_dir: str, skill: str) -> tuple[int, list[str]]:
     test_files.sort()
 
     total = 0
+    errored_files = []
     for path in test_files:
-        result = subprocess.run([sys.executable, path], capture_output=True, text=True)
-        match = RAN_TESTS_RE.search(result.stdout + result.stderr)
+        try:
+            result = subprocess.run(
+                [sys.executable, path],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            errored_files.append({
+                "path": path,
+                "reason": "timed_out",
+                "detail": f"exceeded {timeout_seconds}s",
+            })
+            continue
+
+        output = result.stdout + result.stderr
+        match = RAN_TESTS_RE.search(output)
         if match:
             total += int(match.group(1))
-    return total, test_files
+        else:
+            errored_files.append({
+                "path": path,
+                "reason": "crashed",
+                "detail": _last_nonempty_line(output) or f"exit code {result.returncode}, no output",
+            })
+
+    return total, test_files, errored_files
 
 
 def check_claims(claims: list[dict], skills_dir: str) -> dict:
     """Runs every claim against reality. Returns {drift: [...], no_tests_found: [...],
-    missing_skill: [...], confirmed_count: N} -- Confirmed claims are counted, not
-    listed individually, the same "note them only in aggregate" convention
-    repo-pincer's own SKILL.md already uses for its Pass 3 report."""
+    missing_skill: [...], errored: [...], confirmed_count: N} -- Confirmed claims
+    are counted, not listed individually, the same "note them only in aggregate"
+    convention repo-pincer's own SKILL.md already uses for its Pass 3 report.
+
+    A claim whose skill has any crashed or timed-out test file is reported under
+    `errored`, never under `drift` -- the actual count from a run with a broken
+    or hung test file is not trustworthy enough to call it a numeric mismatch
+    against reality, and collapsing the two looks identical to a user unless
+    they're kept apart."""
     drift = []
     no_tests_found = []
     missing_skill = []
+    errored = []
     confirmed_count = 0
 
     for claim in claims:
@@ -133,9 +198,13 @@ def check_claims(claims: list[dict], skills_dir: str) -> dict:
             missing_skill.append(claim)
             continue
 
-        actual_count, test_files = count_actual_tests(skills_dir, skill)
+        actual_count, test_files, errored_files = count_actual_tests(skills_dir, skill)
         if not test_files:
             no_tests_found.append(claim)
+            continue
+
+        if errored_files:
+            errored.append({**claim, "errored_files": errored_files})
             continue
 
         if actual_count == claim["claimed_count"]:
@@ -152,6 +221,7 @@ def check_claims(claims: list[dict], skills_dir: str) -> dict:
         "drift": drift,
         "no_tests_found": no_tests_found,
         "missing_skill": missing_skill,
+        "errored": errored,
         "confirmed_count": confirmed_count,
     }
 
@@ -182,7 +252,16 @@ def print_report(report: dict, total_claims: int, json_out: bool) -> None:
         for f in report["missing_skill"]:
             print(f"    {f['skill']}: {f['line']}")
 
-    if not report["drift"] and not report["no_tests_found"] and not report["missing_skill"]:
+    if report["errored"]:
+        print(f"  Errored (test file crashed or timed out -- count not trustworthy): "
+              f"{len(report['errored'])}")
+        for f in report["errored"]:
+            print(f"    {f['skill']}: claimed {f['claimed_count']}")
+            for ef in f["errored_files"]:
+                print(f"      {ef['path']}: {ef['reason']} ({ef['detail']})")
+
+    if (not report["drift"] and not report["no_tests_found"]
+            and not report["missing_skill"] and not report["errored"]):
         print("  No discrepancies found.")
 
 
