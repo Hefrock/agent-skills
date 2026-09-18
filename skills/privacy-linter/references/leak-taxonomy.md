@@ -61,6 +61,22 @@ etc.) suppresses the generic assignment pattern specifically — the prefixed-to
 patterns above never need it, since a real AWS/GitHub/etc. prefix on a placeholder
 string would be a strange thing for anyone to type by hand.
 
+**Also gated on:** a Shannon-entropy floor (`GENERIC_SECRET_MIN_ENTROPY`,
+`shannon_entropy()`), added to catch placeholders the denylist misses because they
+don't spell out their own fakeness — `"aaaaaaaaaaaaaaaa"`, `"abcabcabcabc"` — without
+the denylist's substring-matching limits. Deliberately calibrated conservative (only
+rejects the clearly-degenerate, low-diversity end) rather than tuned to a precise
+real-secret/not line, since entropy checks have a known failure mode of suppressing a
+real secret that happens to be low-entropy (a short, memorable, but genuinely live
+passphrase) — no calibration data exists yet to tune more aggressively than that.
+Deliberately *not* applied to the seven prefixed-token scanners above: their precise
+prefix/format matches already have near-zero false-positive rates on their own, so
+entropy would add false-negative risk there for no benefit. Also not charset-aware
+(no separate hex/base64 threshold) and not sequence-aware — `"12345678"` scores
+identically to a random permutation of the same 8 digits, since Shannon entropy
+measures character-frequency distribution, not order. Catching a sequential pattern
+like that needs a different technique; this check was never meant to.
+
 ## Built: Commit-history scanning (`--scan-history`)
 
 Direct PII and Secrets, both above, get a second surface: everything the staged-diff

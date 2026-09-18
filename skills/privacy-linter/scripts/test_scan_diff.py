@@ -13,6 +13,7 @@ Stdlib only (unittest). Run: python test_scan_diff.py
 
 import importlib.util
 import json
+import math
 import os
 import subprocess
 import sys
@@ -84,6 +85,26 @@ class PiiPatterns(unittest.TestCase):
         self.assertEqual(f[0].location, "test:3")
 
 
+class ShannonEntropy(unittest.TestCase):
+    def test_empty_string_is_zero(self):
+        self.assertEqual(scan_diff.shannon_entropy(""), 0.0)
+
+    def test_single_repeated_character_is_zero(self):
+        self.assertEqual(scan_diff.shannon_entropy("aaaaaaaa"), 0.0)
+
+    def test_two_symbol_alternation_is_one_bit(self):
+        # "abab": 2 equiprobable symbols -> exactly 1.0 bit/char.
+        self.assertAlmostEqual(scan_diff.shannon_entropy("abab"), 1.0, places=6)
+
+    def test_three_symbol_uniform_repeat_is_log2_3(self):
+        # "abcabcabcabcabc": 3 equiprobable symbols -> log2(3) bits/char.
+        self.assertAlmostEqual(scan_diff.shannon_entropy("abcabcabcabcabc"), math.log2(3), places=6)
+
+    def test_all_unique_characters_is_log2_length(self):
+        # 8 distinct characters, each appearing once -> log2(8) = 3.0 bits/char.
+        self.assertAlmostEqual(scan_diff.shannon_entropy("abcdefgh"), math.log2(8), places=6)
+
+
 class SecretPatterns(unittest.TestCase):
     def findings_for(self, text):
         return scan_diff.scan_text_for_secrets(text, location_prefix="test")
@@ -132,6 +153,19 @@ class SecretPatterns(unittest.TestCase):
     def test_generic_placeholder_value_not_flagged(self):
         f = self.findings_for('api_key = "your_api_key_here"')
         self.assertFalse(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_generic_low_entropy_repeated_value_not_flagged(self):
+        # "abcabcabcabcabc" contains no placeholder marker substring, so this
+        # isolates the entropy gate specifically: 3-symbol uniform repeat is
+        # log2(3) ~= 1.58 bits/char, below GENERIC_SECRET_MIN_ENTROPY (2.0).
+        f = self.findings_for('api_key = "abcabcabcabcabc"')
+        self.assertFalse(any("generic_secret_assignment" in x.finding for x in f))
+
+    def test_generic_realistic_random_value_still_flagged(self):
+        # A regression guard: the entropy gate must not over-suppress a
+        # realistic-looking high-diversity secret.
+        f = self.findings_for('api_key = "K9xQ2mZpL7vN4wRtY8Hs"')
+        self.assertTrue(any("generic_secret_assignment" in x.finding for x in f))
 
     def test_generic_short_value_not_flagged(self):
         f = self.findings_for('token = "short"')

@@ -5,9 +5,10 @@ scan_diff.py — deterministic pre-disclosure privacy scanner (Direct PII, Secre
 Scans staged git changes (or an arbitrary file/stdin) for three mechanically-detectable
 leak classes from the Pre-Disclosure Privacy Linter design: Direct PII (email, phone,
 SSN, Luhn-valid credit card, IPv4), Secrets (AWS/GitHub/Slack/Stripe/Google/Anthropic
-tokens, private key blocks, a conservative quoted-assignment catch-all), and Metadata
-(file types that commonly carry EXIF/document properties, plus a confirmed EXIF GPS
-check when Pillow is installed).
+tokens, private key blocks, a conservative quoted-assignment catch-all -- gated on both
+a placeholder-word denylist and a Shannon-entropy floor, see shannon_entropy()), and
+Metadata (file types that commonly carry EXIF/document properties, plus a confirmed
+EXIF GPS check when Pillow is installed).
 
 Inference cues and stylometric fingerprinting are NOT implemented here — see
 references/leak-taxonomy.md. Both need actual judgment (a model), which conflicts with
@@ -49,10 +50,12 @@ silent) — but required for --strip-metadata, which has no non-Pillow fallback.
 import argparse
 import fnmatch
 import json
+import math
 import os
 import subprocess
 import sys
 import uuid
+from collections import Counter
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 
@@ -153,6 +156,37 @@ def _looks_like_placeholder(value: str) -> bool:
     return any(marker in lowered for marker in _PLACEHOLDER_MARKERS)
 
 
+def shannon_entropy(value: str) -> float:
+    """Bits of entropy per character: -sum(p * log2(p)) over each character's
+    frequency in `value`. A real, stdlib-only signal for how random a string
+    looks -- "aaaaaaaa" scores 0.0, "abcabcabc" (3 symbols, repeated) scores
+    log2(3)=1.58, a 16-char run of mostly-unique characters scores well above
+    GENERIC_SECRET_MIN_ENTROPY. Not charset-aware (no separate hex/base64
+    threshold the way some scanners use) -- one flat measure, kept simple.
+    Known blind spot, not fixed here: entropy measures character-frequency
+    distribution only, not sequence -- "12345678" scores the same as a random
+    permutation of the same 8 digits, since both use each digit once. Catching
+    that needs a different technique; this check was never meant to."""
+    if not value:
+        return 0.0
+    length = len(value)
+    counts = Counter(value)
+    return -sum((n / length) * math.log2(n / length) for n in counts.values())
+
+
+# Below this, a generic_secret_assignment candidate is rejected as too low-entropy to be
+# a real secret. Deliberately calibrated conservative -- catches only the clearly-
+# degenerate end (repeated/near-repeated characters, short low-diversity runs like
+# "abcabcabc") rather than tuned to a precise real-secret/not line, since no real
+# calibration data exists yet. A real secret that happens to be low-entropy (a short,
+# memorable, but genuinely live passphrase) is a known false-negative risk of any entropy
+# check -- staying conservative trades away some placeholder-catching power to keep that
+# risk small. Not applied to the seven provider-specific scanners below: their precise
+# prefix/format matches already have near-zero false-positive rates, so entropy would add
+# risk (rejecting an oddly-formatted-but-genuine key) with no benefit.
+GENERIC_SECRET_MIN_ENTROPY = 2.0
+
+
 SECRET_SCANNERS = [
     ("aws_access_key", AWS_ACCESS_KEY_RE, "high", "AWS access key ID", lambda m: True),
     ("github_token", GITHUB_TOKEN_RE, "high", "GitHub token", lambda m: True),
@@ -162,7 +196,8 @@ SECRET_SCANNERS = [
     ("anthropic_api_key", ANTHROPIC_API_KEY_RE, "high", "Anthropic API key", lambda m: True),
     ("private_key_block", PRIVATE_KEY_BLOCK_RE, "high", "Private key block", lambda m: True),
     ("generic_secret_assignment", GENERIC_SECRET_ASSIGNMENT_RE, "medium", "Possible hardcoded credential",
-     lambda m: not _looks_like_placeholder(m.group(1))),
+     lambda m: not _looks_like_placeholder(m.group(1))
+     and shannon_entropy(m.group(1)) >= GENERIC_SECRET_MIN_ENTROPY),
 ]
 
 
