@@ -92,6 +92,35 @@ class LoadJsonl(unittest.TestCase):
         self.assertEqual(rows[0]["custom_field"], [1, 2, 3])
         self.assertEqual(rows[0]["nested"], {"x": 1})
 
+    def test_non_object_json_line_skipped_with_warning_not_crash(self):
+        # Regression test for a real, confirmed bug: a bare number, null,
+        # or bool is all valid JSON (so json.JSONDecodeError never fires)
+        # but isn't a dict, and `k not in obj` used to raise TypeError for
+        # a non-container obj — propagating straight out of the loop
+        # uncaught and losing every row already collected before the bad
+        # line too, not just the bad line itself. Confirmed for each of
+        # these shapes individually before the fix; here checking they
+        # all cleanly skip rather than crash, with rows before AND after
+        # the bad line surviving.
+        for bad_line in ("42", "null", "true", "false", "3.14"):
+            with self.subTest(bad_line=bad_line):
+                path = write_jsonl([{"id": "a"}, bad_line, {"id": "b"}])
+                self._paths.append(path)
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    rows = jsonl_io.load_jsonl(path)
+                self.assertEqual([r["id"] for r in rows], ["a", "b"])
+                self.assertIn("expected a JSON object", stderr.getvalue())
+
+    def test_json_array_line_skipped_with_warning(self):
+        path = write_jsonl([{"id": "a"}, "[1, 2, 3]", {"id": "b"}])
+        self._paths.append(path)
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rows = jsonl_io.load_jsonl(path)
+        self.assertEqual([r["id"] for r in rows], ["a", "b"])
+        self.assertIn("expected a JSON object, got list", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
