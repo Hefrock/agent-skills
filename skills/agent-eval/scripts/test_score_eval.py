@@ -312,6 +312,35 @@ class ComputeConfidence(unittest.TestCase):
         self.assertEqual(diff["point_b"], 1.0)
         self.assertTrue(diff["significant_at_0.05"])
 
+    def test_baseline_with_overlap_also_includes_paired_mean_score_diff(self):
+        results = [{"id": f"c{i}", "score": 0.0} for i in range(10)]
+        baseline = [{"id": f"c{i}", "score": 1.0} for i in range(10)]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
+        diff = confidence["paired_mean_score_diff"]
+        self.assertEqual(diff["point_a"], 0.0)
+        self.assertEqual(diff["point_b"], 1.0)
+        self.assertTrue(diff["significant_at_0.05"])
+
+    def test_mean_score_diff_catches_a_regression_pass_rate_diff_misses(self):
+        # Every case drops by 0.29 but stays above the 0.7 pass threshold --
+        # pass rate is unchanged (100% -> 100%), so the pass-rate paired
+        # diff has zero variance to detect anything, but the raw scores
+        # dropped by a large, consistent amount the mean-score diff should
+        # catch. This is the exact gap this function exists to close.
+        results = [{"id": f"c{i}", "score": 0.71} for i in range(15)]
+        baseline = [{"id": f"c{i}", "score": 1.0} for i in range(15)]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
+        pass_rate_diff = confidence["paired_pass_rate_diff"]
+        score_diff = confidence["paired_mean_score_diff"]
+        self.assertFalse(pass_rate_diff["significant_at_0.05"])  # unchanged pass rate: nothing to detect
+        self.assertTrue(score_diff["significant_at_0.05"])  # but the score drop is real and detected
+
+    def test_baseline_with_no_overlap_omits_paired_mean_score_diff(self):
+        results = [{"id": "a", "score": 1.0}]
+        baseline = [{"id": "different", "score": 1.0}]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
+        self.assertNotIn("paired_mean_score_diff", confidence)
+
     def test_custom_n_boot_and_seed_are_passed_through(self):
         results = [{"id": "a", "score": 1.0}, {"id": "b", "score": 0.0}]
         confidence = score_eval.compute_confidence(results, threshold=0.7, n_boot=250, boot_seed=7)
@@ -438,6 +467,35 @@ class CheckGates(unittest.TestCase):
 
     def test_none_significant_regression_does_not_trigger(self):
         self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, significant_regression=None), [])
+
+    def test_significant_score_regression_triggers(self):
+        sig_reg = {"point_a": 0.71, "point_b": 1.0, "diff": -0.29, "p_value": 0.0, "significant_at_0.05": True, "n": 15}
+        failures = score_eval.check_gates(self._summary(1.0), [], None, False, significant_score_regression=sig_reg)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("mean score", failures[0])
+
+    def test_not_significant_score_regression_does_not_trigger(self):
+        not_sig = {"point_a": 0.84, "point_b": 0.89, "diff": -0.05, "p_value": 0.25, "significant_at_0.05": False, "n": 20}
+        self.assertEqual(score_eval.check_gates(self._summary(0.8), [], None, False, significant_score_regression=not_sig), [])
+
+    def test_significant_score_improvement_does_not_trigger(self):
+        improved = {"point_a": 0.95, "point_b": 0.6, "diff": 0.35, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        self.assertEqual(score_eval.check_gates(self._summary(0.95), [], None, False, significant_score_regression=improved), [])
+
+    def test_none_significant_score_regression_does_not_trigger(self):
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, significant_score_regression=None), [])
+
+    def test_both_significant_pass_rate_and_score_regression_reported_separately(self):
+        # A case that trips both signals should surface both failure
+        # messages, not collapse into one -- each is independently
+        # actionable evidence.
+        pass_rate_reg = {"point_a": 0.5, "point_b": 0.9, "diff": -0.4, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        score_reg = {"point_a": 0.4, "point_b": 0.85, "diff": -0.45, "p_value": 0.0, "significant_at_0.05": True, "n": 20}
+        failures = score_eval.check_gates(
+            self._summary(0.5), [], None, False,
+            significant_regression=pass_rate_reg, significant_score_regression=score_reg,
+        )
+        self.assertEqual(len(failures), 2)
 
 
 class Cli(unittest.TestCase):
@@ -615,6 +673,26 @@ class Cli(unittest.TestCase):
         cur = self.make(rows)
         proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
         self.assertEqual(proc.returncode, 0)
+
+    def test_fail_on_significant_regression_catches_score_drop_pass_rate_test_misses(self):
+        # Every case drops from 1.0 to 0.71 -- still passes the 0.7
+        # threshold (--fail-on-regression sees zero flips, pass rate
+        # unchanged 100% -> 100%), but the magnitude drop is large and
+        # consistent. The mean-score paired test should catch this even
+        # though the pass-rate test alone has nothing to detect.
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(15)])
+        cur = self.make([{"id": f"c{i}", "score": 0.71} for i in range(15)])
+        plain = self.run_script(cur, "--baseline", base, "--fail-on-regression")
+        self.assertEqual(plain.returncode, 0)  # confirms the blind spot exists
+        sig = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
+        self.assertEqual(sig.returncode, 1)
+        self.assertIn("mean score", sig.stderr)
+
+    def test_ci_report_includes_mean_score_vs_baseline_line(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(10)])
+        cur = self.make([{"id": f"c{i}", "score": 0.5} for i in range(10)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("Mean score vs baseline:", proc.stdout)
 
     def test_json_out_includes_confidence_when_ci_passed(self):
         path = self.make([{"id": "a", "score": 1.0}, {"id": "b", "score": 0.0}])
