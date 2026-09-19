@@ -65,6 +65,18 @@ meaningfully more robust to that while keeping the false-positive rate
 just as controlled — see apply_multiple_comparisons_correction()'s
 docstring for the numbers.)
 
+Regression candidates and everything else (improvements, and the exact-
+zero-diff edge case) are corrected as two SEPARATE Benjamini-Hochberg
+families, not one pooled ranking — a second fix on top of the first,
+confirmed necessary the same way: an unrelated, genuinely significant
+*improvement* elsewhere in the same run could otherwise lower the
+effective bar for a borderline regression to pass (BH's threshold grows
+with rank, and low-p-value improvements occupy the earliest ranks ahead
+of it), which was never correcting for a shared decision, since only
+regression candidates can ever fire the gate. See
+apply_multiple_comparisons_correction()'s docstring for the confirmed
+numbers.
+
 The gate fires if any signal — run-wide pass rate, run-wide mean score, or
 any single category's pass rate or mean score — is significant after
 correction; all of these answer different questions and are meant to be
@@ -494,20 +506,41 @@ def apply_multiple_comparisons_correction(confidence, per_category_confidence, f
     confidence" section) no longer trips --fail-on-significant-regression
     on the accuracy category alone — its p=0.043 cleared the old
     uncorrected alpha=0.05 but doesn't survive being honestly weighed
-    against the other 9 tests examined in the same pass, under either
-    correction. That's the correction working as intended, not a
-    regression in capability: p=0.043 was never strong evidence once every
-    question asked in the same pass is properly accounted for, at only 8
-    matched cases.
+    against the other tests examined in the same pass. That's the
+    correction working as intended, not a regression in capability:
+    p=0.043 was never strong evidence once every question asked in the
+    same pass is properly accounted for, at only 8 matched cases.
+
+    Regression candidates (diff < 0) and everything else (diff >= 0 —
+    improvements, and the zero-diff edge case) are corrected as TWO
+    SEPARATE Benjamini-Hochberg families, not one pooled ranking —
+    confirmed necessary, not a style preference: pooling them let an
+    unrelated, genuinely significant *improvement* elsewhere in the same
+    run lower the effective bar for a borderline regression to pass,
+    since BH's rank-dependent threshold grows with rank, and low-p-value
+    improvements occupy the lowest ranks ahead of it. Verified directly on
+    a fixed, unchanged borderline regression (p=0.043): adding 2+ unrelated
+    *stable* categories never flipped it significant, but adding 2+
+    unrelated *strongly improving* categories did, at matched test counts,
+    with the identical regression data throughout. Only diff < 0 diffs can
+    ever fire --fail-on-significant-regression (see check_gates()), so
+    pooling improvements into that same correction family was never
+    correcting for a shared decision — it was letting one family's
+    evidence quietly move the other's goalposts. Improvements still get
+    their own BH-corrected significance (so "SIGNIFICANT IMPROVEMENT" in
+    the report stays meaningful), just never at the regression family's
+    expense.
 
     Mutates the diff dicts in place — compute_confidence() and
     compute_per_category_confidence() construct them fresh on every call,
     never share or cache one across calls, so there's nothing else that
-    could be surprised by the mutation. Returns {"n_tests", "method",
+    could be surprised by the mutation. Returns {"n_tests",
+    "n_regression_candidates", "n_non_regression_candidates", "method",
     "family_alpha"} for the caller to report alongside the per-diff
     verdicts — no single "corrected alpha" number the way Bonferroni had,
     since Benjamini-Hochberg's cutoff depends on the whole sorted p-value
-    distribution, not a fixed per-test threshold."""
+    distribution of whichever family a diff belongs to, not a fixed
+    per-test threshold."""
     diffs = []
     if confidence:
         for key in ("paired_pass_rate_diff", "paired_mean_score_diff"):
@@ -520,8 +553,17 @@ def apply_multiple_comparisons_correction(confidence, per_category_confidence, f
         diffs.append(entry["paired_pass_rate_diff"])
         diffs.append(entry["paired_mean_score_diff"])
 
-    benjamini_hochberg_significance(diffs, family_alpha)
-    return {"n_tests": len(diffs), "method": "benjamini_hochberg", "family_alpha": family_alpha}
+    regression_candidates = [d for d in diffs if d["diff"] < 0]
+    non_regression_candidates = [d for d in diffs if d["diff"] >= 0]
+    benjamini_hochberg_significance(regression_candidates, family_alpha)
+    benjamini_hochberg_significance(non_regression_candidates, family_alpha)
+    return {
+        "n_tests": len(diffs),
+        "n_regression_candidates": len(regression_candidates),
+        "n_non_regression_candidates": len(non_regression_candidates),
+        "method": "benjamini_hochberg",
+        "family_alpha": family_alpha,
+    }
 
 
 def find_metric_regression(summary, baseline_summary, metric, tolerance):
@@ -679,10 +721,12 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
             )
         if correction:
             print(
-                f"  Multiple-comparisons correction: {correction['n_tests']} significance test(s) examined together "
-                f"this pass -> Benjamini-Hochberg (FDR) at family alpha={correction['family_alpha']:.2f}, not a single "
-                f"fixed per-test threshold (see apply_multiple_comparisons_correction()'s docstring). Every verdict "
-                f"above and below already uses the corrected outcome."
+                f"  Multiple-comparisons correction: {correction['n_tests']} significance test(s) examined this pass "
+                f"({correction['n_regression_candidates']} regression candidate(s), "
+                f"{correction['n_non_regression_candidates']} other) -> Benjamini-Hochberg (FDR) at family "
+                f"alpha={correction['family_alpha']:.2f}, corrected as two separate families so an unrelated "
+                f"improvement can never move a regression's bar (see apply_multiple_comparisons_correction()'s "
+                f"docstring). Every verdict above and below already uses the corrected outcome."
             )
 
     if len(summary["by_category"]) > 1:

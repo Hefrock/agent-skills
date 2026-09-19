@@ -594,6 +594,94 @@ class ApplyMultipleComparisonsCorrection(unittest.TestCase):
         score_eval.apply_multiple_comparisons_correction(confidence, per_category)
         self.assertTrue(per_category["accuracy"]["paired_pass_rate_diff"]["significant_after_correction"])  # BH: still detected
 
+    def test_reports_regression_and_non_regression_candidate_counts(self):
+        confidence = {
+            "paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1},
+            "paired_mean_score_diff": {"p_value": 0.01, "diff": 0.2},  # improvement
+        }
+        correction = score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertEqual(correction["n_regression_candidates"], 1)
+        self.assertEqual(correction["n_non_regression_candidates"], 1)
+        self.assertEqual(correction["n_tests"], 2)
+
+    def test_zero_diff_counted_as_non_regression(self):
+        confidence = {"paired_pass_rate_diff": {"p_value": 0.5, "diff": 0.0}}
+        correction = score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertEqual(correction["n_regression_candidates"], 0)
+        self.assertEqual(correction["n_non_regression_candidates"], 1)
+
+    def test_unrelated_improvements_never_affect_a_fixed_regressions_significance(self):
+        # The finding that motivated the direction split: pooling
+        # regression and improvement p-values into one BH ranking let an
+        # unrelated, strongly significant improvement elsewhere in the
+        # same run lower the effective bar for a borderline regression to
+        # pass, since BH's rank-dependent threshold grows with rank and
+        # low-p-value improvements occupy the earliest ranks ahead of it.
+        # Direct, confound-free check (no realistic eval-set pooling to
+        # muddy it): a fixed borderline regression's significance must not
+        # change as more unrelated improvement diffs are added.
+        def make_confidence():
+            return {
+                "paired_pass_rate_diff": {"p_value": 0.043, "diff": -0.1},
+                "paired_mean_score_diff": {"p_value": 0.043, "diff": -0.1},
+            }
+
+        results = []
+        for n_improvements in (0, 1, 2, 4, 8):
+            confidence = make_confidence()
+            per_category = {
+                f"imp{i}": {
+                    "n": 10,
+                    "paired_pass_rate_diff": {"p_value": 0.001, "diff": 0.3},
+                    "paired_mean_score_diff": {"p_value": 0.001, "diff": 0.3},
+                }
+                for i in range(n_improvements)
+            }
+            score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+            results.append(confidence["paired_pass_rate_diff"]["significant_after_correction"])
+
+        self.assertEqual(len(set(results)), 1)  # identical verdict regardless of n_improvements
+
+    def test_unrelated_stable_non_regressions_never_affect_a_fixed_regressions_significance(self):
+        # Same property, checked for diff=0 ("stable," not an improvement)
+        # unrelated tests instead of diff>0 ones -- both belong in the
+        # non-regression family and must be equally inert to the
+        # regression family's outcome.
+        def make_confidence():
+            return {
+                "paired_pass_rate_diff": {"p_value": 0.043, "diff": -0.1},
+                "paired_mean_score_diff": {"p_value": 0.043, "diff": -0.1},
+            }
+
+        results = []
+        for n_stable in (0, 1, 2, 4, 8):
+            confidence = make_confidence()
+            per_category = {
+                f"stable{i}": {
+                    "n": 10,
+                    "paired_pass_rate_diff": {"p_value": 1.0, "diff": 0.0},
+                    "paired_mean_score_diff": {"p_value": 1.0, "diff": 0.0},
+                }
+                for i in range(n_stable)
+            }
+            score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+            results.append(confidence["paired_pass_rate_diff"]["significant_after_correction"])
+
+        self.assertEqual(len(set(results)), 1)  # identical verdict regardless of n_stable
+
+    def test_improvements_still_get_their_own_bh_corrected_significance(self):
+        # The split doesn't mean improvements go uncorrected -- they get
+        # their own BH family, so "SIGNIFICANT IMPROVEMENT" in the report
+        # stays a real, corrected claim, just decoupled from the
+        # regression family's outcome.
+        confidence = {
+            "paired_pass_rate_diff": {"p_value": 0.4, "diff": 0.1},   # weak improvement
+            "paired_mean_score_diff": {"p_value": 0.001, "diff": 0.3},  # strong improvement
+        }
+        score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertTrue(confidence["paired_mean_score_diff"]["significant_after_correction"])
+        self.assertFalse(confidence["paired_pass_rate_diff"]["significant_after_correction"])
+
 
 class FindMetricRegression(unittest.TestCase):
     def test_increase_beyond_tolerance_flagged(self):
@@ -1137,13 +1225,21 @@ class Cli(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
 
     def test_fail_on_significant_regression_catches_decisive_category_regression(self):
-        # A category regression strong enough to survive correction while
-        # the run-wide aggregate stays diluted below it -- the exact same
-        # data as examples/README.md's second worked example. 4 of 5
-        # `accuracy` cases drop decisively (0.9 -> 0.3); three stable
-        # categories of 3 cases each (the min_n=3 floor exactly) dilute the
-        # run-wide aggregate to p=0.021 (not significant after correction),
-        # while the accuracy category alone is p=0.0.
+        # A decisive category regression -- the exact same data as
+        # examples/README.md's second worked example. 4 of 5 `accuracy`
+        # cases drop decisively (0.9 -> 0.3); three stable categories of 3
+        # cases each (the min_n=3 floor exactly) are the dilution.
+        #
+        # Since the direction split (regression candidates and
+        # non-regression candidates corrected as separate BH families —
+        # see apply_multiple_comparisons_correction()'s docstring), the
+        # run-wide aggregate is no longer diluted by the three unrelated
+        # p=1.0 stable-category tests sharing its family: with those
+        # excluded, the run-wide regression-candidate family shrinks to
+        # just itself + accuracy's two diffs, and p=0.021 clears that
+        # smaller family's threshold too. Both signals now correctly fire
+        # -- a strictly better outcome than the pre-split version of this
+        # same example, not a regression in what this test demonstrates.
         rows_current, rows_baseline = [], []
         for i, (c, b) in enumerate(zip([0.3, 0.3, 0.3, 0.3, 0.9], [0.9] * 5)):
             rows_current.append({"id": f"acc{i}", "score": c, "category": "accuracy"})
@@ -1156,8 +1252,8 @@ class Cli(unittest.TestCase):
         base = self.make(rows_baseline)
 
         ci_proc = self.run_script(cur, "--baseline", base, "--ci")
-        self.assertIn("not significant (after correction)", ci_proc.stdout)  # run-wide: diluted
-        self.assertIn("SIGNIFICANT REGRESSION", ci_proc.stdout)  # per-category: not diluted
+        self.assertIn("SIGNIFICANT (after correction)", ci_proc.stdout)  # run-wide: no longer diluted
+        self.assertIn("SIGNIFICANT REGRESSION", ci_proc.stdout)  # per-category: independently significant
 
         proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
         self.assertEqual(proc.returncode, 1)
