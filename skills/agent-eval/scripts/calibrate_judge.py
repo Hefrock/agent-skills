@@ -74,6 +74,27 @@ def summarize_calibration(deltas: list[dict], threshold: float) -> dict:
     return {"cases_checked": len(deltas), "mean_delta": mean_delta, "over_threshold": mean_delta > threshold}
 
 
+def sanitize_table_cell(text: str) -> str:
+    """Markdown table cells can't contain a literal unescaped "|" (parses
+    as an extra column boundary) or a raw newline (a table row is one
+    line by definition, so a newline mid-cell isn't valid markdown at
+    all) — confirmed directly, not theorized: an --action string
+    containing either broke update_calibration_log()'s table, and the
+    newline case did worse than render oddly — it broke that function's
+    own row-recognition regex (`^\\|.*\\|$` per line) for every
+    calibration run after it, undermining the "real, append-only history"
+    this log exists to be. --action is documented as free text ("Override
+    the auto-generated 'Action taken' log text"), so an ordinary note
+    like "delta driven by tone scoring | revise rubric §3" was never a
+    contrived input.
+
+    Escapes "|" as "\\|" (markdown's own escape for a literal pipe inside
+    a cell) and collapses any newline to a single space — a calibration
+    log entry is a short note, not multi-paragraph prose, so losing a
+    paragraph break there costs nothing real."""
+    return text.replace("|", "\\|").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
 def update_calibration_log(log_path: str, new_row: str) -> None:
     """Replaces the "not yet calibrated" placeholder row on first use, or
     appends after the existing table rows on every calibration after
@@ -139,7 +160,7 @@ def main() -> int:
         print(f"\nOK: {default_action}")
 
     if args.update_log:
-        action = args.action or default_action
+        action = sanitize_table_cell(args.action or default_action)
         new_row = f"| {date.today().isoformat()} | {summary['cases_checked']} | {summary['mean_delta']:.3f} | {action} |"
         try:
             update_calibration_log(args.update_log, new_row)
