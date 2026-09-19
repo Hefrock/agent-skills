@@ -218,7 +218,7 @@ python scripts/score_eval.py examples/results_regressed.jsonl \
   Mean score: [0.740, 0.920]
   Pass rate vs baseline: 90.0% -> 80.0% (diff -10.0pp, 95% CI [-30.0pp, +10.0pp], p=0.421, not significant (after correction), n=20 matched case(s))
   Mean score vs baseline: 0.890 -> 0.838 (diff -0.052, 95% CI [-0.150, +0.030], p=0.255, not significant (after correction), n=20 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
-  Multiple-comparisons correction: 10 significance test(s) examined together this pass -> Benjamini-Hochberg (FDR) at family alpha=0.05, not a single fixed per-test threshold. Every verdict above and below already uses the corrected outcome.
+  Multiple-comparisons correction: 10 significance test(s) examined this pass (4 regression candidate(s), 6 other) -> Benjamini-Hochberg (FDR) at family alpha=0.05, corrected as two separate families so an unrelated improvement can never move a regression's bar. Every verdict above and below already uses the corrected outcome.
 ```
 
 Both aggregate signals come back **not significant** — genuinely, not a bug. This is worth sitting with rather than explaining away: the same before/after that `--fail-on-regression` correctly fails is, at the level of the *overall* pass rate AND the *overall* mean score, not statistically distinguishable from noise at n=20. Both things are true at once:
@@ -249,8 +249,16 @@ p=0.043 was never strong evidence once "we're asking this same question ten time
 ```bash
 python scripts/score_eval.py examples/results_regressed.jsonl \
     --baseline examples/results_baseline.jsonl --fail-on-significant-regression
-# exits 0 -- p=0.043 isn't flagged significant against the other 9 tests examined in the same pass
+# exits 0 -- p=0.043 isn't flagged significant against the other tests examined in the same pass
 ```
+
+### Why regressions and improvements are corrected as separate families
+
+The "10 tests examined this pass" line above says `(4 regression candidate(s), 6 other)` — not one pooled count. That split exists because of a second problem, found after Benjamini-Hochberg replaced Bonferroni: pooling every diff (regressions *and* improvements) into one shared ranking let an unrelated, genuinely significant *improvement* elsewhere in the same run change whether a borderline regression got flagged — even though only regression candidates (`diff < 0`) can ever trip `--fail-on-significant-regression`.
+
+Confirmed directly, not theorized: holding one borderline regression's data fixed (p=0.043) and only adding unrelated, strongly-improving diffs (mean-score jumping from 0.85→0.6 baseline, say), the regression flipped from not-significant to significant once 2+ such improvements were added — the identical regression evidence, made to look stronger purely because good news elsewhere occupied the earliest ranks in a shared Benjamini-Hochberg ordering (whose threshold grows with rank, so pushing a case to a later rank via lower-p-value improvements ahead of it works in that case's favor). Unrelated *stable* (non-improving, non-regressing) diffs never had this effect — only the direction of what's sharing the family mattered, not just the count, which is a distinct mechanism from the aggregate-dilution and category-count problems the earlier fixes already covered.
+
+Regression candidates and everything else are now corrected as two separate Benjamini-Hochberg families. Improvements still get their own BH-corrected significance — `SIGNIFICANT IMPROVEMENT` in a report is still a real, corrected claim — just never at the regression family's expense.
 
 ### A regression strong enough to survive correction
 
@@ -263,9 +271,9 @@ python scripts/score_eval.py current.jsonl --baseline baseline.jsonl --ci
 95% CI (bootstrap, 2000 resamples):
   Pass rate:  [42.9%, 92.9%]
   Mean score: [0.557, 0.857]
-  Pass rate vs baseline: 100.0% -> 71.4% (diff -28.6pp, 95% CI [-57.1pp, -7.1pp], p=0.021, not significant (after correction), n=14 matched case(s))
-  Mean score vs baseline: 0.900 -> 0.729 (diff -0.171, 95% CI [-0.343, -0.043], p=0.021, not significant (after correction), n=14 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
-  Multiple-comparisons correction: 10 significance test(s) examined together this pass -> Benjamini-Hochberg (FDR) at family alpha=0.05, not a single fixed per-test threshold. Every verdict above and below already uses the corrected outcome.
+  Pass rate vs baseline: 100.0% -> 71.4% (diff -28.6pp, 95% CI [-57.1pp, -7.1pp], p=0.021, SIGNIFICANT (after correction), n=14 matched case(s))
+  Mean score vs baseline: 0.900 -> 0.729 (diff -0.171, 95% CI [-0.343, -0.043], p=0.021, SIGNIFICANT (after correction), n=14 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
+  Multiple-comparisons correction: 10 significance test(s) examined this pass (4 regression candidate(s), 6 other) -> Benjamini-Hochberg (FDR) at family alpha=0.05, corrected as two separate families so an unrelated improvement can never move a regression's bar. Every verdict above and below already uses the corrected outcome.
 
 By category vs baseline (paired bootstrap significance, Benjamini-Hochberg-corrected):
   accuracy (n=5): pass rate p=0.0 (SIGNIFICANT REGRESSION), score p=0.0 (SIGNIFICANT REGRESSION)
@@ -274,16 +282,18 @@ By category vs baseline (paired bootstrap significance, Benjamini-Hochberg-corre
   tool_use (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
 ```
 
-The run-wide aggregate is still diluted below significance (p=0.021) — but `accuracy`'s p=0.0 clears it easily:
+Both signals fire now — the run-wide aggregate *and* the category. That's a genuine improvement from the direction split, not incidental: with the three stable categories' `p=1.0` diffs moved out of the regression family (they're not regression candidates, `diff = 0`), the run-wide diffs share a much smaller, more homogeneous family with just the `accuracy` category's own two diffs — and p=0.021 clears that smaller family's threshold too, where it previously didn't when pooled with six unrelated null results:
 
 ```
 GATE FAILED:
+  - --fail-on-significant-regression (pass rate): 1.000 -> 0.714 is statistically significant (p=0.021, n=14), not just a threshold-crossing on noise
+  - --fail-on-significant-regression (mean score): 0.900 -> 0.729 is statistically significant (p=0.021, n=14) — caught here even though the pass-rate test alone might not
   - --fail-on-significant-regression (category 'accuracy', pass rate): 1.000 -> 0.200 is statistically significant (p=0.0, n=5) — diluted away in the run-wide aggregate
   - --fail-on-significant-regression (category 'accuracy', mean score): 0.900 -> 0.420 is statistically significant (p=0.0, n=5) — diluted away in the run-wide aggregate
 ```
 
-This is the actual, corrected version of the story the previous edition of this section told with the real (but borderline) example above: an aggregate-diluted regression, caught per-category, surviving a proper multiple-comparisons correction because the underlying evidence was genuinely strong enough — not because the bar was left uncorrected.
+The real (but borderline) flagship example above still demonstrates the case where run-wide genuinely stays diluted and only per-category catches it — that property isn't gone, it just depends on how many other categories carry real (non-zero) evidence of their own, not just on the correction method. Both examples together are the honest picture: multiple-comparisons correction doesn't erase real evidence, but exactly how much dilution survives depends on the shape of what's sharing the family with it.
 
-The practical takeaway: **use all three checks together, not one instead of the other.** `--fail-on-regression` catches named, specific per-case failures immediately, cheaply, and with zero false negatives (a threshold crossing always fires). `--fail-on-significant-regression`'s run-wide half asks "is the topline number moving for a real reason" — and can come back clean even when a real regression is hiding inside one category. Its per-category half is what actually catches that case, *when the evidence is strong enough to survive being asked about honestly, correction included*. None of the three subsumes the others.
+The practical takeaway: **use all three checks together, not one instead of the other.** `--fail-on-regression` catches named, specific per-case failures immediately, cheaply, and with zero false negatives (a threshold crossing always fires). `--fail-on-significant-regression`'s run-wide half asks "is the topline number moving for a real reason" — and can come back clean even when a real regression is hiding inside one category, depending on how the rest of the run's evidence is shaped. Its per-category half is what independently and reliably catches that case, *when the evidence is strong enough to survive being asked about honestly, correction included*. None of the three subsumes the others.
 
 A case where the mean-score signal specifically *does* catch something the pass-rate signal misses entirely, even at the run-wide level: 15 cases all drop from 1.0 to 0.71 — still comfortably above the 0.7 threshold, so pass rate holds at 100% -> 100% and `--fail-on-regression` sees zero flips — but the score-magnitude drop (0.29 on every single case) is large, consistent, and exactly what the raw-score paired test exists to catch (`p≈0`, significant even after correction with only 2 tests in play). This is the asymmetric case: a real quality regression that never crosses the pass/fail line is invisible to `--fail-on-regression` *and* to the pass-rate half of `--fail-on-significant-regression`, but not to the mean-score half.
