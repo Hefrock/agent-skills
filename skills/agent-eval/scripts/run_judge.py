@@ -307,19 +307,31 @@ def report_and_filter_invalid_cases(cases: list[dict], template: str, skip_inval
     return filtered
 
 
+_FENCE_OPEN_RE = re.compile(r"^```[a-zA-Z0-9_-]*[ \t]*\n?")
+_FENCE_CLOSE_RE = re.compile(r"\n?```[ \t]*$")
+
+
 def _extract_json(text: str) -> dict:
     """Judges are instructed to respond with JSON only, but real models
     sometimes wrap it in a ```json ... ``` fence anyway — strip one if
     present before parsing, rather than failing a case over formatting
-    the prompt already told the model not to use."""
+    the prompt already told the model not to use.
+
+    Anchored regex substitutions rather than splitting on "\\n" and
+    dropping the first/last line — a real, confirmed bug that replaces:
+    a fully single-line fenced response (e.g. a compact, non-pretty-
+    printed '```json {"overall_score": 1.0}```', plausible from a model
+    that doesn't pretty-print) has only one line, so dropping "the first
+    line" emptied the list entirely, the subsequent guard on the now-
+    empty list silently skipped stripping the closing fence too, and the
+    result was "" — json.loads("") raises, and a real, usable judge score
+    got discarded as unparseable for a purely cosmetic reason. Confirmed
+    this handles the multi-line cases (with and without a language tag)
+    identically to before, plus the single-line case that used to break."""
     stripped = text.strip()
     if stripped.startswith("```"):
-        lines = stripped.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        stripped = "\n".join(lines)
+        stripped = _FENCE_OPEN_RE.sub("", stripped, count=1)
+        stripped = _FENCE_CLOSE_RE.sub("", stripped, count=1)
     return json.loads(stripped)
 
 

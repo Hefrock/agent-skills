@@ -195,6 +195,22 @@ class ExtractJson(unittest.TestCase):
         text = '```\n{"overall_score": 0.5}\n```'
         self.assertEqual(run_judge_mod._extract_json(text), {"overall_score": 0.5})
 
+    def test_single_line_fenced_json_with_language_tag_strips_fence(self):
+        # Regression test for a real, confirmed bug: the old fence-
+        # stripping split on "\n" and dropped the first/last line, which
+        # assumed the fence markers each sat on their own line. A fully
+        # single-line fenced response (plausible from a model that
+        # doesn't pretty-print) has only one line, so dropping "the first
+        # line" emptied the list entirely -- the closing fence never got
+        # stripped either, and json.loads("") raised, discarding a real,
+        # usable judge score for a purely cosmetic reason.
+        text = '```json {"overall_score": 1.0}```'
+        self.assertEqual(run_judge_mod._extract_json(text), {"overall_score": 1.0})
+
+    def test_single_line_fenced_json_without_language_tag_strips_fence(self):
+        text = '```{"overall_score": 0.9}```'
+        self.assertEqual(run_judge_mod._extract_json(text), {"overall_score": 0.9})
+
     def test_invalid_json_raises(self):
         with self.assertRaises(json.JSONDecodeError):
             run_judge_mod._extract_json("not json at all")
