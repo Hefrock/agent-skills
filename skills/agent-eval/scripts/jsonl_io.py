@@ -30,10 +30,24 @@ import sys
 def load_jsonl(path: str, required_keys: tuple[str, ...] = ("id",)) -> list[dict]:
     """Reads path as JSONL, one JSON object per line. A blank line is
     silently skipped (not a warning — trailing/blank lines are normal in
-    hand-edited files). A line that isn't valid JSON, or is valid JSON
-    missing one or more of required_keys, is skipped with a warning to
-    stderr and never included in the result — never raises, so one bad
-    line in an otherwise-good file doesn't lose every row after it."""
+    hand-edited files). A line that isn't valid JSON, is valid JSON but
+    not an object (e.g. a bare number, null, true/false, or an array —
+    all completely ordinary hand-edit slips, like a leftover 0 from a
+    find-replace), or is a valid object missing one or more of
+    required_keys, is skipped with a warning to stderr and never included
+    in the result — never raises, so one bad line in an otherwise-good
+    file doesn't lose every row after it.
+
+    The not-a-dict check is a real, confirmed fix, not defensive
+    boilerplate: `k not in obj` below raises TypeError for a non-
+    container obj (a JSON number, null, or bool all parse successfully
+    but aren't iterable-by-membership the way this check assumes), which
+    used to propagate straight out of this loop uncaught — losing every
+    row already collected before the bad line too, not just the bad line
+    itself, directly contradicting the "never raises" guarantee this
+    shared primitive exists to provide identically across all three of
+    its callers (score_eval.load_results(), run_judge.load_cases(),
+    calibrate_judge.load_scores_by_id())."""
     rows = []
     with open(path, encoding="utf-8") as f:
         for lineno, line in enumerate(f, 1):
@@ -44,6 +58,9 @@ def load_jsonl(path: str, required_keys: tuple[str, ...] = ("id",)) -> list[dict
                 obj = json.loads(line)
             except json.JSONDecodeError as e:
                 print(f"Warning: skipping malformed line {lineno} in {path}: {e}", file=sys.stderr)
+                continue
+            if not isinstance(obj, dict):
+                print(f"Warning: skipping line {lineno} in {path} — expected a JSON object, got {type(obj).__name__}", file=sys.stderr)
                 continue
             missing = [k for k in required_keys if k not in obj]
             if missing:
