@@ -123,6 +123,20 @@ class SummarizeCalibration(unittest.TestCase):
         self.assertFalse(s["over_threshold"])
 
 
+class SanitizeTableCell(unittest.TestCase):
+    def test_plain_text_unchanged(self):
+        self.assertEqual(cal.sanitize_table_cell("none needed"), "none needed")
+
+    def test_pipe_escaped(self):
+        self.assertEqual(cal.sanitize_table_cell("revised prompt | tightened rubric"), "revised prompt \\| tightened rubric")
+
+    def test_newline_collapsed_to_space(self):
+        self.assertEqual(cal.sanitize_table_cell("line one\nline two"), "line one line two")
+
+    def test_carriage_return_and_crlf_also_collapsed(self):
+        self.assertEqual(cal.sanitize_table_cell("a\r\nb\rc"), "a b c")
+
+
 class UpdateCalibrationLog(unittest.TestCase):
     def setUp(self):
         fd, self.path = tempfile.mkstemp(suffix=".md")
@@ -214,6 +228,37 @@ class Cli(unittest.TestCase):
             content = f.read()
         self.assertNotIn("not yet calibrated", content)
         self.assertIn("1 |", content)
+
+    def test_action_with_pipe_and_newline_does_not_corrupt_the_table(self):
+        # Regression test for a real, confirmed bug: --action is
+        # documented as free text, and an ordinary note containing a "|"
+        # or a newline (an entirely plausible thing to type, e.g. "delta
+        # driven by tone scoring | revise rubric") splits into phantom
+        # extra table columns and, worse, breaks update_calibration_log()'s
+        # own row-recognition regex for every calibration run after it.
+        judge = self.make([{"id": "a", "score": 0.8}])
+        human = self.make([{"id": "a", "score": 0.8}])
+        fd, log_path = tempfile.mkstemp(suffix=".md")
+        with os.fdopen(fd, "w") as f:
+            f.write(REAL_LOG_TEMPLATE)
+        self._paths.append(log_path)
+
+        proc = self.run_script(
+            judge, human, "--update-log", log_path,
+            "--action", "revised prompt | added stricter rubric\nrow injected via newline | x | y",
+        )
+        self.assertEqual(proc.returncode, 0)
+        with open(log_path) as f:
+            lines = f.read().splitlines()
+        header_idx = lines.index(cal.LOG_HEADER)
+        data_row = lines[header_idx + 2]
+        # Exactly one well-formed row: escaped pipes, no raw newline, and
+        # the table's own structure (header/separator, then one row per
+        # calibration) survives intact -- not split into extra lines.
+        self.assertTrue(data_row.startswith("|") and data_row.endswith("|"))
+        self.assertIn("\\|", data_row)
+        self.assertIn("Known biases to guard against", "\n".join(lines))
+        self.assertEqual(lines[header_idx + 3], "")  # blank line after the table, not more "rows"
 
 
 if __name__ == "__main__":
