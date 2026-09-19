@@ -311,6 +311,15 @@ def compute_confidence(results, threshold, baseline_results=None, n_boot=bootstr
     return confidence
 
 
+# Below this n, a bootstrap CI's width is not a reliable signal of precision
+# — a narrow interval can appear simply because resampling a tiny, low-variance
+# sample can't produce much spread, not because the true value is well pinned
+# down. Verified empirically: mean CI width over 20 trials at p=0.7 is ~0.55
+# at n=3, still ~0.5 at n=8-10, and only settles below ~0.3 past n=30-50 — the
+# 20-case threshold below matches the pre-existing plain-pass-rate warning in
+# print_report() rather than inventing a second, unjustified cutoff.
+CI_LOW_RELIABILITY_N = 20
+
 MIN_CATEGORY_N_FOR_SIGNIFICANCE = 3
 
 
@@ -692,7 +701,7 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
     if summary.get("mean_latency_ms") is not None:
         print(f"Mean latency: {summary['mean_latency_ms']:.0f}ms")
 
-    if n < 20:
+    if n < CI_LOW_RELIABILITY_N:
         print(f"⚠ Small sample (n={n}) — treat the pass rate as directional, not precise.")
 
     if confidence is not None:
@@ -701,6 +710,12 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
         print(f"\n95% CI (bootstrap, {pr_ci['n_boot']} resamples):")
         print(f"  Pass rate:  [{pr_ci['ci_lo'] * 100:.1f}%, {pr_ci['ci_hi'] * 100:.1f}%]")
         print(f"  Mean score: [{ms_ci['ci_lo']:.3f}, {ms_ci['ci_hi']:.3f}]")
+        if pr_ci["n"] < CI_LOW_RELIABILITY_N:
+            print(
+                f"  ⚠ n={pr_ci['n']} — below n={CI_LOW_RELIABILITY_N}, bootstrap CI width is not a reliable "
+                f"measure of precision; a narrow interval here can be an artifact of a small, low-variance "
+                f"sample rather than a well-pinned-down estimate."
+            )
         verdict_suffix = " (after correction)" if correction else ""
         diff = confidence.get("paired_pass_rate_diff")
         if diff is not None:
@@ -710,6 +725,8 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
                 f"(diff {diff['diff'] * 100:+.1f}pp, 95% CI [{diff['ci_lo'] * 100:+.1f}pp, {diff['ci_hi'] * 100:+.1f}pp], "
                 f"p={diff['p_value']}, {verdict}{verdict_suffix}, n={diff['n']} matched case(s))"
             )
+            if diff["n"] < CI_LOW_RELIABILITY_N:
+                print(f"  ⚠ n={diff['n']} matched case(s) — below n={CI_LOW_RELIABILITY_N}, this CI's width is not reliable either.")
         score_diff = confidence.get("paired_mean_score_diff")
         if score_diff is not None:
             verdict = "SIGNIFICANT" if score_diff["significant_after_correction"] else "not significant"
@@ -719,6 +736,8 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
                 f"p={score_diff['p_value']}, {verdict}{verdict_suffix}, n={score_diff['n']} matched case(s)) "
                 f"— unbinarized, catches magnitude the pass-rate test above can miss"
             )
+            if score_diff["n"] < CI_LOW_RELIABILITY_N:
+                print(f"  ⚠ n={score_diff['n']} matched case(s) — below n={CI_LOW_RELIABILITY_N}, this CI's width is not reliable either.")
         if correction:
             print(
                 f"  Multiple-comparisons correction: {correction['n_tests']} significance test(s) examined this pass "
@@ -743,6 +762,15 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
         header = "\nBy category vs baseline (paired bootstrap significance"
         header += ", Benjamini-Hochberg-corrected)" if correction else ")"
         print(header + ":")
+        any_low_n = any(
+            "skipped_reason" not in entry and entry["n"] < CI_LOW_RELIABILITY_N
+            for entry in per_category_confidence.values()
+        )
+        if any_low_n:
+            print(
+                f"  (⚠ marks a category below n={CI_LOW_RELIABILITY_N} — its CI width, not just its "
+                f"significance verdict, is unreliable there; see the run-wide CI caveat above)"
+            )
         for cat, entry in per_category_confidence.items():
             if "skipped_reason" in entry:
                 print(f"  {cat}: skipped — {entry['skipped_reason']}")
@@ -760,7 +788,8 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
                     # spelled out here explicitly.
                     verdict = "SIGNIFICANT REGRESSION" if diff["diff"] < 0 else "SIGNIFICANT IMPROVEMENT"
                 lines.append(f"{metric_label} p={diff['p_value']} ({verdict})")
-            print(f"  {cat} (n={entry['n']}): {', '.join(lines)}")
+            low_n_marker = " ⚠" if entry["n"] < CI_LOW_RELIABILITY_N else ""
+            print(f"  {cat} (n={entry['n']}){low_n_marker}: {', '.join(lines)}")
 
     lowest = lowest_scoring(results, n=min(3, n))
     print("\nLowest-scoring cases:")

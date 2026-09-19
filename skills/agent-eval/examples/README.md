@@ -226,17 +226,26 @@ Both aggregate signals come back **not significant** — genuinely, not a bug. T
 1. **The per-case regressions are real** — `acc_03`/`acc_06`/`acc_08`'s rationales name specific dropped facts (an account ID, a timeline event), not judge flakiness. `--fail-on-regression` is right to name them.
 2. **The *aggregate* shift genuinely isn't distinguishable from chance at this sample size, on either measure** — the regression is concentrated entirely in the `accuracy` category (8 cases, 100% -> 62% pass), and diluting that against 12 unaffected cases from the other three categories washes out the signal both aggregate tests are looking for. Note the raw-score test (p=0.255) is meaningfully more sensitive than the binarized pass-rate test (p=0.421) on this identical data — it's the mean-score test's whole reason for existing, catching magnitude a pass/fail count discards — but even the more sensitive test doesn't clear the bar here at the aggregate level.
 
+### A note on what a narrow interval doesn't mean
+
+Every CI printed above carries an n. Below `CI_LOW_RELIABILITY_N=20`, `--ci` now prints an explicit ⚠ next to it, because a bootstrap CI's *width* stops being trustworthy well before its p-value does. Confirmed empirically: resampling a fixed synthetic pass rate of 70% 20 times per sample size, mean CI width barely narrows from n=3 (~0.55, over half the [0,1] range) to n=8-10 (~0.5), and only drops meaningfully past n=30-50 (~0.25-0.3) — the same 20-case threshold as the pre-existing "treat the pass rate as directional" warning above it, reused rather than inventing a second, unjustified cutoff.
+
+This matters because a *narrow* interval at tiny n is not reassuring — it can just as easily be an artifact of a small, low-variance sample (e.g. every one of 3 resampled cases landing the same way) as evidence the estimate is well pinned down. Per-category testing runs at exactly this regime by design: `MIN_CATEGORY_N_FOR_SIGNIFICANCE=3` is the floor for running the significance test at all, well below where CI width means anything, so every category CI in this doc's worked examples below carries the ⚠. That's expected, not a defect in the examples — the p-value at that n is still defensible (that's what `min_n` is for), but the CI's own width next to it isn't, and now says so instead of staying silent.
+
 ### Per-category testing — and why it needs its own correction
 
 A **per-category** significance test can isolate a regression an aggregate test dilutes away. `--ci` runs both paired tests once per category too (skipping any category under 3 matched cases — see `compute_per_category_confidence()`'s docstring for why):
 
 ```
 By category vs baseline (paired bootstrap significance, Benjamini-Hochberg-corrected):
-  accuracy (n=8): pass rate p=0.043 (not significant), score p=0.043 (not significant)
-  format (n=5): pass rate p=0.663 (not significant), score p=0.031 (not significant)
-  grounding (n=4): pass rate p=1.0 (not significant), score p=1.0 (not significant)
-  tool_use (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  (⚠ marks a category below n=20 — its CI width, not just its significance verdict, is unreliable there; see the run-wide CI caveat above)
+  accuracy (n=8) ⚠: pass rate p=0.043 (not significant), score p=0.043 (not significant)
+  format (n=5) ⚠: pass rate p=0.663 (not significant), score p=0.031 (not significant)
+  grounding (n=4) ⚠: pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  tool_use (n=3) ⚠: pass rate p=1.0 (not significant), score p=1.0 (not significant)
 ```
+
+Every category here runs below n=20 — `MIN_CATEGORY_N_FOR_SIGNIFICANCE=3` is the floor for running the significance test at all, well under the width-reliability threshold, so the ⚠ fires on every row by construction. That's not a bug in the example: a category CI running at n=3-8 is the normal, sanctioned case for this feature (see "A note on what a narrow interval doesn't mean," above).
 
 Scoped to just the 8 `accuracy` cases, p=0.043 on both signals — clearly better than the aggregate's p=0.421/0.255, but **not enough to fire the gate**, and this is the honest, load-bearing part of this section: an earlier edition of this doc showed this exact p=0.043 tripping `--fail-on-significant-regression`, before any correction existed. It shouldn't have.
 
@@ -271,16 +280,22 @@ python scripts/score_eval.py current.jsonl --baseline baseline.jsonl --ci
 95% CI (bootstrap, 2000 resamples):
   Pass rate:  [42.9%, 92.9%]
   Mean score: [0.557, 0.857]
+  ⚠ n=14 — below n=20, bootstrap CI width is not a reliable measure of precision; a narrow interval here can be an artifact of a small, low-variance sample rather than a well-pinned-down estimate.
   Pass rate vs baseline: 100.0% -> 71.4% (diff -28.6pp, 95% CI [-57.1pp, -7.1pp], p=0.021, SIGNIFICANT (after correction), n=14 matched case(s))
+  ⚠ n=14 matched case(s) — below n=20, this CI's width is not reliable either.
   Mean score vs baseline: 0.900 -> 0.729 (diff -0.171, 95% CI [-0.343, -0.043], p=0.021, SIGNIFICANT (after correction), n=14 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
+  ⚠ n=14 matched case(s) — below n=20, this CI's width is not reliable either.
   Multiple-comparisons correction: 10 significance test(s) examined this pass (4 regression candidate(s), 6 other) -> Benjamini-Hochberg (FDR) at family alpha=0.05, corrected as two separate families so an unrelated improvement can never move a regression's bar. Every verdict above and below already uses the corrected outcome.
 
 By category vs baseline (paired bootstrap significance, Benjamini-Hochberg-corrected):
-  accuracy (n=5): pass rate p=0.0 (SIGNIFICANT REGRESSION), score p=0.0 (SIGNIFICANT REGRESSION)
-  format (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
-  grounding (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
-  tool_use (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  (⚠ marks a category below n=20 — its CI width, not just its significance verdict, is unreliable there; see the run-wide CI caveat above)
+  accuracy (n=5) ⚠: pass rate p=0.0 (SIGNIFICANT REGRESSION), score p=0.0 (SIGNIFICANT REGRESSION)
+  format (n=3) ⚠: pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  grounding (n=3) ⚠: pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  tool_use (n=3) ⚠: pass rate p=1.0 (not significant), score p=1.0 (not significant)
 ```
+
+Notice the run-wide CI carries the ⚠ here too (n=14, the whole matched set, not just a category) — this example's own p-values are still trustworthy (that's the point of the worked example), but its CI *widths* deserve the same skepticism a category's would, since 14 is well under the reliability floor too. Significance and CI width are judged by different rules here on purpose; don't read the ⚠ as "don't trust the verdict."
 
 Both signals fire now — the run-wide aggregate *and* the category. That's a genuine improvement from the direction split, not incidental: with the three stable categories' `p=1.0` diffs moved out of the regression family (they're not regression candidates, `diff = 0`), the run-wide diffs share a much smaller, more homogeneous family with just the `accuracy` category's own two diffs — and p=0.021 clears that smaller family's threshold too, where it previously didn't when pooled with six unrelated null results:
 
