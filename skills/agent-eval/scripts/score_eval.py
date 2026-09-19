@@ -294,20 +294,20 @@ def compute_confidence(results, threshold, baseline_results=None, n_boot=bootstr
     scores = [r["score"] for r in results]
     passed_flags = [1.0 if s >= threshold else 0.0 for s in scores]
     confidence = {
-        "pass_rate_ci": bootstrap_stats.bootstrap_mean_ci(passed_flags, n_boot, boot_seed),
-        "mean_score_ci": bootstrap_stats.bootstrap_mean_ci(scores, n_boot, boot_seed),
+        "pass_rate_ci": _mark_ci_width_reliability(bootstrap_stats.bootstrap_mean_ci(passed_flags, n_boot, boot_seed)),
+        "mean_score_ci": _mark_ci_width_reliability(bootstrap_stats.bootstrap_mean_ci(scores, n_boot, boot_seed)),
     }
     if baseline_results:
         current_scores, baseline_scores = matched_scores(results, baseline_results)
         if current_scores:
             current_passed = [1.0 if s >= threshold else 0.0 for s in current_scores]
             baseline_passed = [1.0 if s >= threshold else 0.0 for s in baseline_scores]
-            confidence["paired_pass_rate_diff"] = bootstrap_stats.paired_bootstrap_diff(
+            confidence["paired_pass_rate_diff"] = _mark_ci_width_reliability(bootstrap_stats.paired_bootstrap_diff(
                 current_passed, baseline_passed, n_boot, boot_seed
-            )
-            confidence["paired_mean_score_diff"] = bootstrap_stats.paired_bootstrap_diff(
+            ))
+            confidence["paired_mean_score_diff"] = _mark_ci_width_reliability(bootstrap_stats.paired_bootstrap_diff(
                 current_scores, baseline_scores, n_boot, boot_seed
-            )
+            ))
     return confidence
 
 
@@ -319,6 +319,20 @@ def compute_confidence(results, threshold, baseline_results=None, n_boot=bootstr
 # 20-case threshold below matches the pre-existing plain-pass-rate warning in
 # print_report() rather than inventing a second, unjustified cutoff.
 CI_LOW_RELIABILITY_N = 20
+
+
+def _mark_ci_width_reliability(ci_or_diff: dict) -> dict:
+    """Adds "ci_width_reliable" (n >= CI_LOW_RELIABILITY_N) to a bootstrap CI
+    or paired-diff dict that already carries "n". print_report()'s ⚠ caveats
+    are derived from this exact same comparison — this exists so --json-out
+    consumers get the identical signal instead of having to hardcode
+    CI_LOW_RELIABILITY_N themselves to reconstruct it, which was the gap: the
+    warning shipped print-only, leaving anything reading the JSON (a
+    dashboard, a script comparing runs) with no way to tell a maximally
+    uninformative small-n interval from a precise one."""
+    ci_or_diff["ci_width_reliable"] = ci_or_diff["n"] >= CI_LOW_RELIABILITY_N
+    return ci_or_diff
+
 
 MIN_CATEGORY_N_FOR_SIGNIFICANCE = 3
 
@@ -416,8 +430,12 @@ def compute_per_category_confidence(
         baseline_passed = [1.0 if s >= threshold else 0.0 for s in baseline_scores]
         per_category[label] = {
             "n": n,
-            "paired_pass_rate_diff": bootstrap_stats.paired_bootstrap_diff(current_passed, baseline_passed, n_boot, boot_seed),
-            "paired_mean_score_diff": bootstrap_stats.paired_bootstrap_diff(current_scores, baseline_scores, n_boot, boot_seed),
+            "paired_pass_rate_diff": _mark_ci_width_reliability(
+                bootstrap_stats.paired_bootstrap_diff(current_passed, baseline_passed, n_boot, boot_seed)
+            ),
+            "paired_mean_score_diff": _mark_ci_width_reliability(
+                bootstrap_stats.paired_bootstrap_diff(current_scores, baseline_scores, n_boot, boot_seed)
+            ),
         }
     return per_category
 

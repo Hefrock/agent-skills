@@ -346,6 +346,25 @@ class ComputeConfidence(unittest.TestCase):
         confidence = score_eval.compute_confidence(results, threshold=0.7, n_boot=250, boot_seed=7)
         self.assertEqual(confidence["pass_rate_ci"]["n_boot"], 250)
 
+    def test_ci_width_reliable_false_below_threshold(self):
+        results = [{"id": f"c{i}", "score": 1.0} for i in range(5)]  # n=5 < CI_LOW_RELIABILITY_N=20
+        confidence = score_eval.compute_confidence(results, threshold=0.7)
+        self.assertFalse(confidence["pass_rate_ci"]["ci_width_reliable"])
+        self.assertFalse(confidence["mean_score_ci"]["ci_width_reliable"])
+
+    def test_ci_width_reliable_true_at_threshold(self):
+        results = [{"id": f"c{i}", "score": 1.0} for i in range(20)]  # n=20 == CI_LOW_RELIABILITY_N
+        confidence = score_eval.compute_confidence(results, threshold=0.7)
+        self.assertTrue(confidence["pass_rate_ci"]["ci_width_reliable"])
+        self.assertTrue(confidence["mean_score_ci"]["ci_width_reliable"])
+
+    def test_paired_diffs_also_carry_ci_width_reliable(self):
+        results = [{"id": f"c{i}", "score": 0.0} for i in range(5)]
+        baseline = [{"id": f"c{i}", "score": 1.0} for i in range(5)]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
+        self.assertFalse(confidence["paired_pass_rate_diff"]["ci_width_reliable"])
+        self.assertFalse(confidence["paired_mean_score_diff"]["ci_width_reliable"])
+
 
 def _rows(category, current_scores, baseline_scores, prefix):
     """Builds matched (current, baseline) row lists for one category, ids
@@ -396,6 +415,18 @@ class ComputePerCategoryConfidence(unittest.TestCase):
         self.assertIn("paired_pass_rate_diff", entry)
         self.assertIn("paired_mean_score_diff", entry)
         self.assertTrue(entry["paired_pass_rate_diff"]["significant_at_0.05"])
+
+    def test_category_diffs_carry_ci_width_reliable(self):
+        # This category's n=5 is a legitimate, computed result (not skipped
+        # -- min_n=3 is satisfied) but still well below CI_LOW_RELIABILITY_N=20,
+        # exactly the regime the ci_width_reliable flag exists to mark: the
+        # significance verdict here is trustworthy, the CI's width isn't.
+        current, baseline = _rows("cat", [0.0] * 5, [1.0] * 5, "c")
+        other_current, other_baseline = _rows("other", [1.0], [1.0], "o")
+        result = score_eval.compute_per_category_confidence(current + other_current, 0.7, baseline + other_baseline, min_n=3)
+        entry = result["cat"]
+        self.assertFalse(entry["paired_pass_rate_diff"]["ci_width_reliable"])
+        self.assertFalse(entry["paired_mean_score_diff"]["ci_width_reliable"])
 
     def test_sole_category_is_skipped_as_duplicate_of_run_wide(self):
         # A single category spanning every matched case is, by
@@ -1271,6 +1302,34 @@ class Cli(unittest.TestCase):
             summary = json.load(f)
         self.assertIn("per_category_confidence", summary)
         self.assertIn("accuracy", summary["per_category_confidence"])
+
+    def test_json_out_ci_width_reliable_flag_round_trips(self):
+        # A machine reading --json-out (a dashboard, a script comparing
+        # runs) has no access to CI_LOW_RELIABILITY_N or print_report()'s
+        # stdout warnings -- this flag is the only way it can learn that a
+        # small-n CI's width, unlike its p-value, isn't trustworthy.
+        base = (
+            [{"id": f"a{i}", "score": 1.0, "category": "accuracy"} for i in range(5)]
+            + [{"id": f"b{i}", "score": 1.0, "category": "format"} for i in range(20)]
+        )
+        cur = (
+            [{"id": f"a{i}", "score": 0.0, "category": "accuracy"} for i in range(5)]
+            + [{"id": f"b{i}", "score": 1.0, "category": "format"} for i in range(20)]
+        )
+        base_path = self.make(base)
+        cur_path = self.make(cur)
+        out_fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(out_fd)
+        self._paths.append(out_path)
+        proc = self.run_script(cur_path, "--baseline", base_path, "--ci", "--json-out", out_path)
+        self.assertEqual(proc.returncode, 0)
+        with open(out_path) as f:
+            summary = json.load(f)
+        # Run-wide n=25 (>= 20): reliable.
+        self.assertTrue(summary["confidence"]["pass_rate_ci"]["ci_width_reliable"])
+        self.assertTrue(summary["confidence"]["paired_pass_rate_diff"]["ci_width_reliable"])
+        # accuracy category n=5 (< 20): not reliable.
+        self.assertFalse(summary["per_category_confidence"]["accuracy"]["paired_pass_rate_diff"]["ci_width_reliable"])
 
     def test_ci_flag_warns_when_n_below_reliability_threshold(self):
         path = self.make([{"id": f"c{i}", "score": 1.0} for i in range(5)])
