@@ -232,6 +232,8 @@ Every CI printed above carries an n. Below `CI_LOW_RELIABILITY_N=20`, `--ci` now
 
 This matters because a *narrow* interval at tiny n is not reassuring — it can just as easily be an artifact of a small, low-variance sample (e.g. every one of 3 resampled cases landing the same way) as evidence the estimate is well pinned down. Per-category testing runs at exactly this regime by design: `MIN_CATEGORY_N_FOR_SIGNIFICANCE=3` is the floor for running the significance test at all, well below where CI width means anything, so every category CI in this doc's worked examples below carries the ⚠. That's expected, not a defect in the examples — the p-value at that n is still defensible (that's what `min_n` is for), but the CI's own width next to it isn't, and now says so instead of staying silent.
 
+The ⚠ is a terminal-only convenience, though — `--json-out` carries the same signal as a `"ci_width_reliable"` boolean on every CI and paired-diff dict, so a script or dashboard reading the JSON doesn't have to hardcode `CI_LOW_RELIABILITY_N` itself to reconstruct what the stdout warning already knows.
+
 ### Per-category testing — and why it needs its own correction
 
 A **per-category** significance test can isolate a regression an aggregate test dilutes away. `--ci` runs both paired tests once per category too (skipping any category under 3 matched cases — see `compute_per_category_confidence()`'s docstring for why):
