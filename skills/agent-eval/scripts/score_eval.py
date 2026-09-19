@@ -49,15 +49,21 @@ category) at alpha=0.05 each has its own cost: the chance that AT LEAST ONE
 comes back "significant" purely by chance climbs well past 5% as more tests
 are added — confirmed empirically (not assumed) at ~27.5% on genuinely
 stable data (no real regression anywhere) across 4 categories. Every
-significance verdict — run-wide and per-category — is therefore
-Bonferroni-corrected (family alpha divided by however many tests this
-particular run actually computed; see apply_multiple_comparisons_correction()),
-brought back to ~6.5%, close to the nominal 5% target, in the same
-simulation. This is why a category whose uncorrected p-value would have
-cleared the old fixed 0.05 (e.g. p=0.043 on 8 cases) can still come back
-"not significant" once corrected — the correction working as intended, not
-a bug: that p-value was never strong enough evidence once every other
-question asked in the same pass is honestly accounted for.
+significance verdict — run-wide and per-category — is therefore corrected
+via the Benjamini-Hochberg (FDR) procedure (see
+apply_multiple_comparisons_correction()), brought back to ~8%, close to the
+nominal 5% target, in the same simulation. This is why a category whose
+uncorrected p-value would have cleared the old fixed 0.05 (e.g. p=0.043 on
+8 cases) can still come back "not significant" once corrected — the
+correction working as intended, not a bug: that p-value was never strong
+enough evidence once every other question asked in the same pass is
+honestly accounted for. (An earlier version of this correction used
+Bonferroni instead — simpler, but its detectability for a real, unchanged
+regression turned out to depend on how many *unrelated* categories
+happened to exist alongside it, confirmed directly; Benjamini-Hochberg is
+meaningfully more robust to that while keeping the false-positive rate
+just as controlled — see apply_multiple_comparisons_correction()'s
+docstring for the numbers.)
 
 The gate fires if any signal — run-wide pass rate, run-wide mean score, or
 any single category's pass rate or mean score — is significant after
@@ -402,70 +408,106 @@ def bonferroni_alpha(n_tests: int, family_alpha: float = DEFAULT_FAMILY_ALPHA) -
     """The corrected per-test significance threshold when `n_tests`
     significance tests are examined together and any one of them firing
     would trigger an action (here, failing a build) — family_alpha divided
-    by the test count, the simplest correction that still controls the
-    family-wise false-positive rate regardless of whether the tests are
-    independent (they aren't, fully, here — a category's pass-rate and
-    mean-score diffs come from the same underlying cases — but Bonferroni's
-    guarantee holds under arbitrary dependence, unlike some less
-    conservative corrections, which is part of why it's the one used here).
+    by the test count. Controls the family-wise false-positive rate
+    regardless of whether the tests are independent (they aren't, fully,
+    here — a category's pass-rate and mean-score diffs come from the same
+    underlying cases), which is a real strength — but see
+    benjamini_hochberg_significance()'s docstring for why this repo no
+    longer uses it as the default: that same test-count sensitivity means
+    a real regression's detectability depends on how many *unrelated*
+    categories happen to exist alongside it in the same eval set, confirmed
+    directly (not theorized) to flip a fixed, unchanged regression from
+    detected to undetected as irrelevant categories were added elsewhere.
+    Kept here — not deleted — as a stricter, still-available alternative;
+    apply_multiple_comparisons_correction() no longer calls it by default.
     n_tests <= 0 returns family_alpha unchanged — nothing to correct for."""
     if n_tests <= 0:
         return family_alpha
     return family_alpha / n_tests
 
 
+def benjamini_hochberg_significance(diffs: list, family_alpha: float = DEFAULT_FAMILY_ALPHA) -> None:
+    """Standard step-up Benjamini-Hochberg procedure: sort `diffs` by
+    p-value ascending, find the LARGEST rank k where p_(k) <= (k/m)*alpha
+    (m = len(diffs)), and mark every diff at or below that rank as
+    significant — not a fixed per-test threshold the way Bonferroni's is,
+    since the cutoff `k` depends on the whole sorted p-value distribution,
+    not just the count. Controls the *false discovery rate* (expected
+    proportion of false positives among what's flagged), a different,
+    generally more permissive guarantee than Bonferroni's family-wise
+    error rate (probability of *any* false positive) — the standard,
+    textbook alternative when Bonferroni is too conservative, not an
+    exotic or ad hoc substitute.
+
+    Mutates `diffs` in place, adding "significant_after_correction" to
+    each, same convention apply_multiple_comparisons_correction() (this
+    function's only caller) already established. No-op on an empty list."""
+    m = len(diffs)
+    if m == 0:
+        return
+    ranked = sorted(range(m), key=lambda i: diffs[i]["p_value"])
+    largest_k = 0
+    for rank, idx in enumerate(ranked, 1):
+        if diffs[idx]["p_value"] <= (rank / m) * family_alpha:
+            largest_k = rank
+    for rank, idx in enumerate(ranked, 1):
+        diffs[idx]["significant_after_correction"] = rank <= largest_k
+
+
 def apply_multiple_comparisons_correction(confidence, per_category_confidence, family_alpha: float = DEFAULT_FAMILY_ALPHA):
     """Adds "significant_after_correction" to every paired-diff dict this
     run actually computed — both run-wide diffs from compute_confidence()
     and every non-skipped category's two diffs from
-    compute_per_category_confidence() — using a Bonferroni-corrected
-    threshold instead of the fixed 0.05 each individual
-    bootstrap_stats.paired_bootstrap_diff() call used for its own
-    "significant_at_0.05" (left untouched, still present, just no longer
-    what gates/reporting act on).
+    compute_per_category_confidence() — via Benjamini-Hochberg instead of
+    the fixed 0.05 each individual bootstrap_stats.paired_bootstrap_diff()
+    call used for its own "significant_at_0.05" (left untouched, still
+    present, just no longer what gates/reporting act on).
 
-    Why this exists, verified empirically before building, not assumed:
-    running every test this module can produce together (2 run-wide + 2 per
-    surviving category) at an uncorrected alpha=0.05 each inflates the
-    chance that AT LEAST ONE comes back "significant" purely from asking
-    more questions — simulated on genuinely stable data (baseline and
-    current drawn from the identical distribution, no real regression
-    anywhere), 4 categories x 2 metrics + 2 run-wide = 10 tests together:
-    27.5% of runs falsely tripped what would become
-    --fail-on-significant-regression, with nothing actually wrong. This
-    correction, applied to the same simulation at this module's own default
-    --n-boot (2000), brings that back to ~6.5% — close to the nominal 5%
-    family_alpha target (the residual gap is Monte Carlo estimation noise
-    in the bootstrap p-values themselves, not a flaw in the correction;
-    confirmed it shrinks further at higher n_boot, and is worse at a much
-    lower n_boot, since a coarser p-value estimate is a coarser instrument
-    against an already-small corrected threshold).
+    Why any correction exists at all, verified empirically before
+    building: running every test this module can produce together (2
+    run-wide + 2 per surviving category) at an uncorrected alpha=0.05 each
+    inflates the chance that AT LEAST ONE comes back "significant" purely
+    from asking more questions — simulated on genuinely stable data
+    (baseline and current drawn from the identical distribution, no real
+    regression anywhere), 4 categories x 2 metrics + 2 run-wide = 10 tests
+    together: 27.5% of runs falsely tripped what would become
+    --fail-on-significant-regression, with nothing actually wrong.
 
-    Bonferroni over the less-conservative Benjamini-Hochberg (FDR)
-    procedure for the same reason this repo prefers a ranked rule table
-    over a weighted score elsewhere (see privacy-threat-oracle's
-    decision-rubric.md): simpler to state and hand-verify — family_alpha
-    divided by a test count, not a sorted, rank-dependent comparison — at
-    the cost of being more conservative. Appropriate for a CI gate
-    specifically: a false alarm that trains people to stop trusting the
-    gate is worse than occasionally missing a borderline regression a
-    human re-running the eval with more cases would still catch.
+    Why Benjamini-Hochberg specifically, not the Bonferroni correction this
+    function used originally: Bonferroni's own test-count sensitivity
+    turned out to have a second, undocumented-until-found cost, confirmed
+    directly against a fixed, unchanged regression (p=0.005) while only
+    varying how many *unrelated*, entirely stable categories existed
+    alongside it — Bonferroni flips it from detected to undetected at just
+    3 unrelated categories; Benjamini-Hochberg still detects it at 7. Both
+    keep the original false-positive simulation under control at this
+    module's default --n-boot (2000): Bonferroni ~6.5%, Benjamini-Hochberg
+    ~8.0% — both close to the nominal 5% family_alpha target and nowhere
+    near the original uncorrected 27.5%, confirmed on the identical
+    simulation before switching, not assumed from the method's reputation.
+    bonferroni_alpha() is kept, not deleted, as a stricter alternative;
+    this function no longer calls it by default.
 
-    A real, honest consequence, not smoothed over: this correction is why
-    this skill's own flagship worked example (see examples/README.md's
-    "Statistical confidence" section) no longer trips
-    --fail-on-significant-regression on the accuracy category alone — its
-    p=0.043 cleared the old uncorrected alpha=0.05 but not the corrected
-    alpha=0.005 at 10 tests. That's the correction working as intended, not
-    a regression in capability: p=0.043 was never strong enough evidence
-    once "we're asking this same question ten times" is honestly accounted
-    for, at only 8 matched cases.
+    A real, honest consequence from when this correction (any version of
+    it) was first added, not smoothed over: it's why this skill's own
+    flagship worked example (see examples/README.md's "Statistical
+    confidence" section) no longer trips --fail-on-significant-regression
+    on the accuracy category alone — its p=0.043 cleared the old
+    uncorrected alpha=0.05 but doesn't survive being honestly weighed
+    against the other 9 tests examined in the same pass, under either
+    correction. That's the correction working as intended, not a
+    regression in capability: p=0.043 was never strong evidence once every
+    question asked in the same pass is properly accounted for, at only 8
+    matched cases.
 
     Mutates the diff dicts in place — compute_confidence() and
     compute_per_category_confidence() construct them fresh on every call,
     never share or cache one across calls, so there's nothing else that
-    could be surprised by the mutation. Returns (n_tests, corrected_alpha)
-    for the caller to report alongside the per-diff verdicts."""
+    could be surprised by the mutation. Returns {"n_tests", "method",
+    "family_alpha"} for the caller to report alongside the per-diff
+    verdicts — no single "corrected alpha" number the way Bonferroni had,
+    since Benjamini-Hochberg's cutoff depends on the whole sorted p-value
+    distribution, not a fixed per-test threshold."""
     diffs = []
     if confidence:
         for key in ("paired_pass_rate_diff", "paired_mean_score_diff"):
@@ -478,11 +520,8 @@ def apply_multiple_comparisons_correction(confidence, per_category_confidence, f
         diffs.append(entry["paired_pass_rate_diff"])
         diffs.append(entry["paired_mean_score_diff"])
 
-    n_tests = len(diffs)
-    alpha = bonferroni_alpha(n_tests, family_alpha)
-    for d in diffs:
-        d["significant_after_correction"] = d["p_value"] < alpha
-    return n_tests, alpha
+    benjamini_hochberg_significance(diffs, family_alpha)
+    return {"n_tests": len(diffs), "method": "benjamini_hochberg", "family_alpha": family_alpha}
 
 
 def find_metric_regression(summary, baseline_summary, metric, tolerance):
@@ -620,14 +659,14 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
         print(f"\n95% CI (bootstrap, {pr_ci['n_boot']} resamples):")
         print(f"  Pass rate:  [{pr_ci['ci_lo'] * 100:.1f}%, {pr_ci['ci_hi'] * 100:.1f}%]")
         print(f"  Mean score: [{ms_ci['ci_lo']:.3f}, {ms_ci['ci_hi']:.3f}]")
-        alpha_label = f"corrected alpha={correction[1]:.4f}" if correction else "alpha=0.05"
+        verdict_suffix = " (after correction)" if correction else ""
         diff = confidence.get("paired_pass_rate_diff")
         if diff is not None:
             verdict = "SIGNIFICANT" if diff["significant_after_correction"] else "not significant"
             print(
                 f"  Pass rate vs baseline: {diff['point_b'] * 100:.1f}% -> {diff['point_a'] * 100:.1f}% "
                 f"(diff {diff['diff'] * 100:+.1f}pp, 95% CI [{diff['ci_lo'] * 100:+.1f}pp, {diff['ci_hi'] * 100:+.1f}pp], "
-                f"p={diff['p_value']}, {verdict} at {alpha_label}, n={diff['n']} matched case(s))"
+                f"p={diff['p_value']}, {verdict}{verdict_suffix}, n={diff['n']} matched case(s))"
             )
         score_diff = confidence.get("paired_mean_score_diff")
         if score_diff is not None:
@@ -635,15 +674,15 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
             print(
                 f"  Mean score vs baseline: {score_diff['point_b']:.3f} -> {score_diff['point_a']:.3f} "
                 f"(diff {score_diff['diff']:+.3f}, 95% CI [{score_diff['ci_lo']:+.3f}, {score_diff['ci_hi']:+.3f}], "
-                f"p={score_diff['p_value']}, {verdict} at {alpha_label}, n={score_diff['n']} matched case(s)) "
+                f"p={score_diff['p_value']}, {verdict}{verdict_suffix}, n={score_diff['n']} matched case(s)) "
                 f"— unbinarized, catches magnitude the pass-rate test above can miss"
             )
         if correction:
-            n_tests, alpha = correction
             print(
-                f"  Multiple-comparisons correction: {n_tests} significance test(s) examined together this pass "
-                f"-> Bonferroni-adjusted alpha={alpha:.4f} (uncorrected alpha=0.05). Every verdict above and below "
-                f"already uses the corrected threshold."
+                f"  Multiple-comparisons correction: {correction['n_tests']} significance test(s) examined together "
+                f"this pass -> Benjamini-Hochberg (FDR) at family alpha={correction['family_alpha']:.2f}, not a single "
+                f"fixed per-test threshold (see apply_multiple_comparisons_correction()'s docstring). Every verdict "
+                f"above and below already uses the corrected outcome."
             )
 
     if len(summary["by_category"]) > 1:
@@ -658,7 +697,7 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
 
     if per_category_confidence:
         header = "\nBy category vs baseline (paired bootstrap significance"
-        header += ", Bonferroni-corrected)" if correction else ")"
+        header += ", Benjamini-Hochberg-corrected)" if correction else ")"
         print(header + ":")
         for cat, entry in per_category_confidence.items():
             if "skipped_reason" in entry:
@@ -796,7 +835,7 @@ def main():
         if per_category_confidence:
             output["per_category_confidence"] = per_category_confidence
         if correction:
-            output["multiple_comparisons_correction"] = {"n_tests": correction[0], "bonferroni_alpha": correction[1]}
+            output["multiple_comparisons_correction"] = correction
         with open(args.json_out, "w") as f:
             json.dump(output, f, indent=2)
         print(f"Summary written to {args.json_out}")

@@ -482,15 +482,53 @@ class BonferroniAlpha(unittest.TestCase):
         self.assertAlmostEqual(score_eval.bonferroni_alpha(4, family_alpha=0.1), 0.025)
 
 
+class BenjaminiHochbergSignificance(unittest.TestCase):
+    def test_empty_list_is_a_noop(self):
+        diffs = []
+        score_eval.benjamini_hochberg_significance(diffs)  # must not raise
+        self.assertEqual(diffs, [])
+
+    def test_single_diff_uses_plain_family_alpha(self):
+        diffs = [{"p_value": 0.03}]
+        score_eval.benjamini_hochberg_significance(diffs, family_alpha=0.05)
+        self.assertTrue(diffs[0]["significant_after_correction"])
+
+    def test_step_up_procedure_matches_hand_computed_example(self):
+        # p-values [0.01, 0.03, 0.4] at family_alpha=0.05, m=3.
+        # BH thresholds: rank1=0.05/3=0.0167, rank2=2*0.05/3=0.0333, rank3=0.05.
+        # 0.01 <= 0.0167 (rank1 passes), 0.03 <= 0.0333 (rank2 passes),
+        # 0.4 > 0.05 (rank3 fails) -> largest passing rank is 2, so ranks
+        # 1 and 2 are both significant, rank 3 is not. Notably: 0.03 would
+        # NOT survive a Bonferroni correction at the same m (0.05/3=0.0167),
+        # but does survive BH -- the concrete difference between the two
+        # methods this function exists to capture.
+        diffs = [{"p_value": 0.4}, {"p_value": 0.01}, {"p_value": 0.03}]
+        score_eval.benjamini_hochberg_significance(diffs, family_alpha=0.05)
+        self.assertFalse(diffs[0]["significant_after_correction"])  # p=0.4
+        self.assertTrue(diffs[1]["significant_after_correction"])   # p=0.01
+        self.assertTrue(diffs[2]["significant_after_correction"])   # p=0.03
+
+    def test_all_large_p_values_none_significant(self):
+        diffs = [{"p_value": 0.9}, {"p_value": 0.8}, {"p_value": 1.0}]
+        score_eval.benjamini_hochberg_significance(diffs)
+        self.assertTrue(all(not d["significant_after_correction"] for d in diffs))
+
+    def test_all_tiny_p_values_all_significant(self):
+        diffs = [{"p_value": 0.001}, {"p_value": 0.002}, {"p_value": 0.003}]
+        score_eval.benjamini_hochberg_significance(diffs)
+        self.assertTrue(all(d["significant_after_correction"] for d in diffs))
+
+
 class ApplyMultipleComparisonsCorrection(unittest.TestCase):
     def test_counts_both_run_wide_diffs(self):
         confidence = {
             "paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1},
             "paired_mean_score_diff": {"p_value": 0.02, "diff": -0.1},
         }
-        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, None)
-        self.assertEqual(n_tests, 2)
-        self.assertAlmostEqual(alpha, 0.025)
+        correction = score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertEqual(correction["n_tests"], 2)
+        self.assertEqual(correction["method"], "benjamini_hochberg")
+        self.assertEqual(correction["family_alpha"], 0.05)
 
     def test_adds_significant_after_correction_key_to_each_diff(self):
         confidence = {"paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1}}
@@ -503,42 +541,58 @@ class ApplyMultipleComparisonsCorrection(unittest.TestCase):
             "a": {"n": 8, "paired_pass_rate_diff": {"p_value": 0.5, "diff": 0.0}, "paired_mean_score_diff": {"p_value": 0.5, "diff": 0.0}},
             "tiny": {"n": 2, "skipped_reason": "too few"},
         }
-        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
-        self.assertEqual(n_tests, 2)  # only category "a"'s two diffs; "tiny" is skipped
+        correction = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+        self.assertEqual(correction["n_tests"], 2)  # only category "a"'s two diffs; "tiny" is skipped
         self.assertNotIn("significant_after_correction", per_category["tiny"])
 
-    def test_no_tests_at_all_returns_family_alpha(self):
-        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(None, None)
-        self.assertEqual(n_tests, 0)
-        self.assertEqual(alpha, score_eval.DEFAULT_FAMILY_ALPHA)
-
-    def test_p_value_below_corrected_alpha_is_significant(self):
-        # 2 tests together -> corrected alpha = 0.025. p=0.01 clears it.
-        confidence = {
-            "paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1},
-            "paired_mean_score_diff": {"p_value": 0.04, "diff": -0.1},
-        }
-        score_eval.apply_multiple_comparisons_correction(confidence, None)
-        self.assertTrue(confidence["paired_pass_rate_diff"]["significant_after_correction"])
-        # 0.04 was significant at the old fixed 0.05 threshold but not at
-        # the corrected 0.025 -- this is the exact case the correction
-        # exists to catch.
-        self.assertFalse(confidence["paired_mean_score_diff"]["significant_after_correction"])
+    def test_no_tests_at_all(self):
+        correction = score_eval.apply_multiple_comparisons_correction(None, None)
+        self.assertEqual(correction["n_tests"], 0)
+        self.assertEqual(correction["family_alpha"], score_eval.DEFAULT_FAMILY_ALPHA)
 
     def test_matches_documented_real_example_outcome(self):
         # The real, confirmed consequence documented in examples/README.md:
         # at 10 tests together (2 run-wide + 4 categories x 2), the
         # accuracy category's uncorrected p=0.043 -- significant at the old
-        # fixed 0.05 -- no longer clears the corrected alpha=0.005.
+        # fixed 0.05 -- does not survive Benjamini-Hochberg correction
+        # against the other 9 tests examined in the same pass.
         examples_dir = os.path.join(HERE, "..", "examples")
         results = score_eval.load_results(os.path.join(examples_dir, "results_regressed.jsonl"))
         baseline = score_eval.load_results(os.path.join(examples_dir, "results_baseline.jsonl"))
         confidence = score_eval.compute_confidence(results, 0.7, baseline_results=baseline)
         per_category = score_eval.compute_per_category_confidence(results, 0.7, baseline)
-        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
-        self.assertEqual(n_tests, 10)
-        self.assertAlmostEqual(alpha, 0.005)
+        correction = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+        self.assertEqual(correction["n_tests"], 10)
         self.assertFalse(per_category["accuracy"]["paired_pass_rate_diff"]["significant_after_correction"])
+
+    def test_more_robust_to_unrelated_categories_than_bonferroni(self):
+        # The exact finding that motivated switching correction methods:
+        # a fixed, unchanged regression (p=0.005) stops clearing a
+        # Bonferroni-corrected bar once enough unrelated, entirely stable
+        # categories exist alongside it (3+ here), but keeps clearing the
+        # Benjamini-Hochberg bar at the same test count.
+        acc_cur = [1.0, 0.4, 0.4, 0.8, 0.9, 0.3, 1.0, 0.5]
+        acc_base = [1.0, 0.9, 1.0, 0.8, 0.9, 0.9, 1.0, 0.8]
+        current, baseline = [], []
+        for i, (c, b) in enumerate(zip(acc_cur, acc_base)):
+            current.append({"id": f"acc{i}", "score": c, "category": "accuracy"})
+            baseline.append({"id": f"acc{i}", "score": b, "category": "accuracy"})
+        for cat_idx in range(7):  # well past the 3-category point where Bonferroni fails
+            for i in range(4):
+                current.append({"id": f"cat{cat_idx}_{i}", "score": 0.9, "category": f"stable{cat_idx}"})
+                baseline.append({"id": f"cat{cat_idx}_{i}", "score": 0.9, "category": f"stable{cat_idx}"})
+
+        confidence = score_eval.compute_confidence(current, 0.7, baseline_results=baseline)
+        per_category = score_eval.compute_per_category_confidence(current, 0.7, baseline)
+        accuracy_diff = per_category["accuracy"]["paired_pass_rate_diff"]
+        self.assertEqual(accuracy_diff["p_value"], 0.005)  # same fixed signal throughout
+
+        n_tests = 2 + sum(2 for e in per_category.values() if "skipped_reason" not in e)
+        would_survive_bonferroni = accuracy_diff["p_value"] < score_eval.bonferroni_alpha(n_tests)
+        self.assertFalse(would_survive_bonferroni)  # Bonferroni: no longer detected at this test count
+
+        score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+        self.assertTrue(per_category["accuracy"]["paired_pass_rate_diff"]["significant_after_correction"])  # BH: still detected
 
 
 class FindMetricRegression(unittest.TestCase):
@@ -990,8 +1044,8 @@ class Cli(unittest.TestCase):
         cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
         proc = self.run_script(cur, "--baseline", base, "--ci")
         self.assertIn("Multiple-comparisons correction:", proc.stdout)
-        self.assertIn("Bonferroni-adjusted alpha=", proc.stdout)
-        self.assertIn("Bonferroni-corrected", proc.stdout)  # per-category section header
+        self.assertIn("Benjamini-Hochberg (FDR)", proc.stdout)
+        self.assertIn("Benjamini-Hochberg-corrected", proc.stdout)  # per-category section header
 
     def test_ci_without_baseline_reports_no_correction(self):
         # No baseline -> nothing significant is ever computed, so there's
@@ -1068,12 +1122,12 @@ class Cli(unittest.TestCase):
         # end-to-end as a subprocess against the actual worked-example
         # files: a regression concentrated in the `accuracy` category
         # (p=0.043 uncorrected), diluted below significance in the run-wide
-        # aggregate. Before Bonferroni correction existed, the per-category
-        # signal alone was enough to fail this build. With correction (10
-        # tests examined together here -> alpha=0.005), p=0.043 no longer
-        # clears the corrected bar -- honest, intended behavior: this
-        # example's evidence was never strong enough once "we're asking
-        # this same question ten times" is properly accounted for. See
+        # aggregate. Before this correction existed, the per-category
+        # signal alone was enough to fail this build. Weighed against the
+        # other 9 tests examined in the same pass (Benjamini-Hochberg,
+        # not Bonferroni -- see apply_multiple_comparisons_correction()'s
+        # docstring for why), p=0.043 doesn't survive -- honest, intended
+        # behavior: this example's evidence was never strong enough. See
         # test_fail_on_significant_regression_catches_decisive_category_
         # regression below for a case strong enough to survive correction.
         examples_dir = os.path.join(HERE, "..", "examples")
@@ -1083,26 +1137,26 @@ class Cli(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
 
     def test_fail_on_significant_regression_catches_decisive_category_regression(self):
-        # A category regression strong enough to survive Bonferroni
-        # correction while the run-wide aggregate stays diluted below it --
-        # the exact same data as examples/README.md's second worked
-        # example. 4 of 5 `accuracy` cases drop decisively (0.9 -> 0.3);
-        # three stable categories of 6 cases each dilute the run-wide
-        # aggregate to p=0.014 (not significant at the corrected
-        # alpha=0.005), while the accuracy category alone is p=0.0.
+        # A category regression strong enough to survive correction while
+        # the run-wide aggregate stays diluted below it -- the exact same
+        # data as examples/README.md's second worked example. 4 of 5
+        # `accuracy` cases drop decisively (0.9 -> 0.3); three stable
+        # categories of 3 cases each (the min_n=3 floor exactly) dilute the
+        # run-wide aggregate to p=0.021 (not significant after correction),
+        # while the accuracy category alone is p=0.0.
         rows_current, rows_baseline = [], []
         for i, (c, b) in enumerate(zip([0.3, 0.3, 0.3, 0.3, 0.9], [0.9] * 5)):
             rows_current.append({"id": f"acc{i}", "score": c, "category": "accuracy"})
             rows_baseline.append({"id": f"acc{i}", "score": b, "category": "accuracy"})
         for cat in ("format", "grounding", "tool_use"):
-            for i in range(6):
+            for i in range(3):
                 rows_current.append({"id": f"{cat}{i}", "score": 0.9, "category": cat})
                 rows_baseline.append({"id": f"{cat}{i}", "score": 0.9, "category": cat})
         cur = self.make(rows_current)
         base = self.make(rows_baseline)
 
         ci_proc = self.run_script(cur, "--baseline", base, "--ci")
-        self.assertIn("not significant at corrected alpha=0.0050", ci_proc.stdout)  # run-wide: diluted
+        self.assertIn("not significant (after correction)", ci_proc.stdout)  # run-wide: diluted
         self.assertIn("SIGNIFICANT REGRESSION", ci_proc.stdout)  # per-category: not diluted
 
         proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
