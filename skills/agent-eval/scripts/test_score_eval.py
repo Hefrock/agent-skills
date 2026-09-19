@@ -257,6 +257,67 @@ class FindRegressions(unittest.TestCase):
         self.assertEqual(score_eval.find_regressions(cur, base, 0.7), [])
 
 
+class MatchedScores(unittest.TestCase):
+    def test_matches_by_id_not_position(self):
+        cur = [{"id": "b", "score": 0.5}, {"id": "a", "score": 1.0}]
+        base = [{"id": "a", "score": 0.9}, {"id": "b", "score": 0.4}]
+        current, baseline = score_eval.matched_scores(cur, base)
+        # Order follows `results` (cur): b then a.
+        self.assertEqual(current, [0.5, 1.0])
+        self.assertEqual(baseline, [0.4, 0.9])
+
+    def test_only_shared_ids_included(self):
+        cur = [{"id": "a", "score": 1.0}, {"id": "new", "score": 0.5}]
+        base = [{"id": "a", "score": 0.9}, {"id": "gone", "score": 0.2}]
+        current, baseline = score_eval.matched_scores(cur, base)
+        self.assertEqual(current, [1.0])
+        self.assertEqual(baseline, [0.9])
+
+    def test_no_overlap_returns_empty(self):
+        cur = [{"id": "a", "score": 1.0}]
+        base = [{"id": "b", "score": 1.0}]
+        self.assertEqual(score_eval.matched_scores(cur, base), ([], []))
+
+
+class ComputeConfidence(unittest.TestCase):
+    def test_always_includes_pass_rate_and_mean_score_ci(self):
+        results = [{"id": "a", "score": 1.0}, {"id": "b", "score": 0.5}, {"id": "c", "score": 0.0}]
+        confidence = score_eval.compute_confidence(results, threshold=0.7)
+        self.assertIn("pass_rate_ci", confidence)
+        self.assertIn("mean_score_ci", confidence)
+        self.assertAlmostEqual(confidence["pass_rate_ci"]["point"], 1 / 3, places=4)  # only "a" passes at 0.7
+        self.assertNotIn("paired_pass_rate_diff", confidence)  # no baseline given
+
+    def test_no_baseline_omits_paired_diff(self):
+        results = [{"id": "a", "score": 1.0}]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=None)
+        self.assertNotIn("paired_pass_rate_diff", confidence)
+
+    def test_baseline_with_no_overlap_omits_paired_diff(self):
+        results = [{"id": "a", "score": 1.0}]
+        baseline = [{"id": "different", "score": 1.0}]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
+        self.assertNotIn("paired_pass_rate_diff", confidence)
+
+    def test_baseline_with_overlap_includes_paired_diff(self):
+        # Unique ids, as a real case set would have -- score_eval.py itself
+        # doesn't enforce uniqueness (that preflight concern lives in
+        # run_judge.py), but matched_scores() assumes ids identify cases,
+        # not just lookup keys, so tests should too.
+        results = [{"id": f"c{i}", "score": 0.0} for i in range(10)]
+        baseline = [{"id": f"c{i}", "score": 1.0} for i in range(10)]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
+        diff = confidence["paired_pass_rate_diff"]
+        self.assertEqual(diff["point_a"], 0.0)
+        self.assertEqual(diff["point_b"], 1.0)
+        self.assertTrue(diff["significant_at_0.05"])
+
+    def test_custom_n_boot_and_seed_are_passed_through(self):
+        results = [{"id": "a", "score": 1.0}, {"id": "b", "score": 0.0}]
+        confidence = score_eval.compute_confidence(results, threshold=0.7, n_boot=250, boot_seed=7)
+        self.assertEqual(confidence["pass_rate_ci"]["n_boot"], 250)
+
+
 class FindMetricRegression(unittest.TestCase):
     def test_increase_beyond_tolerance_flagged(self):
         summary = {"mean_cost_usd": 0.008}
@@ -358,6 +419,25 @@ class CheckGates(unittest.TestCase):
         summary = self._summary(0.1, mean_cost_usd=0.02)
         failures = score_eval.check_gates(summary, [], 0.8, False, fail_if_mean_cost_above=0.01)
         self.assertEqual(len(failures), 2)
+
+    def test_significant_regression_triggers(self):
+        sig_reg = {"point_a": 0.5, "point_b": 0.9, "diff": -0.4, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        failures = score_eval.check_gates(self._summary(0.5), [], None, False, significant_regression=sig_reg)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("significant", failures[0])
+
+    def test_not_significant_does_not_trigger(self):
+        not_sig = {"point_a": 0.8, "point_b": 0.9, "diff": -0.1, "p_value": 0.42, "significant_at_0.05": False, "n": 20}
+        self.assertEqual(score_eval.check_gates(self._summary(0.8), [], None, False, significant_regression=not_sig), [])
+
+    def test_significant_improvement_does_not_trigger(self):
+        # diff > 0 means current beat baseline -- significant in the GOOD
+        # direction should never fail a build.
+        improved = {"point_a": 0.95, "point_b": 0.6, "diff": 0.35, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        self.assertEqual(score_eval.check_gates(self._summary(0.95), [], None, False, significant_regression=improved), [])
+
+    def test_none_significant_regression_does_not_trigger(self):
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, significant_regression=None), [])
 
 
 class Cli(unittest.TestCase):
@@ -486,6 +566,78 @@ class Cli(unittest.TestCase):
         proc = self.run_script(cur, "--baseline", base)
         self.assertEqual(proc.returncode, 0)
         self.assertIn("look similar", proc.stderr)
+
+    def test_ci_flag_prints_confidence_interval(self):
+        path = self.make([{"id": "a", "score": 1.0}, {"id": "b", "score": 0.0}, {"id": "c", "score": 1.0}])
+        proc = self.run_script(path, "--ci")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("95% CI (bootstrap", proc.stdout)
+        self.assertIn("Pass rate:", proc.stdout)
+        self.assertIn("Mean score:", proc.stdout)
+
+    def test_ci_flag_without_baseline_has_no_paired_diff_line(self):
+        path = self.make([{"id": "a", "score": 1.0}])
+        proc = self.run_script(path, "--ci")
+        self.assertNotIn("vs baseline", proc.stdout)
+
+    def test_ci_flag_with_baseline_prints_paired_diff(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(10)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0} for i in range(10)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("Pass rate vs baseline:", proc.stdout)
+        self.assertIn("SIGNIFICANT", proc.stdout)
+
+    def test_without_ci_flag_no_confidence_section_printed(self):
+        path = self.make([{"id": "a", "score": 1.0}])
+        proc = self.run_script(path)
+        self.assertNotIn("95% CI", proc.stdout)
+
+    def test_fail_on_significant_regression_requires_baseline(self):
+        path = self.make([{"id": "a", "score": 1.0}])
+        proc = self.run_script(path, "--fail-on-significant-regression")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("require", proc.stderr.lower())
+
+    def test_fail_on_significant_regression_fires_on_clear_drop(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(15)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0} for i in range(15)])
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("--fail-on-significant-regression", proc.stderr)
+
+    def test_fail_on_significant_regression_passes_on_noise_level_shift(self):
+        # One case out of 15 flips -- exactly the kind of small, plausibly-
+        # noise shift --fail-on-regression alone can't distinguish from a
+        # real regression, but the paired bootstrap test can.
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(15)])
+        rows = [{"id": f"c{i}", "score": 1.0} for i in range(15)]
+        rows[0]["score"] = 0.0
+        cur = self.make(rows)
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_json_out_includes_confidence_when_ci_passed(self):
+        path = self.make([{"id": "a", "score": 1.0}, {"id": "b", "score": 0.0}])
+        out_fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(out_fd)
+        self._paths.append(out_path)
+        proc = self.run_script(path, "--ci", "--json-out", out_path)
+        self.assertEqual(proc.returncode, 0)
+        with open(out_path) as f:
+            summary = json.load(f)
+        self.assertIn("confidence", summary)
+        self.assertIn("pass_rate_ci", summary["confidence"])
+
+    def test_json_out_omits_confidence_without_ci_flag(self):
+        path = self.make([{"id": "a", "score": 1.0}])
+        out_fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(out_fd)
+        self._paths.append(out_path)
+        proc = self.run_script(path, "--json-out", out_path)
+        self.assertEqual(proc.returncode, 0)
+        with open(out_path) as f:
+            summary = json.load(f)
+        self.assertNotIn("confidence", summary)
 
 
 if __name__ == "__main__":

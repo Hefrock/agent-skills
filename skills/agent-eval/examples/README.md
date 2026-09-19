@@ -200,3 +200,34 @@ GATE FAILED:
 ```
 
 Exit code **1** — a real gate, not just a printed number: `--fail-on-cost-regression`/`--fail-on-latency-regression` (tolerance configurable via `--cost-regression-tolerance`/`--latency-regression-tolerance`, default 20%) both require `--baseline`. `--fail-if-mean-cost-above`/`--fail-if-mean-latency-above` set an absolute ceiling instead, with no baseline needed — useful for a hard budget rather than a relative-regression check.
+
+## Statistical confidence — is a regression real, or noise?
+
+`--fail-on-regression` (used in [the scenario above](#the-scenario)) flags *any* case that crosses `--threshold` between two runs — genuinely useful, but it can't tell a real quality drop from ordinary LLM-judge run-to-run wobble. `--ci` and `--fail-on-significant-regression` answer that with a bootstrap confidence interval and a paired significance test (see [`scripts/bootstrap_stats.py`](../scripts/bootstrap_stats.py)) instead of leaving SKILL.md step 7's "be honest about sample size" as a reminder to type out by hand each time.
+
+Running `--ci` against the same regression scenario above — the one `--fail-on-regression --fail-under 0.85` already failed the build on:
+
+```bash
+python scripts/score_eval.py examples/results_regressed.jsonl \
+    --baseline examples/results_baseline.jsonl --ci
+```
+
+```
+95% CI (bootstrap, 2000 resamples):
+  Pass rate:  [60.0%, 95.0%]
+  Mean score: [0.740, 0.920]
+  Pass rate vs baseline: 90.0% -> 80.0% (diff -10.0pp, 95% CI [-30.0pp, +10.0pp], p=0.421, not significant at alpha=0.05, n=20 matched case(s))
+```
+
+`--fail-on-significant-regression` exits **0** on this exact case — genuinely, not a bug. This is worth sitting with rather than explaining away: the same before/after that `--fail-on-regression` correctly fails is, at the level of the *overall* pass rate, not statistically distinguishable from noise at n=20. Both things are true at once:
+
+1. **The per-case regressions are real** — `acc_03`/`acc_06`/`acc_08`'s rationales name specific dropped facts (an account ID, a timeline event), not judge flakiness. `--fail-on-regression` is right to name them.
+2. **The *aggregate* pass-rate shift (18/20 -> 16/20) genuinely isn't distinguishable from chance at this sample size** — the regression is concentrated entirely in the `accuracy` category (8 cases, 100% -> 62% pass), and diluting that against 12 unaffected cases from the other three categories washes out the signal the overall-pass-rate test is looking for. A category-scoped significance test would likely find this one significant; **that's not built here** — `compute_confidence()` only tests the overall pass rate, not a per-category breakdown, a real scoped limitation worth knowing about rather than a claim this tool doesn't make.
+
+The practical takeaway: **use both gates together, not one instead of the other.** `--fail-on-regression` catches named, specific per-case failures immediately, cheaply, and with zero false negatives (a threshold crossing always fires). `--fail-on-significant-regression` is the stricter, complementary question — "is the topline number moving for a real reason" — and won't fire on this particular example precisely because the topline number alone can't see a category-concentrated regression. Neither one subsumes the other.
+
+```bash
+python scripts/score_eval.py examples/results_regressed.jsonl \
+    --baseline examples/results_baseline.jsonl --fail-on-significant-regression
+# exits 0 -- not significant at the aggregate level, see above
+```
