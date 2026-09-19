@@ -1272,6 +1272,52 @@ class Cli(unittest.TestCase):
         self.assertIn("per_category_confidence", summary)
         self.assertIn("accuracy", summary["per_category_confidence"])
 
+    def test_ci_flag_warns_when_n_below_reliability_threshold(self):
+        path = self.make([{"id": f"c{i}", "score": 1.0} for i in range(5)])
+        proc = self.run_script(path, "--ci")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("bootstrap CI width is not a reliable", proc.stdout)
+
+    def test_ci_flag_no_width_warning_when_n_meets_reliability_threshold(self):
+        path = self.make([{"id": f"c{i}", "score": 1.0} for i in range(20)])
+        proc = self.run_script(path, "--ci")
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn("bootstrap CI width is not a reliable", proc.stdout)
+
+    def test_paired_diff_warns_when_matched_n_below_reliability_threshold(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(5)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0} for i in range(5)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("this CI's width is not reliable either", proc.stdout)
+
+    def test_paired_diff_no_width_warning_when_matched_n_meets_reliability_threshold(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0} for i in range(20)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0} for i in range(20)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn("this CI's width is not reliable either", proc.stdout)
+
+    def test_per_category_ci_marks_category_below_reliability_threshold(self):
+        # 3 is the min_n floor for running the significance test at all, and
+        # well below CI_LOW_RELIABILITY_N=20 — exactly the regime the finding
+        # says was invisible: a category CI running at a legitimate, sanctioned
+        # n that's still too small for its own width to mean anything.
+        base = (
+            [{"id": f"a{i}", "score": 1.0, "category": "accuracy"} for i in range(3)]
+            + [{"id": f"b{i}", "score": 1.0, "category": "format"} for i in range(3)]
+        )
+        cur = (
+            [{"id": f"a{i}", "score": 0.0, "category": "accuracy"} for i in range(3)]
+            + [{"id": f"b{i}", "score": 1.0, "category": "format"} for i in range(3)]
+        )
+        base_path = self.make(base)
+        cur_path = self.make(cur)
+        proc = self.run_script(cur_path, "--baseline", base_path, "--ci")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("marks a category below n=20", proc.stdout)
+        self.assertIn("accuracy (n=3) ⚠", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
