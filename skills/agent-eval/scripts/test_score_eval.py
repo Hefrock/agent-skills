@@ -434,6 +434,84 @@ class ComputePerCategoryConfidence(unittest.TestCase):
         self.assertEqual(result["x"]["n"], 1)
 
 
+class BonferroniAlpha(unittest.TestCase):
+    def test_single_test_returns_family_alpha_unchanged(self):
+        self.assertEqual(score_eval.bonferroni_alpha(1, family_alpha=0.05), 0.05)
+
+    def test_divides_by_test_count(self):
+        self.assertAlmostEqual(score_eval.bonferroni_alpha(10, family_alpha=0.05), 0.005)
+
+    def test_zero_tests_returns_family_alpha_unchanged(self):
+        self.assertEqual(score_eval.bonferroni_alpha(0, family_alpha=0.05), 0.05)
+
+    def test_negative_tests_returns_family_alpha_unchanged(self):
+        # Defensive only -- n_tests is always a len() in real callers, never
+        # negative, but a bogus caller shouldn't get a negative alpha.
+        self.assertEqual(score_eval.bonferroni_alpha(-1, family_alpha=0.05), 0.05)
+
+    def test_custom_family_alpha_respected(self):
+        self.assertAlmostEqual(score_eval.bonferroni_alpha(4, family_alpha=0.1), 0.025)
+
+
+class ApplyMultipleComparisonsCorrection(unittest.TestCase):
+    def test_counts_both_run_wide_diffs(self):
+        confidence = {
+            "paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1},
+            "paired_mean_score_diff": {"p_value": 0.02, "diff": -0.1},
+        }
+        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertEqual(n_tests, 2)
+        self.assertAlmostEqual(alpha, 0.025)
+
+    def test_adds_significant_after_correction_key_to_each_diff(self):
+        confidence = {"paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1}}
+        score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertIn("significant_after_correction", confidence["paired_pass_rate_diff"])
+
+    def test_counts_only_non_skipped_categories(self):
+        confidence = {}
+        per_category = {
+            "a": {"n": 8, "paired_pass_rate_diff": {"p_value": 0.5, "diff": 0.0}, "paired_mean_score_diff": {"p_value": 0.5, "diff": 0.0}},
+            "tiny": {"n": 2, "skipped_reason": "too few"},
+        }
+        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+        self.assertEqual(n_tests, 2)  # only category "a"'s two diffs; "tiny" is skipped
+        self.assertNotIn("significant_after_correction", per_category["tiny"])
+
+    def test_no_tests_at_all_returns_family_alpha(self):
+        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(None, None)
+        self.assertEqual(n_tests, 0)
+        self.assertEqual(alpha, score_eval.DEFAULT_FAMILY_ALPHA)
+
+    def test_p_value_below_corrected_alpha_is_significant(self):
+        # 2 tests together -> corrected alpha = 0.025. p=0.01 clears it.
+        confidence = {
+            "paired_pass_rate_diff": {"p_value": 0.01, "diff": -0.1},
+            "paired_mean_score_diff": {"p_value": 0.04, "diff": -0.1},
+        }
+        score_eval.apply_multiple_comparisons_correction(confidence, None)
+        self.assertTrue(confidence["paired_pass_rate_diff"]["significant_after_correction"])
+        # 0.04 was significant at the old fixed 0.05 threshold but not at
+        # the corrected 0.025 -- this is the exact case the correction
+        # exists to catch.
+        self.assertFalse(confidence["paired_mean_score_diff"]["significant_after_correction"])
+
+    def test_matches_documented_real_example_outcome(self):
+        # The real, confirmed consequence documented in examples/README.md:
+        # at 10 tests together (2 run-wide + 4 categories x 2), the
+        # accuracy category's uncorrected p=0.043 -- significant at the old
+        # fixed 0.05 -- no longer clears the corrected alpha=0.005.
+        examples_dir = os.path.join(HERE, "..", "examples")
+        results = score_eval.load_results(os.path.join(examples_dir, "results_regressed.jsonl"))
+        baseline = score_eval.load_results(os.path.join(examples_dir, "results_baseline.jsonl"))
+        confidence = score_eval.compute_confidence(results, 0.7, baseline_results=baseline)
+        per_category = score_eval.compute_per_category_confidence(results, 0.7, baseline)
+        n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+        self.assertEqual(n_tests, 10)
+        self.assertAlmostEqual(alpha, 0.005)
+        self.assertFalse(per_category["accuracy"]["paired_pass_rate_diff"]["significant_after_correction"])
+
+
 class FindMetricRegression(unittest.TestCase):
     def test_increase_beyond_tolerance_flagged(self):
         summary = {"mean_cost_usd": 0.008}
@@ -537,36 +615,36 @@ class CheckGates(unittest.TestCase):
         self.assertEqual(len(failures), 2)
 
     def test_significant_regression_triggers(self):
-        sig_reg = {"point_a": 0.5, "point_b": 0.9, "diff": -0.4, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        sig_reg = {"point_a": 0.5, "point_b": 0.9, "diff": -0.4, "p_value": 0.01, "significant_after_correction": True, "n": 20}
         failures = score_eval.check_gates(self._summary(0.5), [], None, False, significant_regression=sig_reg)
         self.assertEqual(len(failures), 1)
         self.assertIn("significant", failures[0])
 
     def test_not_significant_does_not_trigger(self):
-        not_sig = {"point_a": 0.8, "point_b": 0.9, "diff": -0.1, "p_value": 0.42, "significant_at_0.05": False, "n": 20}
+        not_sig = {"point_a": 0.8, "point_b": 0.9, "diff": -0.1, "p_value": 0.42, "significant_after_correction": False, "n": 20}
         self.assertEqual(score_eval.check_gates(self._summary(0.8), [], None, False, significant_regression=not_sig), [])
 
     def test_significant_improvement_does_not_trigger(self):
         # diff > 0 means current beat baseline -- significant in the GOOD
         # direction should never fail a build.
-        improved = {"point_a": 0.95, "point_b": 0.6, "diff": 0.35, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        improved = {"point_a": 0.95, "point_b": 0.6, "diff": 0.35, "p_value": 0.01, "significant_after_correction": True, "n": 20}
         self.assertEqual(score_eval.check_gates(self._summary(0.95), [], None, False, significant_regression=improved), [])
 
     def test_none_significant_regression_does_not_trigger(self):
         self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, significant_regression=None), [])
 
     def test_significant_score_regression_triggers(self):
-        sig_reg = {"point_a": 0.71, "point_b": 1.0, "diff": -0.29, "p_value": 0.0, "significant_at_0.05": True, "n": 15}
+        sig_reg = {"point_a": 0.71, "point_b": 1.0, "diff": -0.29, "p_value": 0.0, "significant_after_correction": True, "n": 15}
         failures = score_eval.check_gates(self._summary(1.0), [], None, False, significant_score_regression=sig_reg)
         self.assertEqual(len(failures), 1)
         self.assertIn("mean score", failures[0])
 
     def test_not_significant_score_regression_does_not_trigger(self):
-        not_sig = {"point_a": 0.84, "point_b": 0.89, "diff": -0.05, "p_value": 0.25, "significant_at_0.05": False, "n": 20}
+        not_sig = {"point_a": 0.84, "point_b": 0.89, "diff": -0.05, "p_value": 0.25, "significant_after_correction": False, "n": 20}
         self.assertEqual(score_eval.check_gates(self._summary(0.8), [], None, False, significant_score_regression=not_sig), [])
 
     def test_significant_score_improvement_does_not_trigger(self):
-        improved = {"point_a": 0.95, "point_b": 0.6, "diff": 0.35, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
+        improved = {"point_a": 0.95, "point_b": 0.6, "diff": 0.35, "p_value": 0.01, "significant_after_correction": True, "n": 20}
         self.assertEqual(score_eval.check_gates(self._summary(0.95), [], None, False, significant_score_regression=improved), [])
 
     def test_none_significant_score_regression_does_not_trigger(self):
@@ -576,8 +654,8 @@ class CheckGates(unittest.TestCase):
         # A case that trips both signals should surface both failure
         # messages, not collapse into one -- each is independently
         # actionable evidence.
-        pass_rate_reg = {"point_a": 0.5, "point_b": 0.9, "diff": -0.4, "p_value": 0.01, "significant_at_0.05": True, "n": 20}
-        score_reg = {"point_a": 0.4, "point_b": 0.85, "diff": -0.45, "p_value": 0.0, "significant_at_0.05": True, "n": 20}
+        pass_rate_reg = {"point_a": 0.5, "point_b": 0.9, "diff": -0.4, "p_value": 0.01, "significant_after_correction": True, "n": 20}
+        score_reg = {"point_a": 0.4, "point_b": 0.85, "diff": -0.45, "p_value": 0.0, "significant_after_correction": True, "n": 20}
         failures = score_eval.check_gates(
             self._summary(0.5), [], None, False,
             significant_regression=pass_rate_reg, significant_score_regression=score_reg,
@@ -588,8 +666,8 @@ class CheckGates(unittest.TestCase):
         per_category = {
             "accuracy": {
                 "n": 8,
-                "paired_pass_rate_diff": {"point_a": 0.6, "point_b": 1.0, "diff": -0.4, "p_value": 0.04, "significant_at_0.05": True, "n": 8},
-                "paired_mean_score_diff": {"point_a": 0.6, "point_b": 0.9, "diff": -0.3, "p_value": 0.04, "significant_at_0.05": True, "n": 8},
+                "paired_pass_rate_diff": {"point_a": 0.6, "point_b": 1.0, "diff": -0.4, "p_value": 0.04, "significant_after_correction": True, "n": 8},
+                "paired_mean_score_diff": {"point_a": 0.6, "point_b": 0.9, "diff": -0.3, "p_value": 0.04, "significant_after_correction": True, "n": 8},
             },
         }
         failures = score_eval.check_gates(self._summary(0.8), [], None, False, per_category_confidence=per_category)
@@ -600,8 +678,8 @@ class CheckGates(unittest.TestCase):
         per_category = {
             "format": {
                 "n": 5,
-                "paired_pass_rate_diff": {"point_a": 1.0, "point_b": 0.8, "diff": 0.2, "p_value": 0.03, "significant_at_0.05": True, "n": 5},
-                "paired_mean_score_diff": {"point_a": 0.97, "point_b": 0.88, "diff": 0.09, "p_value": 0.03, "significant_at_0.05": True, "n": 5},
+                "paired_pass_rate_diff": {"point_a": 1.0, "point_b": 0.8, "diff": 0.2, "p_value": 0.03, "significant_after_correction": True, "n": 5},
+                "paired_mean_score_diff": {"point_a": 0.97, "point_b": 0.88, "diff": 0.09, "p_value": 0.03, "significant_after_correction": True, "n": 5},
             },
         }
         self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, per_category_confidence=per_category), [])
@@ -614,8 +692,8 @@ class CheckGates(unittest.TestCase):
         per_category = {
             "grounding": {
                 "n": 4,
-                "paired_pass_rate_diff": {"point_a": 0.9, "point_b": 1.0, "diff": -0.1, "p_value": 0.7, "significant_at_0.05": False, "n": 4},
-                "paired_mean_score_diff": {"point_a": 0.9, "point_b": 0.95, "diff": -0.05, "p_value": 0.7, "significant_at_0.05": False, "n": 4},
+                "paired_pass_rate_diff": {"point_a": 0.9, "point_b": 1.0, "diff": -0.1, "p_value": 0.7, "significant_after_correction": False, "n": 4},
+                "paired_mean_score_diff": {"point_a": 0.9, "point_b": 0.95, "diff": -0.05, "p_value": 0.7, "significant_after_correction": False, "n": 4},
             },
         }
         self.assertEqual(score_eval.check_gates(self._summary(0.9), [], None, False, per_category_confidence=per_category), [])
@@ -627,13 +705,13 @@ class CheckGates(unittest.TestCase):
         per_category = {
             "accuracy": {
                 "n": 8,
-                "paired_pass_rate_diff": {"point_a": 0.6, "point_b": 1.0, "diff": -0.4, "p_value": 0.04, "significant_at_0.05": True, "n": 8},
-                "paired_mean_score_diff": {"point_a": 0.6, "point_b": 0.9, "diff": -0.3, "p_value": 0.7, "significant_at_0.05": False, "n": 8},
+                "paired_pass_rate_diff": {"point_a": 0.6, "point_b": 1.0, "diff": -0.4, "p_value": 0.04, "significant_after_correction": True, "n": 8},
+                "paired_mean_score_diff": {"point_a": 0.6, "point_b": 0.9, "diff": -0.3, "p_value": 0.7, "significant_after_correction": False, "n": 8},
             },
             "tool_use": {
                 "n": 5,
-                "paired_pass_rate_diff": {"point_a": 0.4, "point_b": 1.0, "diff": -0.6, "p_value": 0.02, "significant_at_0.05": True, "n": 5},
-                "paired_mean_score_diff": {"point_a": 0.4, "point_b": 0.9, "diff": -0.5, "p_value": 0.02, "significant_at_0.05": True, "n": 5},
+                "paired_pass_rate_diff": {"point_a": 0.4, "point_b": 1.0, "diff": -0.6, "p_value": 0.02, "significant_after_correction": True, "n": 5},
+                "paired_mean_score_diff": {"point_a": 0.4, "point_b": 0.9, "diff": -0.5, "p_value": 0.02, "significant_after_correction": True, "n": 5},
             },
         }
         failures = score_eval.check_gates(self._summary(0.5), [], None, False, per_category_confidence=per_category)
@@ -867,6 +945,34 @@ class Cli(unittest.TestCase):
         self.assertIn("accuracy (n=5)", proc.stdout)
         self.assertIn("SIGNIFICANT REGRESSION", proc.stdout)
 
+    def test_ci_reports_multiple_comparisons_correction(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("Multiple-comparisons correction:", proc.stdout)
+        self.assertIn("Bonferroni-adjusted alpha=", proc.stdout)
+        self.assertIn("Bonferroni-corrected", proc.stdout)  # per-category section header
+
+    def test_ci_without_baseline_reports_no_correction(self):
+        # No baseline -> nothing significant is ever computed, so there's
+        # nothing to correct for; the correction line should not appear.
+        path = self.make([{"id": "a", "score": 1.0, "category": "x"}])
+        proc = self.run_script(path, "--ci")
+        self.assertNotIn("Multiple-comparisons correction:", proc.stdout)
+
+    def test_json_out_includes_correction_metadata(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
+        out_fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(out_fd)
+        self._paths.append(out_path)
+        proc = self.run_script(cur, "--baseline", base, "--ci", "--json-out", out_path)
+        self.assertEqual(proc.returncode, 0)
+        with open(out_path) as f:
+            summary = json.load(f)
+        self.assertIn("multiple_comparisons_correction", summary)
+        self.assertEqual(summary["multiple_comparisons_correction"]["n_tests"], 4)
+
     def test_ci_shows_skipped_reason_for_tiny_category(self):
         base = self.make([{"id": "c0", "score": 1.0, "category": "rare"}, {"id": "c1", "score": 1.0, "category": "rare"}])
         cur = self.make([{"id": "c0", "score": 0.0, "category": "rare"}, {"id": "c1", "score": 0.0, "category": "rare"}])
@@ -885,18 +991,48 @@ class Cli(unittest.TestCase):
         proc = self.run_script(path, "--ci")
         self.assertNotIn("By category vs baseline", proc.stdout)
 
-    def test_fail_on_significant_regression_catches_category_diluted_by_aggregate(self):
+    def test_fail_on_significant_regression_on_real_example_now_reflects_correction(self):
         # The exact real-world scenario examples/README.md documents, run
         # end-to-end as a subprocess against the actual worked-example
-        # files: a regression concentrated in the `accuracy` category,
-        # diluted by unaffected cases from three others, invisible to the
-        # run-wide aggregate test (both signals -- confirmed not
-        # significant elsewhere in this suite) but not to the per-category
-        # one. This is the behavior change per-category testing exists
-        # for: before it existed, this exact command exited 0.
+        # files: a regression concentrated in the `accuracy` category
+        # (p=0.043 uncorrected), diluted below significance in the run-wide
+        # aggregate. Before Bonferroni correction existed, the per-category
+        # signal alone was enough to fail this build. With correction (10
+        # tests examined together here -> alpha=0.005), p=0.043 no longer
+        # clears the corrected bar -- honest, intended behavior: this
+        # example's evidence was never strong enough once "we're asking
+        # this same question ten times" is properly accounted for. See
+        # test_fail_on_significant_regression_catches_decisive_category_
+        # regression below for a case strong enough to survive correction.
         examples_dir = os.path.join(HERE, "..", "examples")
         cur = os.path.join(examples_dir, "results_regressed.jsonl")
         base = os.path.join(examples_dir, "results_baseline.jsonl")
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_fail_on_significant_regression_catches_decisive_category_regression(self):
+        # A category regression strong enough to survive Bonferroni
+        # correction while the run-wide aggregate stays diluted below it --
+        # the exact same data as examples/README.md's second worked
+        # example. 4 of 5 `accuracy` cases drop decisively (0.9 -> 0.3);
+        # three stable categories of 6 cases each dilute the run-wide
+        # aggregate to p=0.014 (not significant at the corrected
+        # alpha=0.005), while the accuracy category alone is p=0.0.
+        rows_current, rows_baseline = [], []
+        for i, (c, b) in enumerate(zip([0.3, 0.3, 0.3, 0.3, 0.9], [0.9] * 5)):
+            rows_current.append({"id": f"acc{i}", "score": c, "category": "accuracy"})
+            rows_baseline.append({"id": f"acc{i}", "score": b, "category": "accuracy"})
+        for cat in ("format", "grounding", "tool_use"):
+            for i in range(6):
+                rows_current.append({"id": f"{cat}{i}", "score": 0.9, "category": cat})
+                rows_baseline.append({"id": f"{cat}{i}", "score": 0.9, "category": cat})
+        cur = self.make(rows_current)
+        base = self.make(rows_baseline)
+
+        ci_proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("not significant at corrected alpha=0.0050", ci_proc.stdout)  # run-wide: diluted
+        self.assertIn("SIGNIFICANT REGRESSION", ci_proc.stdout)  # per-category: not diluted
+
         proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
         self.assertEqual(proc.returncode, 1)
         self.assertIn("category 'accuracy'", proc.stderr)
