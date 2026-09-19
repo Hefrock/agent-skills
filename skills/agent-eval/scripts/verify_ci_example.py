@@ -7,16 +7,16 @@ Same bit-rot risk verify_trajectory_example.py already guards against for
 the trajectory example: examples/README.md quotes exact bootstrap numbers
 for results_regressed.jsonl vs. results_baseline.jsonl at three levels —
 the run-wide pass-rate diff, the run-wide mean-score diff, and the
-`accuracy` category's own paired diffs — and states that, after Bonferroni
-correction across all 10 tests examined together, NONE of them clear the
-corrected bar (alpha=0.005), so --fail-on-significant-regression correctly
-exits 0 on this example. That's a deliberate, documented reversal from an
-earlier edition of this doc (before the correction existed, the accuracy
-category's uncorrected p=0.043 alone tripped the gate) — this script guards
-the corrected story, not the old one. A silent edit to either results file,
-or a change to bootstrap_stats.py's math, score_eval.py's grouping, or the
-correction itself, could quietly make that documented story false without
-anything noticing.
+`accuracy` category's own paired diffs — and states that, after
+Benjamini-Hochberg correction across all 10 tests examined together, NONE
+of them are flagged significant, so --fail-on-significant-regression
+correctly exits 0 on this example. That's a deliberate, documented
+reversal from an earlier edition of this doc (before any correction
+existed, the accuracy category's uncorrected p=0.043 alone tripped the
+gate) — this script guards the corrected story, not the old one. A silent
+edit to either results file, or a change to bootstrap_stats.py's math,
+score_eval.py's grouping, or the correction itself, could quietly make
+that documented story false without anything noticing.
 
 Deterministic by construction: bootstrap_stats.py seeds its RNG (default
 12345) and sums with math.fsum() (not the builtin sum(), which changed its
@@ -62,7 +62,6 @@ EXPECTED_ACCURACY_MEAN_SCORE_DIFF = {
     "p_value": 0.043, "n": 8,
 }
 EXPECTED_N_TESTS = 10
-EXPECTED_BONFERRONI_ALPHA = 0.005
 
 
 def _check(actual, expected, label, failures):
@@ -81,7 +80,8 @@ def main() -> int:
 
     confidence = score_eval.compute_confidence(results, threshold=0.7, baseline_results=baseline)
     per_category = score_eval.compute_per_category_confidence(results, threshold=0.7, baseline_results=baseline)
-    n_tests, alpha = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+    correction = score_eval.apply_multiple_comparisons_correction(confidence, per_category)
+    n_tests = correction["n_tests"]
 
     pass_rate_diff = confidence.get("paired_pass_rate_diff")
     score_diff = confidence.get("paired_mean_score_diff")
@@ -96,8 +96,6 @@ def main() -> int:
     _check(accuracy_score_diff, EXPECTED_ACCURACY_MEAN_SCORE_DIFF, "accuracy category paired_mean_score_diff", failures)
     if n_tests != EXPECTED_N_TESTS:
         failures.append(f"n_tests: examples/README.md documents {EXPECTED_N_TESTS}, actual is {n_tests}")
-    if alpha != EXPECTED_BONFERRONI_ALPHA:
-        failures.append(f"bonferroni_alpha: examples/README.md documents {EXPECTED_BONFERRONI_ALPHA}, actual is {alpha}")
 
     if failures:
         print("FAILED: results_regressed.jsonl/results_baseline.jsonl's --ci output no longer matches examples/README.md's documented numbers:", file=sys.stderr)
@@ -120,9 +118,9 @@ def main() -> int:
 
     print(
         "OK: statistical-confidence example matches examples/README.md "
-        f"({n_tests} tests -> Bonferroni alpha={alpha}; run-wide pass-rate p={pass_rate_diff['p_value']}, "
+        f"({n_tests} tests -> Benjamini-Hochberg; run-wide pass-rate p={pass_rate_diff['p_value']}, "
         f"run-wide score p={score_diff['p_value']}, accuracy category p={accuracy_pass_rate_diff['p_value']} on both signals — "
-        "none clear the corrected bar, gate correctly exits 0)."
+        "none flagged significant, gate correctly exits 0)."
     )
     return 0
 
