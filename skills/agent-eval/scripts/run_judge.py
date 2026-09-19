@@ -134,39 +134,81 @@ def format_turns_as_transcript(turns: list[dict]) -> str:
     return "\n".join(f"{turn['role'].capitalize()}: {turn['content']}" for turn in turns)
 
 
-def fill_template(template: str, case: dict) -> str:
-    """Plain string replacement of {key} tokens for every key actually
-    present in the case, not str.format() — the template's own JSON-
-    shaped output instructions are full of {} braces str.format() would
-    try (and fail) to treat as fields. A non-string value (e.g.
-    "trajectory"'s list of steps) is pretty-printed as JSON so the judge
-    reads a real structured trajectory, not Python's repr of a list."""
-    filled = template
-    for key, value in case.items():
-        token = "{" + key + "}"
-        if token not in filled:
-            continue
-        text = value if isinstance(value, str) else json.dumps(value, indent=2)
-        filled = filled.replace(token, text)
+PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _resolve_case_token(case: dict, key: str) -> "str | None":
+    """Looks up one {key} token's replacement text from `case`, honoring
+    fill_template()'s two documented fallbacks. Returns None when nothing
+    in `case` can fill it, so the caller leaves the token as literal text.
+
+    Factored out of fill_template() so run_pairwise.fill_pairwise_template()
+    can compose this with its own {response_1}/{response_2} resolution in
+    a single PLACEHOLDER_RE.sub() pass over the original template, instead
+    of calling fill_template() and then layering a second .replace() pass
+    on top of its already-substituted output — which would reopen the
+    exact injection fill_template() exists to close (see its docstring),
+    just for {response_1}/{response_2} instead of the case's own fields."""
+    if key in case:
+        value = case[key]
+        return value if isinstance(value, str) else json.dumps(value, indent=2)
     # Trajectory cases document their answer field as "final_output" (see
     # references/trajectory-eval.md's case shape), but the shared template
     # placeholder is named {output} (references/llm-judge-prompt.md) — one
     # template serves both documented case shapes without forcing every
     # trajectory case to also carry a redundant "output" key.
-    if "{output}" in filled and "output" not in case and "final_output" in case:
-        filled = filled.replace("{output}", case["final_output"])
+    if key == "output" and "final_output" in case:
+        return case["final_output"]
     # Multi-turn cases (references/multi-turn-eval.md) carry "turns" as
     # structured {"role", "content"} data, not a preformatted string — the
-    # loop above would substitute a raw JSON dump into a template's
-    # {turns} token if one were used, but the documented placeholder is
-    # {transcript}, rendered on demand so every multi-turn case doesn't
-    # need to precompute and store its own transcript string.
-    if "{transcript}" in filled and "turns" in case:
-        filled = filled.replace("{transcript}", format_turns_as_transcript(case["turns"]))
-    return filled
+    # branch above would substitute a raw JSON dump into a template's
+    # {transcript} token if "turns" were matched generically, but the
+    # documented placeholder is {transcript}, rendered on demand so every
+    # multi-turn case doesn't need to precompute and store its own
+    # transcript string.
+    if key == "transcript" and "turns" in case:
+        return format_turns_as_transcript(case["turns"])
+    return None
 
 
-PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+def fill_template(template: str, case: dict) -> str:
+    """Substitutes {key} tokens for every key actually present in the
+    case, not str.format() — the template's own JSON-shaped output
+    instructions are full of {} braces str.format() would try (and fail)
+    to treat as fields. A non-string value (e.g. "trajectory"'s list of
+    steps) is pretty-printed as JSON so the judge reads a real structured
+    trajectory, not Python's repr of a list.
+
+    Does exactly ONE pass over the ORIGINAL template via PLACEHOLDER_RE.sub()
+    — a real, confirmed bug this replaces: an earlier version looped over
+    case.items() doing filled = filled.replace(token, text), checking
+    `token not in filled` against the progressively-mutated string rather
+    than the template. If one field's substituted VALUE happened to
+    contain a literal "{other_key}" substring, the next loop iteration
+    found it in `filled` and expanded it too — splicing a completely
+    different field's raw content into the prompt at a location the
+    template author never wrote and never declared, even a field the
+    template never mentions at all. Confirmed directly: a case whose
+    "output" text contained the literal substring "{trajectory}" leaked
+    its full "trajectory" field into the judge prompt against a template
+    that only ever declared {input}/{output}. Since this skill pairs with
+    agent-redteam (adversarial case generation), case content containing
+    stray {brace} sequences isn't a hypothetical — re.sub()'s replacement
+    strings are never re-scanned for further matches, which is what
+    closes this off structurally rather than just patching the one
+    reported shape. The same fix had to be applied one level up too — see
+    run_pairwise.fill_pairwise_template()'s docstring for the identical
+    bug that was still live there even after this fix landed here, since
+    it called this function and then layered its own second .replace()
+    pass on the result."""
+    def substitute(match: "re.Match[str]") -> str:
+        replacement = _resolve_case_token(case, match.group(1))
+        # No matching field — leave the token as literal text (see
+        # test_leaves_unmatched_tokens_alone) rather than crashing, so a
+        # template written for a richer case shape still works against a
+        # simpler one missing some optional field.
+        return match.group(0) if replacement is None else replacement
+    return PLACEHOLDER_RE.sub(substitute, template)
 
 
 def find_template_placeholders(template: str) -> set[str]:

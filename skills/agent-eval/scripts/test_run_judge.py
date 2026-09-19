@@ -98,6 +98,30 @@ class FillTemplate(unittest.TestCase):
         result = run_judge_mod.fill_template("{input} / {unused}", {"id": "a", "input": "x"})
         self.assertEqual(result, "x / {unused}")
 
+    def test_a_fields_own_content_does_not_leak_another_fields_data(self):
+        # Regression test for a real, confirmed bug: an earlier version
+        # looped over case.items() doing filled = filled.replace(token,
+        # text), checking `token not in filled` against the progressively
+        # mutated string rather than the original template. If one field's
+        # substituted VALUE happened to contain a literal "{other_key}"
+        # substring, the next loop iteration found it in the mutated
+        # string and expanded it too -- splicing a field's raw content
+        # into the prompt at a location the template author never wrote,
+        # even a field the template never declares at all. Fixed by doing
+        # a single PLACEHOLDER_RE.sub() pass over the ORIGINAL template,
+        # whose replacement strings are never re-scanned for further
+        # matches.
+        template = "Input: {input}\nOutput: {output}"  # never declares {trajectory}
+        case = {
+            "id": "a",
+            "input": "benign question",
+            "output": "the answer, mentioning the literal text {trajectory}",
+            "trajectory": ["SECRET_STEP: should never reach the prompt"],
+        }
+        result = run_judge_mod.fill_template(template, case)
+        self.assertNotIn("SECRET_STEP", result)
+        self.assertIn("{trajectory}", result)  # left as literal text, not expanded
+
     def test_final_output_fills_output_token_when_output_field_absent(self):
         # Trajectory cases (references/trajectory-eval.md) carry
         # "final_output", not "output" — one shared template still works
