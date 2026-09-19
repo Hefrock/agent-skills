@@ -85,7 +85,12 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```
    See [`examples/README.md`](./examples/README.md)'s cost/latency regression example for a worked case where accuracy is unchanged (same 90% pass rate) but cost/latency both roughly triple, and the gate catches it.
 
-7. **Be honest about sample size.** With under ~20 cases, a 2-3 case swing can look like a large percentage shift. Say so explicitly: "3/10 passed (30%) — too small a sample to call this a real regression yet" rather than presenting a precise-looking percentage as statistically solid.
+7. **Be honest about sample size — and don't just say so, measure it.** With under ~20 cases, a 2-3 case swing can look like a large percentage shift. `--ci` reports a 95% bootstrap confidence interval on pass rate and mean score, and — with `--baseline` — a paired significance test on the pass-rate delta between the two runs:
+   ```bash
+   python scripts/score_eval.py results.jsonl --ci
+   python scripts/score_eval.py results.jsonl --baseline previous_results.jsonl --ci
+   ```
+   `--fail-on-significant-regression` gates on that test instead of `--fail-on-regression`'s bare threshold-crossing count — it only fails the build when the 95% CI on the pass-rate drop excludes zero, not whenever any single case wobbles past `--threshold` (real LLM-judge noise, not necessarily a real regression). The two gates ask different questions and are meant to be used **together**, not as a replacement for each other — see [`examples/README.md`](./examples/README.md)'s statistical-confidence section for a real worked case where they disagree, and why that's the tool working correctly rather than a bug. Still say the plain-language version too ("3/10 passed (30%) — too small a sample to call this a real regression yet") — the CI number backs up the sentence, it doesn't replace it.
 
 8. **When re-evaluating after a change** (new prompt, new model, new tool definition), always run the *same* eval set as before and diff against the saved baseline. That's what catches regressions — a fresh set of cases each time doesn't.
 

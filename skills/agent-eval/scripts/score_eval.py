@@ -14,6 +14,22 @@ CI gate (exit non-zero on failure):
     python score_eval.py results.jsonl --baseline base.jsonl --fail-on-cost-regression --fail-on-latency-regression
     python score_eval.py results.jsonl --fail-if-mean-cost-above 0.01 --fail-if-mean-latency-above 2000
 
+Statistical confidence (see bootstrap_stats.py):
+    python score_eval.py results.jsonl --ci
+    python score_eval.py results.jsonl --baseline base.jsonl --ci
+    python score_eval.py results.jsonl --baseline base.jsonl --fail-on-significant-regression
+
+`--ci` reports a 95% bootstrap confidence interval on pass rate and mean
+score, and (with `--baseline`) a paired significance test on the pass-rate
+delta between the two runs — direct backing for step 7's "with under ~20
+cases, a 2-3 case swing can look like a large percentage shift" warning,
+which was prose-only before this existed. `--fail-on-significant-regression`
+gates on that significance test rather than `--fail-on-regression`'s bare
+threshold-crossing count, so a single case wobbling from 0.699 to 0.701
+(plausible judge noise) doesn't fail a build the way it would under
+`--fail-on-regression` alone; the two gates answer different questions and
+can be used together.
+
 Input format (JSONL, one JSON object per line):
     {"id": "case_001", "score": 1.0, "category": "format", "rationale": "..."}
     {"id": "case_002", "score": 0.0, "category": "accuracy", "rationale": "..."}
@@ -50,6 +66,7 @@ from collections import defaultdict
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 import jsonl_io  # noqa: E402
+import bootstrap_stats  # noqa: E402
 
 
 def load_results(path):
@@ -173,6 +190,57 @@ def find_regressions(results, baseline_results, threshold):
     return regressions
 
 
+def matched_scores(results, baseline_results):
+    """(current_scores, baseline_scores), aligned by shared id, in `results`'
+    order — only ids present in both lists contribute, same "only compare
+    what both runs actually share" restriction find_regressions() already
+    applies via its own baseline_by_id lookup. This is the paired sample
+    compute_confidence()'s significance test needs: values_a[i] and
+    values_b[i] must be the same case's two scores, not just two same-
+    length lists that happen to line up by position."""
+    baseline_by_id = {r["id"]: r["score"] for r in baseline_results}
+    current, baseline = [], []
+    for r in results:
+        if r["id"] in baseline_by_id:
+            current.append(r["score"])
+            baseline.append(baseline_by_id[r["id"]])
+    return current, baseline
+
+
+def compute_confidence(results, threshold, baseline_results=None, n_boot=bootstrap_stats.DEFAULT_N_BOOT, boot_seed=bootstrap_stats.DEFAULT_BOOT_SEED):
+    """The noise-awareness SKILL.md step 7 asks for in prose ("say so
+    explicitly" when a sample is too small to call a shift real) but
+    nothing before this computed: a 95% bootstrap CI on this run's pass
+    rate and mean score, plus — when a baseline is given and shares at
+    least one case id — a paired bootstrap significance test on the pass-
+    rate delta between the two runs. That last piece is the direct fix
+    for find_regressions()'s blind spot: it flags any case that crosses
+    the threshold (even 0.699 -> 0.701, plausible LLM-judge run-to-run
+    noise) as a "regression" with no sense of whether the *aggregate*
+    shift is distinguishable from chance at this sample size.
+
+    Returns {"pass_rate_ci", "mean_score_ci"} always, plus
+    "paired_pass_rate_diff" (a bootstrap_stats.paired_bootstrap_diff()
+    result) when baseline_results is given and shares at least one id
+    with results — omitted, not fabricated, when there's no overlap to
+    pair on."""
+    scores = [r["score"] for r in results]
+    passed_flags = [1.0 if s >= threshold else 0.0 for s in scores]
+    confidence = {
+        "pass_rate_ci": bootstrap_stats.bootstrap_mean_ci(passed_flags, n_boot, boot_seed),
+        "mean_score_ci": bootstrap_stats.bootstrap_mean_ci(scores, n_boot, boot_seed),
+    }
+    if baseline_results:
+        current_scores, baseline_scores = matched_scores(results, baseline_results)
+        if current_scores:
+            current_passed = [1.0 if s >= threshold else 0.0 for s in current_scores]
+            baseline_passed = [1.0 if s >= threshold else 0.0 for s in baseline_scores]
+            confidence["paired_pass_rate_diff"] = bootstrap_stats.paired_bootstrap_diff(
+                current_passed, baseline_passed, n_boot, boot_seed
+            )
+    return confidence
+
+
 def find_metric_regression(summary, baseline_summary, metric, tolerance):
     """summary/baseline_summary are summarize()'s return values; metric is
     "mean_cost_usd" or "mean_latency_ms". Returns a details dict if the
@@ -202,6 +270,7 @@ def check_gates(
     summary, regressions, fail_under, fail_on_regression,
     cost_regression=None, latency_regression=None,
     fail_if_mean_cost_above=None, fail_if_mean_latency_above=None,
+    significant_regression=None,
 ):
     """Return a list of gate-failure messages (empty list means all gates pass).
 
@@ -212,7 +281,9 @@ def check_gates(
     return values (or None) — computed by the caller, not here, so this
     function stays a pure function over already-computed inputs, same
     convention as `regressions` above (find_regressions()'s output, not
-    recomputed inside check_gates either).
+    recomputed inside check_gates either). significant_regression is
+    compute_confidence()'s "paired_pass_rate_diff" value (or None), same
+    "caller computes it, this function just reads it" split.
     """
     failures = []
     if fail_under is not None:
@@ -224,6 +295,12 @@ def check_gates(
             )
     if fail_on_regression and regressions:
         failures.append(f"--fail-on-regression: {len(regressions)} regression(s) vs baseline")
+    if significant_regression is not None and significant_regression["diff"] < 0 and significant_regression["significant_at_0.05"]:
+        failures.append(
+            f"--fail-on-significant-regression: pass rate {significant_regression['point_b']:.3f} -> "
+            f"{significant_regression['point_a']:.3f} is statistically significant (p={significant_regression['p_value']}, "
+            f"n={significant_regression['n']}), not just a threshold-crossing on noise"
+        )
     if cost_regression is not None:
         failures.append(
             f"--fail-on-cost-regression: mean cost ${cost_regression['current']:.4f} exceeds baseline "
@@ -243,7 +320,7 @@ def check_gates(
     return failures
 
 
-def print_report(summary, results, regressions, threshold, cost_regression=None, latency_regression=None):
+def print_report(summary, results, regressions, threshold, cost_regression=None, latency_regression=None, confidence=None):
     if summary is None:
         print("No valid results found.")
         return
@@ -260,6 +337,21 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
 
     if n < 20:
         print(f"⚠ Small sample (n={n}) — treat the pass rate as directional, not precise.")
+
+    if confidence is not None:
+        pr_ci = confidence["pass_rate_ci"]
+        ms_ci = confidence["mean_score_ci"]
+        print(f"\n95% CI (bootstrap, {pr_ci['n_boot']} resamples):")
+        print(f"  Pass rate:  [{pr_ci['ci_lo'] * 100:.1f}%, {pr_ci['ci_hi'] * 100:.1f}%]")
+        print(f"  Mean score: [{ms_ci['ci_lo']:.3f}, {ms_ci['ci_hi']:.3f}]")
+        diff = confidence.get("paired_pass_rate_diff")
+        if diff is not None:
+            verdict = "SIGNIFICANT" if diff["significant_at_0.05"] else "not significant"
+            print(
+                f"  Pass rate vs baseline: {diff['point_b'] * 100:.1f}% -> {diff['point_a'] * 100:.1f}% "
+                f"(diff {diff['diff'] * 100:+.1f}pp, 95% CI [{diff['ci_lo'] * 100:+.1f}pp, {diff['ci_hi'] * 100:+.1f}pp], "
+                f"p={diff['p_value']}, {verdict} at alpha=0.05, n={diff['n']} matched case(s))"
+            )
 
     if len(summary["by_category"]) > 1:
         print("\nBy category:")
@@ -317,10 +409,23 @@ def main():
                         help="Exit non-zero if mean cost_usd exceeds this absolute value (CI gate; no --baseline needed)")
     parser.add_argument("--fail-if-mean-latency-above", type=float, default=None,
                         help="Exit non-zero if mean latency_ms exceeds this absolute value (CI gate; no --baseline needed)")
+    parser.add_argument("--ci", action="store_true",
+                        help="Report a 95%% bootstrap confidence interval on pass rate and mean score (and, with --baseline, "
+                             "a paired significance test on the pass-rate delta) instead of treating every number as exact")
+    parser.add_argument("--fail-on-significant-regression", action="store_true",
+                        help="Exit non-zero only if --baseline's pass-rate drop is statistically significant (95%% CI excludes "
+                             "zero), not just any single case crossing --threshold (CI gate; requires --baseline)")
+    parser.add_argument("--n-boot", type=int, default=bootstrap_stats.DEFAULT_N_BOOT,
+                        help=f"Bootstrap resamples for --ci/--fail-on-significant-regression (default: {bootstrap_stats.DEFAULT_N_BOOT})")
+    parser.add_argument("--boot-seed", type=int, default=bootstrap_stats.DEFAULT_BOOT_SEED,
+                        help=f"Random seed for the bootstrap, for reproducible CIs (default: {bootstrap_stats.DEFAULT_BOOT_SEED})")
     args = parser.parse_args()
 
     if (args.fail_on_cost_regression or args.fail_on_latency_regression) and not args.baseline:
         print("--fail-on-cost-regression/--fail-on-latency-regression require --baseline.", file=sys.stderr)
+        sys.exit(2)
+    if args.fail_on_significant_regression and not args.baseline:
+        print("--fail-on-significant-regression requires --baseline.", file=sys.stderr)
         sys.exit(2)
 
     results = load_results(args.results)
@@ -344,11 +449,22 @@ def main():
     cost_regression = find_metric_regression(summary, baseline_summary, "mean_cost_usd", args.cost_regression_tolerance) if args.fail_on_cost_regression else None
     latency_regression = find_metric_regression(summary, baseline_summary, "mean_latency_ms", args.latency_regression_tolerance) if args.fail_on_latency_regression else None
 
-    print_report(summary, results, regressions, args.threshold, cost_regression=cost_regression, latency_regression=latency_regression)
+    confidence = None
+    significant_regression = None
+    if (args.ci or args.fail_on_significant_regression) and summary is not None:
+        confidence = compute_confidence(
+            results, args.threshold, baseline_results=baseline_results if args.baseline else None,
+            n_boot=args.n_boot, boot_seed=args.boot_seed,
+        )
+        significant_regression = confidence.get("paired_pass_rate_diff")
+
+    print_report(summary, results, regressions, args.threshold, cost_regression=cost_regression, latency_regression=latency_regression, confidence=confidence)
 
     if args.json_out and summary:
         output = dict(summary)
         output["regressions"] = regressions
+        if confidence is not None:
+            output["confidence"] = confidence
         with open(args.json_out, "w") as f:
             json.dump(output, f, indent=2)
         print(f"Summary written to {args.json_out}")
@@ -357,6 +473,7 @@ def main():
         summary, regressions, args.fail_under, args.fail_on_regression,
         cost_regression=cost_regression, latency_regression=latency_regression,
         fail_if_mean_cost_above=args.fail_if_mean_cost_above, fail_if_mean_latency_above=args.fail_if_mean_latency_above,
+        significant_regression=significant_regression if args.fail_on_significant_regression else None,
     )
     if gate_failures:
         print("\nGATE FAILED:", file=sys.stderr)
