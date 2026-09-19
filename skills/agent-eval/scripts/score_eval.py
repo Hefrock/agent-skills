@@ -32,10 +32,20 @@ The mean-score test exists specifically because the pass-rate test alone
 discards magnitude: a case dropping from 0.9 to 0.4 counts identically to
 one dropping from 0.71 to 0.69 once both are "fail," so a real, consistent
 quality drop that never crosses `--threshold` is invisible to the pass-rate
-signal but not to the raw-score one. The gate fires if either is
-significant; all three gates (`--fail-on-regression` and both halves of
-`--fail-on-significant-regression`) answer different questions and are
-meant to be used together, not as substitutes for each other.
+signal but not to the raw-score one.
+
+Both of those are still run-wide aggregates, which have their own blind
+spot: a real regression concentrated in one category can get diluted away
+against unaffected cases from other categories (confirmed directly on
+this skill's own worked regression example — see
+compute_per_category_confidence()'s docstring). With `--baseline`, `--ci`
+also runs both paired tests *per category* (skipping any category under
+3 matched cases — too few for a bootstrap to mean anything, see
+MIN_CATEGORY_N_FOR_SIGNIFICANCE), and `--fail-on-significant-regression`
+gates on those too. The gate fires if any signal — run-wide pass rate,
+run-wide mean score, or any single category's pass rate or mean score —
+is significant; all of these answer different questions and are meant to
+be used together, not as substitutes for each other.
 
 Input format (JSONL, one JSON object per line):
     {"id": "case_001", "score": 1.0, "category": "format", "rationale": "..."}
@@ -266,6 +276,85 @@ def compute_confidence(results, threshold, baseline_results=None, n_boot=bootstr
     return confidence
 
 
+MIN_CATEGORY_N_FOR_SIGNIFICANCE = 3
+
+
+def compute_per_category_confidence(
+    results, threshold, baseline_results,
+    n_boot=bootstrap_stats.DEFAULT_N_BOOT, boot_seed=bootstrap_stats.DEFAULT_BOOT_SEED,
+    min_n=MIN_CATEGORY_N_FOR_SIGNIFICANCE,
+):
+    """compute_confidence()'s pass-rate/mean-score diffs only ever test the
+    *overall* run — and that's a real blind spot this repo's own worked
+    regression example demonstrates directly: results_regressed.jsonl's
+    aggregate pass-rate diff is not significant (p=0.421) because an
+    8-case regression concentrated entirely in the `accuracy` category
+    gets diluted against 12 unaffected cases from three other categories.
+    Tested directly against that exact category in isolation (not
+    hypothesized): the same paired test, scoped to just the 8 matched
+    `accuracy` cases, gives p=0.043 on both signals — genuinely
+    significant. That's this function's whole reason to exist: run
+    compute_confidence()'s same two paired tests once per category
+    instead of once for the whole run, so a regression an aggregate test
+    dilutes away still gets caught somewhere.
+
+    Categories are grouped the same case/whitespace-insensitive way
+    summarize()'s by_category is (normalize_category() for the key, first-
+    seen spelling for the display label) — a case is assigned to whatever
+    category its *current* row carries; baseline-only categories or
+    id/category mismatches are not specially handled beyond matched_scores()'s
+    existing "only ids present in both runs count" rule.
+
+    A category with fewer than `min_n` matched cases is reported with
+    "skipped_reason" instead of a computed diff, not silently dropped and
+    not computed anyway. Below n=3, a paired bootstrap can only ever
+    resample from 1-2 distinct per-case diffs — confirmed directly: two
+    cases pointing the same direction (one a real regression, one just
+    ordinary judge noise) bootstrap to p=0.0, "significant," with the
+    bootstrap structurally unable to ever land on the other side of zero
+    regardless of how thin that evidence actually is. That's a false
+    confidence trap, not a real result, so this floor exists to refuse to
+    compute rather than report it.
+
+    Returns {category_display_name: {"n": int, "paired_pass_rate_diff": ...,
+    "paired_mean_score_diff": ...}} for categories at or above min_n, or
+    {"n": int, "skipped_reason": str} below it. Empty dict if no
+    baseline_results or no matched ids at all."""
+    if not baseline_results:
+        return {}
+    baseline_by_id = {r["id"]: r["score"] for r in baseline_results}
+    by_category: dict = {}
+    display_names: dict = {}
+    for r in results:
+        if r["id"] not in baseline_by_id:
+            continue
+        raw_category = r.get("category", "uncategorized")
+        key = normalize_category(raw_category)
+        display_names.setdefault(key, raw_category)
+        by_category.setdefault(key, []).append((r["score"], baseline_by_id[r["id"]]))
+
+    per_category = {}
+    for key, pairs in sorted(by_category.items()):
+        n = len(pairs)
+        label = display_names[key]
+        if n < min_n:
+            per_category[label] = {
+                "n": n,
+                "skipped_reason": f"only {n} matched case(s) — need at least {min_n} for a meaningful bootstrap",
+            }
+            continue
+        current_scores = [p[0] for p in pairs]
+        baseline_scores = [p[1] for p in pairs]
+        current_passed = [1.0 if s >= threshold else 0.0 for s in current_scores]
+        baseline_passed = [1.0 if s >= threshold else 0.0 for s in baseline_scores]
+        per_category[label] = {
+            "n": n,
+            "paired_pass_rate_diff": bootstrap_stats.paired_bootstrap_diff(current_passed, baseline_passed, n_boot, boot_seed),
+            "paired_mean_score_diff": bootstrap_stats.paired_bootstrap_diff(current_scores, baseline_scores, n_boot, boot_seed),
+        }
+    return per_category
+
+
 def find_metric_regression(summary, baseline_summary, metric, tolerance):
     """summary/baseline_summary are summarize()'s return values; metric is
     "mean_cost_usd" or "mean_latency_ms". Returns a details dict if the
@@ -296,6 +385,7 @@ def check_gates(
     cost_regression=None, latency_regression=None,
     fail_if_mean_cost_above=None, fail_if_mean_latency_above=None,
     significant_regression=None, significant_score_regression=None,
+    per_category_confidence=None,
 ):
     """Return a list of gate-failure messages (empty list means all gates pass).
 
@@ -317,6 +407,14 @@ def check_gates(
     docstring for the confirmed example), so the gate needs both signals
     to actually catch what "significant regression" should mean, not
     just the more conservative of the two.
+
+    per_category_confidence is compute_per_category_confidence()'s return
+    value (or None) — checked under the same flag for the same reason:
+    an aggregate-level regression concentrated in one category can be
+    diluted away by every signal above (confirmed on this skill's own
+    worked example — see compute_per_category_confidence()'s docstring),
+    so the gate walks every category's own paired diffs too, not just the
+    two run-wide ones.
     """
     failures = []
     if fail_under is not None:
@@ -340,6 +438,15 @@ def check_gates(
             f"{significant_score_regression['point_a']:.3f} is statistically significant (p={significant_score_regression['p_value']}, "
             f"n={significant_score_regression['n']}) — caught here even though the pass-rate test alone might not"
         )
+    for category, entry in (per_category_confidence or {}).items():
+        for metric_key, metric_label in (("paired_pass_rate_diff", "pass rate"), ("paired_mean_score_diff", "mean score")):
+            diff = entry.get(metric_key)
+            if diff is not None and diff["diff"] < 0 and diff["significant_at_0.05"]:
+                failures.append(
+                    f"--fail-on-significant-regression (category {category!r}, {metric_label}): "
+                    f"{diff['point_b']:.3f} -> {diff['point_a']:.3f} is statistically significant "
+                    f"(p={diff['p_value']}, n={diff['n']}) — diluted away in the run-wide aggregate"
+                )
     if cost_regression is not None:
         failures.append(
             f"--fail-on-cost-regression: mean cost ${cost_regression['current']:.4f} exceeds baseline "
@@ -359,7 +466,7 @@ def check_gates(
     return failures
 
 
-def print_report(summary, results, regressions, threshold, cost_regression=None, latency_regression=None, confidence=None):
+def print_report(summary, results, regressions, threshold, cost_regression=None, latency_regression=None, confidence=None, per_category_confidence=None):
     if summary is None:
         print("No valid results found.")
         return
@@ -410,6 +517,27 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
             if "mean_latency_ms" in stats:
                 line += f", {stats['mean_latency_ms']:.0f}ms"
             print(line)
+
+    if per_category_confidence:
+        print("\nBy category vs baseline (paired bootstrap significance):")
+        for cat, entry in per_category_confidence.items():
+            if "skipped_reason" in entry:
+                print(f"  {cat}: skipped — {entry['skipped_reason']}")
+                continue
+            lines = []
+            for metric_key, metric_label in (("paired_pass_rate_diff", "pass rate"), ("paired_mean_score_diff", "score")):
+                diff = entry[metric_key]
+                if not diff["significant_at_0.05"]:
+                    verdict = "not significant"
+                else:
+                    # significant_at_0.05 alone doesn't say which direction —
+                    # an improvement (diff > 0, e.g. this exact example's
+                    # `format` category, every case held or rose) reads
+                    # identically to a regression unless the sign is spelled
+                    # out here explicitly.
+                    verdict = "SIGNIFICANT REGRESSION" if diff["diff"] < 0 else "SIGNIFICANT IMPROVEMENT"
+                lines.append(f"{metric_label} p={diff['p_value']} ({verdict})")
+            print(f"  {cat} (n={entry['n']}): {', '.join(lines)}")
 
     lowest = lowest_scoring(results, n=min(3, n))
     print("\nLowest-scoring cases:")
@@ -500,6 +628,7 @@ def main():
     confidence = None
     significant_regression = None
     significant_score_regression = None
+    per_category_confidence = None
     if (args.ci or args.fail_on_significant_regression) and summary is not None:
         confidence = compute_confidence(
             results, args.threshold, baseline_results=baseline_results if args.baseline else None,
@@ -507,14 +636,23 @@ def main():
         )
         significant_regression = confidence.get("paired_pass_rate_diff")
         significant_score_regression = confidence.get("paired_mean_score_diff")
+        if args.baseline:
+            per_category_confidence = compute_per_category_confidence(
+                results, args.threshold, baseline_results, n_boot=args.n_boot, boot_seed=args.boot_seed,
+            )
 
-    print_report(summary, results, regressions, args.threshold, cost_regression=cost_regression, latency_regression=latency_regression, confidence=confidence)
+    print_report(
+        summary, results, regressions, args.threshold, cost_regression=cost_regression, latency_regression=latency_regression,
+        confidence=confidence, per_category_confidence=per_category_confidence,
+    )
 
     if args.json_out and summary:
         output = dict(summary)
         output["regressions"] = regressions
         if confidence is not None:
             output["confidence"] = confidence
+        if per_category_confidence:
+            output["per_category_confidence"] = per_category_confidence
         with open(args.json_out, "w") as f:
             json.dump(output, f, indent=2)
         print(f"Summary written to {args.json_out}")
@@ -525,6 +663,7 @@ def main():
         fail_if_mean_cost_above=args.fail_if_mean_cost_above, fail_if_mean_latency_above=args.fail_if_mean_latency_above,
         significant_regression=significant_regression if args.fail_on_significant_regression else None,
         significant_score_regression=significant_score_regression if args.fail_on_significant_regression else None,
+        per_category_confidence=per_category_confidence if args.fail_on_significant_regression else None,
     )
     if gate_failures:
         print("\nGATE FAILED:", file=sys.stderr)

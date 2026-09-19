@@ -112,9 +112,11 @@ jobs:
 
       - name: agent-eval — verify the statistical-confidence example's bootstrap numbers
         # Self-check, same rationale as the other worked-example checks:
-        # examples/README.md quotes an exact bootstrap CI/p-value for
-        # --fail-on-significant-regression's exit-0 story on the regression
-        # example. Confirm it hasn't silently drifted (or started firing).
+        # examples/README.md quotes exact bootstrap numbers at both the
+        # run-wide level (not significant) and the accuracy-category level
+        # (significant) for --fail-on-significant-regression's exit-1 story
+        # on the regression example. Confirm neither half has silently
+        # drifted (or the wrong half started/stopped firing).
         run: python skills/agent-eval/scripts/verify_ci_example.py
 
       - name: agent-eval — unit-test bootstrap_stats.py (stdlib unittest)

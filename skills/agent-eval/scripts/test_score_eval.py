@@ -347,6 +347,93 @@ class ComputeConfidence(unittest.TestCase):
         self.assertEqual(confidence["pass_rate_ci"]["n_boot"], 250)
 
 
+def _rows(category, current_scores, baseline_scores, prefix):
+    """Builds matched (current, baseline) row lists for one category, ids
+    shared between both so compute_per_category_confidence() pairs them."""
+    current = [{"id": f"{prefix}{i}", "score": s, "category": category} for i, s in enumerate(current_scores)]
+    baseline = [{"id": f"{prefix}{i}", "score": s, "category": category} for i, s in enumerate(baseline_scores)]
+    return current, baseline
+
+
+class ComputePerCategoryConfidence(unittest.TestCase):
+    def test_no_baseline_returns_empty(self):
+        results = [{"id": "a", "score": 1.0, "category": "x"}]
+        self.assertEqual(score_eval.compute_per_category_confidence(results, 0.7, None), {})
+
+    def test_empty_baseline_returns_empty(self):
+        results = [{"id": "a", "score": 1.0, "category": "x"}]
+        self.assertEqual(score_eval.compute_per_category_confidence(results, 0.7, []), {})
+
+    def test_groups_by_category_case_and_whitespace_insensitively(self):
+        current = [
+            {"id": "a", "score": 1.0, "category": "Accuracy"},
+            {"id": "b", "score": 1.0, "category": " accuracy "},
+            {"id": "c", "score": 1.0, "category": "ACCURACY"},
+        ]
+        baseline = [{"id": f"{c}", "score": 1.0, "category": "accuracy"} for c in "abc"]
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=1)
+        self.assertEqual(len(result), 1)
+        self.assertIn("Accuracy", result)  # first-seen spelling, same convention as summarize()
+
+    def test_category_below_min_n_is_skipped_with_reason(self):
+        current, baseline = _rows("tiny", [1.0, 0.0], [1.0, 1.0], "t")
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        self.assertIn("skipped_reason", result["tiny"])
+        self.assertEqual(result["tiny"]["n"], 2)
+        self.assertNotIn("paired_pass_rate_diff", result["tiny"])
+
+    def test_category_at_or_above_min_n_gets_both_diffs(self):
+        current, baseline = _rows("cat", [0.0] * 5, [1.0] * 5, "c")
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        entry = result["cat"]
+        self.assertNotIn("skipped_reason", entry)
+        self.assertIn("paired_pass_rate_diff", entry)
+        self.assertIn("paired_mean_score_diff", entry)
+        self.assertTrue(entry["paired_pass_rate_diff"]["significant_at_0.05"])
+
+    def test_catches_regression_diluted_away_in_aggregate(self):
+        # The confirmed real-world case, loaded directly from this skill's
+        # own worked example rather than hand-tuned synthetic data: a
+        # regression concentrated in the `accuracy` category, diluted by
+        # unaffected cases from three other categories, invisible to the
+        # run-wide aggregate but not to the per-category test. Hand-tuning
+        # synthetic data to land in this exact "diluted below significance
+        # yet real per-category" statistical regime turned out to be
+        # surprisingly fiddly (a too-clean synthetic regression stays
+        # aggregate-significant even at high dilution ratios) -- the real
+        # example already sits there, confirmed via examples/README.md's
+        # own worked numbers, so this test uses it directly.
+        examples_dir = os.path.join(HERE, "..", "examples")
+        current = score_eval.load_results(os.path.join(examples_dir, "results_regressed.jsonl"))
+        baseline = score_eval.load_results(os.path.join(examples_dir, "results_baseline.jsonl"))
+
+        # Aggregate test sees the dilution.
+        overall = score_eval.compute_confidence(current, 0.7, baseline_results=baseline)
+        self.assertFalse(overall["paired_pass_rate_diff"]["significant_at_0.05"])
+
+        # Per-category test isolates the real regression.
+        per_category = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        self.assertTrue(per_category["accuracy"]["paired_pass_rate_diff"]["significant_at_0.05"])
+        self.assertLess(per_category["accuracy"]["paired_pass_rate_diff"]["diff"], 0)
+        self.assertFalse(per_category["format"]["paired_pass_rate_diff"]["significant_at_0.05"])
+
+    def test_uses_current_rows_category_not_baseline_rows(self):
+        # Grouping follows the *current* run's category assignment, same
+        # convention summarize()'s by_category uses -- a case relabeled
+        # between runs is grouped under its current label.
+        current = [{"id": f"c{i}", "score": 1.0, "category": "new_label"} for i in range(3)]
+        baseline = [{"id": f"c{i}", "score": 1.0, "category": "old_label"} for i in range(3)]
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        self.assertIn("new_label", result)
+        self.assertNotIn("old_label", result)
+
+    def test_only_matched_ids_contribute(self):
+        current = [{"id": "a", "score": 1.0, "category": "x"}, {"id": "unmatched", "score": 0.0, "category": "x"}]
+        baseline = [{"id": "a", "score": 1.0, "category": "x"}]
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=1)
+        self.assertEqual(result["x"]["n"], 1)
+
+
 class FindMetricRegression(unittest.TestCase):
     def test_increase_beyond_tolerance_flagged(self):
         summary = {"mean_cost_usd": 0.008}
@@ -496,6 +583,61 @@ class CheckGates(unittest.TestCase):
             significant_regression=pass_rate_reg, significant_score_regression=score_reg,
         )
         self.assertEqual(len(failures), 2)
+
+    def test_per_category_significant_regression_triggers(self):
+        per_category = {
+            "accuracy": {
+                "n": 8,
+                "paired_pass_rate_diff": {"point_a": 0.6, "point_b": 1.0, "diff": -0.4, "p_value": 0.04, "significant_at_0.05": True, "n": 8},
+                "paired_mean_score_diff": {"point_a": 0.6, "point_b": 0.9, "diff": -0.3, "p_value": 0.04, "significant_at_0.05": True, "n": 8},
+            },
+        }
+        failures = score_eval.check_gates(self._summary(0.8), [], None, False, per_category_confidence=per_category)
+        self.assertEqual(len(failures), 2)  # both metrics tripped for this one category
+        self.assertTrue(any("accuracy" in f for f in failures))
+
+    def test_per_category_significant_improvement_does_not_trigger(self):
+        per_category = {
+            "format": {
+                "n": 5,
+                "paired_pass_rate_diff": {"point_a": 1.0, "point_b": 0.8, "diff": 0.2, "p_value": 0.03, "significant_at_0.05": True, "n": 5},
+                "paired_mean_score_diff": {"point_a": 0.97, "point_b": 0.88, "diff": 0.09, "p_value": 0.03, "significant_at_0.05": True, "n": 5},
+            },
+        }
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, per_category_confidence=per_category), [])
+
+    def test_per_category_skipped_entry_does_not_trigger(self):
+        per_category = {"tiny": {"n": 2, "skipped_reason": "only 2 matched case(s) — need at least 3"}}
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, per_category_confidence=per_category), [])
+
+    def test_per_category_not_significant_does_not_trigger(self):
+        per_category = {
+            "grounding": {
+                "n": 4,
+                "paired_pass_rate_diff": {"point_a": 0.9, "point_b": 1.0, "diff": -0.1, "p_value": 0.7, "significant_at_0.05": False, "n": 4},
+                "paired_mean_score_diff": {"point_a": 0.9, "point_b": 0.95, "diff": -0.05, "p_value": 0.7, "significant_at_0.05": False, "n": 4},
+            },
+        }
+        self.assertEqual(score_eval.check_gates(self._summary(0.9), [], None, False, per_category_confidence=per_category), [])
+
+    def test_none_per_category_confidence_does_not_trigger(self):
+        self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, False, per_category_confidence=None), [])
+
+    def test_multiple_categories_each_report_their_own_failure(self):
+        per_category = {
+            "accuracy": {
+                "n": 8,
+                "paired_pass_rate_diff": {"point_a": 0.6, "point_b": 1.0, "diff": -0.4, "p_value": 0.04, "significant_at_0.05": True, "n": 8},
+                "paired_mean_score_diff": {"point_a": 0.6, "point_b": 0.9, "diff": -0.3, "p_value": 0.7, "significant_at_0.05": False, "n": 8},
+            },
+            "tool_use": {
+                "n": 5,
+                "paired_pass_rate_diff": {"point_a": 0.4, "point_b": 1.0, "diff": -0.6, "p_value": 0.02, "significant_at_0.05": True, "n": 5},
+                "paired_mean_score_diff": {"point_a": 0.4, "point_b": 0.9, "diff": -0.5, "p_value": 0.02, "significant_at_0.05": True, "n": 5},
+            },
+        }
+        failures = score_eval.check_gates(self._summary(0.5), [], None, False, per_category_confidence=per_category)
+        self.assertEqual(len(failures), 3)  # accuracy pass-rate + tool_use pass-rate + tool_use score
 
 
 class Cli(unittest.TestCase):
@@ -716,6 +858,61 @@ class Cli(unittest.TestCase):
         with open(out_path) as f:
             summary = json.load(f)
         self.assertNotIn("confidence", summary)
+
+    def test_ci_prints_per_category_significance_section(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("By category vs baseline", proc.stdout)
+        self.assertIn("accuracy (n=5)", proc.stdout)
+        self.assertIn("SIGNIFICANT REGRESSION", proc.stdout)
+
+    def test_ci_shows_skipped_reason_for_tiny_category(self):
+        base = self.make([{"id": "c0", "score": 1.0, "category": "rare"}, {"id": "c1", "score": 1.0, "category": "rare"}])
+        cur = self.make([{"id": "c0", "score": 0.0, "category": "rare"}, {"id": "c1", "score": 0.0, "category": "rare"}])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("rare: skipped", proc.stdout)
+
+    def test_ci_marks_significant_improvement_distinctly_from_regression(self):
+        base = self.make([{"id": f"c{i}", "score": 0.5, "category": "format"} for i in range(6)])
+        cur = self.make([{"id": f"c{i}", "score": 1.0, "category": "format"} for i in range(6)])
+        proc = self.run_script(cur, "--baseline", base, "--ci")
+        self.assertIn("SIGNIFICANT IMPROVEMENT", proc.stdout)
+        self.assertNotIn("SIGNIFICANT REGRESSION", proc.stdout)
+
+    def test_no_per_category_section_without_baseline(self):
+        path = self.make([{"id": "a", "score": 1.0, "category": "x"}])
+        proc = self.run_script(path, "--ci")
+        self.assertNotIn("By category vs baseline", proc.stdout)
+
+    def test_fail_on_significant_regression_catches_category_diluted_by_aggregate(self):
+        # The exact real-world scenario examples/README.md documents, run
+        # end-to-end as a subprocess against the actual worked-example
+        # files: a regression concentrated in the `accuracy` category,
+        # diluted by unaffected cases from three others, invisible to the
+        # run-wide aggregate test (both signals -- confirmed not
+        # significant elsewhere in this suite) but not to the per-category
+        # one. This is the behavior change per-category testing exists
+        # for: before it existed, this exact command exited 0.
+        examples_dir = os.path.join(HERE, "..", "examples")
+        cur = os.path.join(examples_dir, "results_regressed.jsonl")
+        base = os.path.join(examples_dir, "results_baseline.jsonl")
+        proc = self.run_script(cur, "--baseline", base, "--fail-on-significant-regression")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("category 'accuracy'", proc.stderr)
+
+    def test_json_out_includes_per_category_confidence(self):
+        base = self.make([{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)])
+        cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
+        out_fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(out_fd)
+        self._paths.append(out_path)
+        proc = self.run_script(cur, "--baseline", base, "--ci", "--json-out", out_path)
+        self.assertEqual(proc.returncode, 0)
+        with open(out_path) as f:
+            summary = json.load(f)
+        self.assertIn("per_category_confidence", summary)
+        self.assertIn("accuracy", summary["per_category_confidence"])
 
 
 if __name__ == "__main__":

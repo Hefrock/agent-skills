@@ -220,17 +220,35 @@ python scripts/score_eval.py examples/results_regressed.jsonl \
   Mean score vs baseline: 0.890 -> 0.838 (diff -0.052, 95% CI [-0.150, +0.030], p=0.255, not significant at alpha=0.05, n=20 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
 ```
 
-`--fail-on-significant-regression` exits **0** on this exact case — genuinely, not a bug — on *both* signals it checks. This is worth sitting with rather than explaining away: the same before/after that `--fail-on-regression` correctly fails is, at the level of the *overall* pass rate AND the *overall* mean score, not statistically distinguishable from noise at n=20. Both things are true at once:
+Both aggregate signals come back **not significant** — genuinely, not a bug. This is worth sitting with rather than explaining away: the same before/after that `--fail-on-regression` correctly fails is, at the level of the *overall* pass rate AND the *overall* mean score, not statistically distinguishable from noise at n=20. Both things are true at once:
 
 1. **The per-case regressions are real** — `acc_03`/`acc_06`/`acc_08`'s rationales name specific dropped facts (an account ID, a timeline event), not judge flakiness. `--fail-on-regression` is right to name them.
-2. **The *aggregate* shift genuinely isn't distinguishable from chance at this sample size, on either measure** — the regression is concentrated entirely in the `accuracy` category (8 cases, 100% -> 62% pass), and diluting that against 12 unaffected cases from the other three categories washes out the signal both aggregate tests are looking for. Note the raw-score test (p=0.255) is meaningfully more sensitive than the binarized pass-rate test (p=0.421) on this identical data — it's the mean-score test's whole reason for existing, catching magnitude a pass/fail count discards — but even the more sensitive test doesn't clear 0.05 here. A category-scoped significance test would likely find this one significant; **that's not built here** — `compute_confidence()` only tests overall pass rate and overall mean score, not a per-category breakdown, a real scoped limitation worth knowing about rather than a claim this tool doesn't make.
+2. **The *aggregate* shift genuinely isn't distinguishable from chance at this sample size, on either measure** — the regression is concentrated entirely in the `accuracy` category (8 cases, 100% -> 62% pass), and diluting that against 12 unaffected cases from the other three categories washes out the signal both aggregate tests are looking for. Note the raw-score test (p=0.255) is meaningfully more sensitive than the binarized pass-rate test (p=0.421) on this identical data — it's the mean-score test's whole reason for existing, catching magnitude a pass/fail count discards — but even the more sensitive test doesn't clear 0.05 here at the aggregate level.
 
-The practical takeaway: **use both gates together, not one instead of the other.** `--fail-on-regression` catches named, specific per-case failures immediately, cheaply, and with zero false negatives (a threshold crossing always fires). `--fail-on-significant-regression` is the stricter, complementary question — "is the topline number moving for a real reason" — checked two ways (pass-rate delta and mean-score delta, whichever is more sensitive to a given regression's shape), and it won't fire on this particular example precisely because the topline numbers alone can't see a category-concentrated regression. Neither gate subsumes the other.
+That's exactly the gap a **per-category** significance test closes. `--ci` runs both paired tests once per category too (skipping any category under 3 matched cases — see `compute_per_category_confidence()`'s docstring for why):
 
-A case where the mean-score signal *does* catch something the pass-rate signal misses entirely: 15 cases all drop from 1.0 to 0.71 — still comfortably above the 0.7 threshold, so pass rate holds at 100% -> 100% and `--fail-on-regression` sees zero flips — but the score-magnitude drop (0.29 on every single case) is large, consistent, and exactly what the raw-score paired test exists to catch (`p≈0`, significant). This is the asymmetric case: a real quality regression that never crosses the pass/fail line is invisible to `--fail-on-regression` *and* to the pass-rate half of `--fail-on-significant-regression`, but not to the mean-score half.
+```
+By category vs baseline (paired bootstrap significance):
+  accuracy (n=8): pass rate p=0.043 (SIGNIFICANT REGRESSION), score p=0.043 (SIGNIFICANT REGRESSION)
+  format (n=5): pass rate p=0.663 (not significant), score p=0.031 (SIGNIFICANT IMPROVEMENT)
+  grounding (n=4): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  tool_use (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+```
+
+Scoped to just the 8 `accuracy` cases, both signals clear 0.05 (p=0.043) — the exact regression the run-wide aggregate diluted away. Note `format` also comes back significant, but as an **improvement** (every case held steady or rose) — the report and the gate both check the sign of the diff, not just whether it's significant, so an improvement never fails a build.
 
 ```bash
 python scripts/score_eval.py examples/results_regressed.jsonl \
     --baseline examples/results_baseline.jsonl --fail-on-significant-regression
-# exits 0 -- neither pass-rate nor mean-score signal is significant at the aggregate level, see above
 ```
+```
+GATE FAILED:
+  - --fail-on-significant-regression (category 'accuracy', pass rate): 1.000 -> 0.625 is statistically significant (p=0.043, n=8) — diluted away in the run-wide aggregate
+  - --fail-on-significant-regression (category 'accuracy', mean score): 0.912 -> 0.725 is statistically significant (p=0.043, n=8) — diluted away in the run-wide aggregate
+```
+
+Exit code **1** — this is the behavior change per-category testing exists for. Before it existed, this exact command exited 0 (both prior editions of this section documented that as the tool "working correctly" at the time, since the aggregate-only view genuinely couldn't see the regression — that was true, just incomplete).
+
+The practical takeaway: **use all three checks together, not one instead of the other.** `--fail-on-regression` catches named, specific per-case failures immediately, cheaply, and with zero false negatives (a threshold crossing always fires). `--fail-on-significant-regression`'s run-wide half asks "is the topline number moving for a real reason" — and, as this example shows, can come back clean even when a real regression is hiding inside one category. Its per-category half is what actually catches that case. None of the three subsumes the others.
+
+A case where the mean-score signal specifically *does* catch something the pass-rate signal misses entirely, even at the run-wide level: 15 cases all drop from 1.0 to 0.71 — still comfortably above the 0.7 threshold, so pass rate holds at 100% -> 100% and `--fail-on-regression` sees zero flips — but the score-magnitude drop (0.29 on every single case) is large, consistent, and exactly what the raw-score paired test exists to catch (`p≈0`, significant). This is the asymmetric case: a real quality regression that never crosses the pass/fail line is invisible to `--fail-on-regression` *and* to the pass-rate half of `--fail-on-significant-regression`, but not to the mean-score half.
