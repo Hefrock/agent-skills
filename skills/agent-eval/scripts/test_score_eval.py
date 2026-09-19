@@ -383,13 +383,42 @@ class ComputePerCategoryConfidence(unittest.TestCase):
         self.assertNotIn("paired_pass_rate_diff", result["tiny"])
 
     def test_category_at_or_above_min_n_gets_both_diffs(self):
+        # A second category (even a tiny, skipped one) keeps "cat" from
+        # being the sole category, so it's actually computed rather than
+        # treated as a duplicate of the run-wide result -- see
+        # test_sole_category_is_skipped_as_duplicate_of_run_wide below for
+        # that other case.
         current, baseline = _rows("cat", [0.0] * 5, [1.0] * 5, "c")
-        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        other_current, other_baseline = _rows("other", [1.0], [1.0], "o")
+        result = score_eval.compute_per_category_confidence(current + other_current, 0.7, baseline + other_baseline, min_n=3)
         entry = result["cat"]
         self.assertNotIn("skipped_reason", entry)
         self.assertIn("paired_pass_rate_diff", entry)
         self.assertIn("paired_mean_score_diff", entry)
         self.assertTrue(entry["paired_pass_rate_diff"]["significant_at_0.05"])
+
+    def test_sole_category_is_skipped_as_duplicate_of_run_wide(self):
+        # A single category spanning every matched case is, by
+        # construction, testing the identical data compute_confidence()'s
+        # run-wide diffs already test -- computing it again wouldn't just
+        # be wasted work, it would silently double the multiple-comparisons
+        # correction's test count for zero new information (a real bug
+        # this repo's own critique process caught: n_tests=4 instead of 2
+        # on data with no category field at all).
+        current, baseline = _rows("cat", [0.0] * 5, [1.0] * 5, "c")
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        self.assertEqual(len(result), 1)
+        self.assertIn("skipped_reason", result["cat"])
+        self.assertEqual(result["cat"]["n"], 5)
+
+    def test_no_category_field_is_also_skipped_as_duplicate(self):
+        # No "category" key at all -> everything falls into "uncategorized",
+        # which is still a single category spanning every matched case.
+        current = [{"id": f"c{i}", "score": 0.0} for i in range(5)]
+        baseline = [{"id": f"c{i}", "score": 1.0} for i in range(5)]
+        result = score_eval.compute_per_category_confidence(current, 0.7, baseline, min_n=3)
+        self.assertEqual(list(result.keys()), ["uncategorized"])
+        self.assertIn("skipped_reason", result["uncategorized"])
 
     def test_catches_regression_diluted_away_in_aggregate(self):
         # The confirmed real-world case, loaded directly from this skill's
@@ -938,8 +967,19 @@ class Cli(unittest.TestCase):
         self.assertNotIn("confidence", summary)
 
     def test_ci_prints_per_category_significance_section(self):
-        base = self.make([{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)])
-        cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
+        # Two categories -- "accuracy" alone would be the sole category and
+        # get skipped as a duplicate of the run-wide result (see
+        # ComputePerCategoryConfidence.test_sole_category_is_skipped_as_
+        # duplicate_of_run_wide); a second, stable category is what makes
+        # this exercise the real multi-category path.
+        base = self.make(
+            [{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)]
+            + [{"id": f"s{i}", "score": 0.9, "category": "stable"} for i in range(3)]
+        )
+        cur = self.make(
+            [{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)]
+            + [{"id": f"s{i}", "score": 0.9, "category": "stable"} for i in range(3)]
+        )
         proc = self.run_script(cur, "--baseline", base, "--ci")
         self.assertIn("By category vs baseline", proc.stdout)
         self.assertIn("accuracy (n=5)", proc.stdout)
@@ -961,6 +1001,29 @@ class Cli(unittest.TestCase):
         self.assertNotIn("Multiple-comparisons correction:", proc.stdout)
 
     def test_json_out_includes_correction_metadata(self):
+        # 2 run-wide + 2 accuracy + 2 stable (n=3 clears min_n=3) = 6.
+        base = self.make(
+            [{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)]
+            + [{"id": f"s{i}", "score": 0.9, "category": "stable"} for i in range(3)]
+        )
+        cur = self.make(
+            [{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)]
+            + [{"id": f"s{i}", "score": 0.9, "category": "stable"} for i in range(3)]
+        )
+        out_fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(out_fd)
+        self._paths.append(out_path)
+        proc = self.run_script(cur, "--baseline", base, "--ci", "--json-out", out_path)
+        self.assertEqual(proc.returncode, 0)
+        with open(out_path) as f:
+            summary = json.load(f)
+        self.assertIn("multiple_comparisons_correction", summary)
+        self.assertEqual(summary["multiple_comparisons_correction"]["n_tests"], 6)
+
+    def test_json_out_correction_metadata_excludes_sole_duplicate_category(self):
+        # The single-category case: n_tests should be 2 (run-wide only),
+        # not 4 -- the sole "accuracy" category is skipped as a duplicate,
+        # not silently double-counted in the correction.
         base = self.make([{"id": f"c{i}", "score": 1.0, "category": "accuracy"} for i in range(5)])
         cur = self.make([{"id": f"c{i}", "score": 0.0, "category": "accuracy"} for i in range(5)])
         out_fd, out_path = tempfile.mkstemp(suffix=".json")
@@ -970,8 +1033,8 @@ class Cli(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         with open(out_path) as f:
             summary = json.load(f)
-        self.assertIn("multiple_comparisons_correction", summary)
-        self.assertEqual(summary["multiple_comparisons_correction"]["n_tests"], 4)
+        self.assertEqual(summary["multiple_comparisons_correction"]["n_tests"], 2)
+        self.assertIn("skipped_reason", summary["per_category_confidence"]["accuracy"])
 
     def test_ci_shows_skipped_reason_for_tiny_category(self):
         base = self.make([{"id": "c0", "score": 1.0, "category": "rare"}, {"id": "c1", "score": 1.0, "category": "rare"}])
@@ -980,8 +1043,17 @@ class Cli(unittest.TestCase):
         self.assertIn("rare: skipped", proc.stdout)
 
     def test_ci_marks_significant_improvement_distinctly_from_regression(self):
-        base = self.make([{"id": f"c{i}", "score": 0.5, "category": "format"} for i in range(6)])
-        cur = self.make([{"id": f"c{i}", "score": 1.0, "category": "format"} for i in range(6)])
+        # Two categories -- "format" alone would be skipped as a duplicate
+        # of the run-wide result (see ComputePerCategoryConfidence.
+        # test_sole_category_is_skipped_as_duplicate_of_run_wide).
+        base = self.make(
+            [{"id": f"c{i}", "score": 0.5, "category": "format"} for i in range(6)]
+            + [{"id": f"s{i}", "score": 0.9, "category": "stable"} for i in range(3)]
+        )
+        cur = self.make(
+            [{"id": f"c{i}", "score": 1.0, "category": "format"} for i in range(6)]
+            + [{"id": f"s{i}", "score": 0.9, "category": "stable"} for i in range(3)]
+        )
         proc = self.run_script(cur, "--baseline", base, "--ci")
         self.assertIn("SIGNIFICANT IMPROVEMENT", proc.stdout)
         self.assertNotIn("SIGNIFICANT REGRESSION", proc.stdout)

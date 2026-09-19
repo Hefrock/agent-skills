@@ -333,10 +333,24 @@ def compute_per_category_confidence(
     confidence trap, not a real result, so this floor exists to refuse to
     compute rather than report it.
 
+    A single category spanning every matched case (no `category` field
+    anywhere, or every row sharing one label) is skipped too, for a
+    different reason: its pairs are, by construction, the exact same set
+    compute_confidence()'s run-wide diffs already test — confirmed
+    directly, byte-for-byte identical output given the same n_boot/
+    boot_seed, since it's the identical input to the identical function.
+    Computing it anyway wouldn't just be wasted work: apply_multiple_
+    comparisons_correction() counts every diff this function returns
+    toward the test family it corrects for, so an undetected duplicate
+    silently doubled the correction penalty (n_tests=4 instead of 2, alpha
+    cut in half) for zero new information — a real bug this repo's own
+    critique process caught, not a hypothetical.
+
     Returns {category_display_name: {"n": int, "paired_pass_rate_diff": ...,
-    "paired_mean_score_diff": ...}} for categories at or above min_n, or
-    {"n": int, "skipped_reason": str} below it. Empty dict if no
-    baseline_results or no matched ids at all."""
+    "paired_mean_score_diff": ...}} for categories at or above min_n and
+    not the sole category, or {"n": int, "skipped_reason": str} for either
+    skip reason. Empty dict if no baseline_results or no matched ids at
+    all."""
     if not baseline_results:
         return {}
     baseline_by_id = {r["id"]: r["score"] for r in baseline_results}
@@ -349,6 +363,15 @@ def compute_per_category_confidence(
         key = normalize_category(raw_category)
         display_names.setdefault(key, raw_category)
         by_category.setdefault(key, []).append((r["score"], baseline_by_id[r["id"]]))
+
+    if len(by_category) == 1:
+        (key, pairs), = by_category.items()
+        return {
+            display_names[key]: {
+                "n": len(pairs),
+                "skipped_reason": "the only category present spans every matched case — identical to the run-wide result above, not computed again",
+            }
+        }
 
     per_category = {}
     for key, pairs in sorted(by_category.items()):
