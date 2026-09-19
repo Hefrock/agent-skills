@@ -235,7 +235,7 @@ def compute_confidence(results, threshold, baseline_results=None, n_boot=bootstr
     pass-rate test specifically. Confirmed on this skill's own worked
     regression example (examples/README.md's "Statistical confidence"
     section): the pass-rate paired diff there gives p=0.421, the raw-
-    score version p=0.248 — same direction, meaningfully more sensitive,
+    score version p=0.255 — same direction, meaningfully more sensitive,
     from the identical data. Reported as a second, independent number
     rather than replacing the pass-rate diff, since they answer genuinely
     different questions ("did the topline pass/fail count move" vs. "did

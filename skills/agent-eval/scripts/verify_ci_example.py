@@ -42,7 +42,7 @@ EXPECTED_PASS_RATE_DIFF = {
 }
 EXPECTED_MEAN_SCORE_DIFF = {
     "point_a": 0.8375, "point_b": 0.89, "diff": -0.0525,
-    "ci_lo": -0.15, "ci_hi": 0.03, "p_value": 0.248,
+    "ci_lo": -0.15, "ci_hi": 0.03, "p_value": 0.255,
     "significant_at_0.05": False, "n": 20,
 }
 

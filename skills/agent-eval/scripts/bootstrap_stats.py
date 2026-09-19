@@ -31,13 +31,25 @@ gets its own scoped copy per skill rather than a cross-skill import that
 would break the moment one skill is copied without the other.
 
 All randomness is seeded (default 12345, same default deid-reid-harness
-uses) so a given input always reproduces the same CI/p-value.
+uses) so a given input always reproduces the same CI/p-value — including
+across Python versions, which is why every summation below uses
+math.fsum() rather than the builtin sum(). Confirmed the hard way: Python
+3.12 changed sum()'s float accumulation to a more precise algorithm
+(sum([0.1]*10) is 0.9999999999999999 on 3.11, 1.0 on 3.12 — see the 3.12
+changelog), and on real eval data with a paired diff close to zero, that
+precision shift was enough to flip several of 2000 bootstrap draws across
+the p_le0/p_ge0 zero boundary — a CI run on 3.12 reported p=0.255 for data
+a 3.11 run (and this module's own test suite) had reported as p=0.248.
+math.fsum() uses a fully deterministic summation algorithm independent of
+CPython's sum() implementation, confirmed identical on 3.10 through 3.13
+for both the trivial case above and the actual failing bootstrap draw.
 
-Stdlib only (random) — no dependencies to install.
+Stdlib only (random, math) — no dependencies to install.
 """
 
 from __future__ import annotations
 
+import math
 import random
 
 DEFAULT_N_BOOT = 2000
@@ -57,11 +69,11 @@ def bootstrap_mean_ci(values: list[float], n_boot: int = DEFAULT_N_BOOT, boot_se
     n = len(values)
     if n == 0:
         raise ValueError("bootstrap_mean_ci: no values")
-    point = sum(values) / n
+    point = math.fsum(values) / n
     rng = random.Random(boot_seed)
     boots = []
     for _ in range(n_boot):
-        boots.append(sum(values[rng.randrange(n)] for _ in range(n)) / n)
+        boots.append(math.fsum(values[rng.randrange(n)] for _ in range(n)) / n)
     boots.sort()
     lo = boots[int(0.025 * n_boot)]
     hi = boots[min(int(0.975 * n_boot), n_boot - 1)]
@@ -92,14 +104,14 @@ def paired_bootstrap_diff(
         raise ValueError("paired_bootstrap_diff: no values")
     if n != len(values_b):
         raise ValueError("paired_bootstrap_diff: values_a and values_b must be the same length")
-    point_a = sum(values_a) / n
-    point_b = sum(values_b) / n
+    point_a = math.fsum(values_a) / n
+    point_b = math.fsum(values_b) / n
     rng = random.Random(boot_seed)
     diffs = []
     for _ in range(n_boot):
         idxs = [rng.randrange(n) for _ in range(n)]
-        mean_a = sum(values_a[i] for i in idxs) / n
-        mean_b = sum(values_b[i] for i in idxs) / n
+        mean_a = math.fsum(values_a[i] for i in idxs) / n
+        mean_b = math.fsum(values_b[i] for i in idxs) / n
         diffs.append(mean_a - mean_b)
     diffs.sort()
     lo = diffs[int(0.025 * n_boot)]
