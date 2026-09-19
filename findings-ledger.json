@@ -1,5 +1,22 @@
 [
   {
+    "fingerprint": "agent-eval:silent:calibrate-judge-action-flag-undocumented",
+    "verdict": "silent",
+    "title": "calibrate_judge.py's --action flag isn't mentioned in SKILL.md",
+    "source_refs": [
+      {
+        "file": "skills/agent-eval/scripts/calibrate_judge.py",
+        "hash": "a34805f94bcd079f452d51256603367f81480ef897787159da3104a4e56cba45"
+      },
+      {
+        "file": "skills/agent-eval/SKILL.md",
+        "hash": "219f5f0ee1e81d5ce8b47f56d9242663b588b8168621259af1837634803431a0"
+      }
+    ],
+    "last_verified_commit": null,
+    "notes": "SKILL.md step 5 documents --update-log but never mentions --action (overrides the auto-generated 'Action taken' log text). Real, working, discoverable via --help; just not in the prose. Low severity: an operator who never learns of it still gets the same log line (the auto-generated default), just with less control over its wording."
+  },
+  {
     "fingerprint": "privacy-threat-oracle:drift:pairing-section-vocabulary-wording-missed",
     "verdict": "confirmed",
     "title": "Pairing section now accurately describes vocabulary provenance and lists style-obfuscator",
