@@ -65,6 +65,27 @@ class FillPairwiseTemplate(unittest.TestCase):
         filled = run_pairwise_mod.fill_pairwise_template(TEMPLATE, case, "a", "b")
         self.assertIn("Task: summarize this", filled)
 
+    def test_a_response_containing_a_literal_token_does_not_leak_the_other_response(self):
+        # Regression test for a real, confirmed bug: an earlier version
+        # called run_judge.fill_template() and then layered a second
+        # .replace("{response_2}", ...) pass on its already-substituted
+        # output. If output_a's own text happened to contain the literal
+        # substring "{response_2}", that second pass re-scanned the
+        # already-substituted string and expanded it too -- splicing
+        # output_b's full text into output_a's own slot. Fixed by doing
+        # all substitution in one PLACEHOLDER_RE.sub() pass over the
+        # original template.
+        case = {
+            "id": "p1",
+            "input": "task",
+            "output_a": "here is my answer, which mentions the literal text {response_2}",
+            "output_b": "this text must never appear inside Response 1's slot",
+        }
+        filled = run_pairwise_mod.fill_pairwise_template(TEMPLATE, case, "a", "b")
+        response_1_slot, response_2_slot = filled.split("Response 2:")
+        self.assertNotIn("this text must never appear inside Response 1's slot", response_1_slot)
+        self.assertIn("this text must never appear inside Response 1's slot", response_2_slot)
+
 
 class ParseWinner(unittest.TestCase):
     def test_response_1(self):

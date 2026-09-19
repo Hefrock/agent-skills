@@ -52,6 +52,7 @@ import concurrent.futures
 import functools
 import json
 import os
+import re
 import sys
 import time
 
@@ -64,17 +65,34 @@ VALID_WINNERS = ("response_1", "response_2", "tie")
 
 def fill_pairwise_template(template: str, case: dict, first: str, second: str) -> str:
     """first/second are "a" or "b" — which underlying output is shown as
-    Response 1 vs Response 2 for this particular ordering. Reuses
-    run_judge.fill_template for the {input} substitution (and anything
-    else the case carries), then separately fills {response_1}/
-    {response_2} from whichever of output_a/output_b this ordering
-    assigns to each position — a case never carries literal "response_1"/
-    "response_2" keys itself, so run_judge.fill_template alone can't do
-    this half."""
-    filled = run_judge.fill_template(template, case)
-    filled = filled.replace("{response_1}", case[f"output_{first}"])
-    filled = filled.replace("{response_2}", case[f"output_{second}"])
-    return filled
+    Response 1 vs Response 2 for this particular ordering. Fills {input}
+    (and anything else the case carries) the same way run_judge.
+    fill_template() does — via run_judge._resolve_case_token() — plus
+    {response_1}/{response_2} from whichever of output_a/output_b this
+    ordering assigns to each position; a case never carries literal
+    "response_1"/"response_2" keys itself, so the case-token resolver
+    alone can't do this half.
+
+    Does this in ONE PLACEHOLDER_RE.sub() pass over the original template,
+    not by calling run_judge.fill_template() and then layering a second
+    .replace() pass for {response_1}/{response_2} on top of its already-
+    substituted output — an earlier version did exactly that, and it
+    reopened the identical injection run_judge.fill_template() itself was
+    fixed to close (see that function's docstring), just one level up:
+    confirmed directly, an output_a containing the literal text
+    "{response_2}" leaked output_b's full text into output_a's own slot,
+    since the second .replace() call re-scanned fill_template()'s already-
+    substituted string rather than only the original template."""
+    responses = {"response_1": case[f"output_{first}"], "response_2": case[f"output_{second}"]}
+
+    def substitute(match: "re.Match[str]") -> str:
+        key = match.group(1)
+        if key in responses:
+            return responses[key]
+        replacement = run_judge._resolve_case_token(case, key)
+        return match.group(0) if replacement is None else replacement
+
+    return run_judge.PLACEHOLDER_RE.sub(substitute, template)
 
 
 def validate_pairwise_cases(cases: list[dict], template: str) -> tuple[list[str], set[int]]:
