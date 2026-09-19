@@ -216,9 +216,9 @@ python scripts/score_eval.py examples/results_regressed.jsonl \
 95% CI (bootstrap, 2000 resamples):
   Pass rate:  [60.0%, 95.0%]
   Mean score: [0.740, 0.920]
-  Pass rate vs baseline: 90.0% -> 80.0% (diff -10.0pp, 95% CI [-30.0pp, +10.0pp], p=0.421, not significant at corrected alpha=0.0050, n=20 matched case(s))
-  Mean score vs baseline: 0.890 -> 0.838 (diff -0.052, 95% CI [-0.150, +0.030], p=0.255, not significant at corrected alpha=0.0050, n=20 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
-  Multiple-comparisons correction: 10 significance test(s) examined together this pass -> Bonferroni-adjusted alpha=0.0050 (uncorrected alpha=0.05). Every verdict above and below already uses the corrected threshold.
+  Pass rate vs baseline: 90.0% -> 80.0% (diff -10.0pp, 95% CI [-30.0pp, +10.0pp], p=0.421, not significant (after correction), n=20 matched case(s))
+  Mean score vs baseline: 0.890 -> 0.838 (diff -0.052, 95% CI [-0.150, +0.030], p=0.255, not significant (after correction), n=20 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
+  Multiple-comparisons correction: 10 significance test(s) examined together this pass -> Benjamini-Hochberg (FDR) at family alpha=0.05, not a single fixed per-test threshold. Every verdict above and below already uses the corrected outcome.
 ```
 
 Both aggregate signals come back **not significant** — genuinely, not a bug. This is worth sitting with rather than explaining away: the same before/after that `--fail-on-regression` correctly fails is, at the level of the *overall* pass rate AND the *overall* mean score, not statistically distinguishable from noise at n=20. Both things are true at once:
@@ -231,48 +231,50 @@ Both aggregate signals come back **not significant** — genuinely, not a bug. T
 A **per-category** significance test can isolate a regression an aggregate test dilutes away. `--ci` runs both paired tests once per category too (skipping any category under 3 matched cases — see `compute_per_category_confidence()`'s docstring for why):
 
 ```
-By category vs baseline (paired bootstrap significance, Bonferroni-corrected):
+By category vs baseline (paired bootstrap significance, Benjamini-Hochberg-corrected):
   accuracy (n=8): pass rate p=0.043 (not significant), score p=0.043 (not significant)
   format (n=5): pass rate p=0.663 (not significant), score p=0.031 (not significant)
   grounding (n=4): pass rate p=1.0 (not significant), score p=1.0 (not significant)
   tool_use (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
 ```
 
-Scoped to just the 8 `accuracy` cases, p=0.043 on both signals — clearly better than the aggregate's p=0.421/0.255, but **not enough to fire the gate**, and this is the honest, load-bearing part of this section: an earlier edition of this doc showed this exact p=0.043 tripping `--fail-on-significant-regression`, before this correction existed. It shouldn't have.
+Scoped to just the 8 `accuracy` cases, p=0.043 on both signals — clearly better than the aggregate's p=0.421/0.255, but **not enough to fire the gate**, and this is the honest, load-bearing part of this section: an earlier edition of this doc showed this exact p=0.043 tripping `--fail-on-significant-regression`, before any correction existed. It shouldn't have.
 
-Running every significance test this module can produce together — 2 run-wide + 2 per surviving category, 10 here — at a plain alpha=0.05 each inflates the chance that *at least one* comes back "significant" purely from asking more questions. Simulated directly on genuinely stable data (baseline and current drawn from the identical distribution, no real regression anywhere), the same 4-category, 10-test shape: **27.5% of runs falsely tripped the gate with nothing actually wrong.** Bonferroni correction (family alpha divided by the test count — here, 0.05/10 = 0.005) brings that back to ~6.5%, close to the nominal 5% target. See [`bootstrap_stats.py`](../scripts/bootstrap_stats.py) and `apply_multiple_comparisons_correction()`'s docstring in `score_eval.py` for the full simulation and the reasoning for choosing Bonferroni over the less-conservative Benjamini-Hochberg procedure.
+Running every significance test this module can produce together — 2 run-wide + 2 per surviving category, 10 here — at a plain alpha=0.05 each inflates the chance that *at least one* comes back "significant" purely from asking more questions. Simulated directly on genuinely stable data (baseline and current drawn from the identical distribution, no real regression anywhere), the same 4-category, 10-test shape: **27.5% of runs falsely tripped the gate with nothing actually wrong.** Correcting for that (see `apply_multiple_comparisons_correction()`'s docstring in `score_eval.py`) brings it back to ~8%, close to the nominal 5% target.
 
-p=0.043 was never strong evidence once "we're asking this same question ten times in one pass" is honestly accounted for — at only 8 matched cases, this category's regression sits right at the edge of what a bootstrap can reliably call significant, and the corrected alpha=0.005 correctly says so isn't enough. **That's the tool being appropriately conservative, not broken** — a false alarm that trains people to stop trusting a gate is worse than occasionally under-flagging a borderline case a human re-running the eval with more data would still catch.
+The correction used here is the **Benjamini-Hochberg (FDR) procedure**, not the simpler Bonferroni correction this feature originally shipped with. Bonferroni was replaced after a second, independently confirmed problem: fixing one real, unchanged regression's data and only varying how many *unrelated*, entirely stable categories existed alongside it, Bonferroni flipped that same regression from detected to undetected once 3 or more unrelated categories were added — a real eval set's detection power silently depending on how many categories it happens to have, not on anything about the regression itself. Benjamini-Hochberg kept detecting the identical regression through 7 unrelated categories in the same test, while keeping the false-positive rate just as controlled (~8% vs. Bonferroni's ~6.5%, both near the 5% target). See `bonferroni_alpha()`'s and `apply_multiple_comparisons_correction()`'s docstrings for the confirmed numbers; `bonferroni_alpha()` is kept in the module as a stricter, still-available alternative.
+
+p=0.043 was never strong evidence once "we're asking this same question ten times in one pass" is honestly accounted for — at only 8 matched cases, this category's regression sits right at the edge of what a bootstrap can reliably call significant, and Benjamini-Hochberg correctly says so isn't enough here. **That's the tool being appropriately conservative, not broken** — a false alarm that trains people to stop trusting a gate is worse than occasionally under-flagging a borderline case a human re-running the eval with more data would still catch.
 
 ```bash
 python scripts/score_eval.py examples/results_regressed.jsonl \
     --baseline examples/results_baseline.jsonl --fail-on-significant-regression
-# exits 0 -- p=0.043 doesn't clear the corrected alpha=0.005 at 10 tests
+# exits 0 -- p=0.043 isn't flagged significant against the other 9 tests examined in the same pass
 ```
 
 ### A regression strong enough to survive correction
 
-Real evidence doesn't disappear just because it's being asked about more rigorously — it just has to actually be strong enough. A second worked example, same shape (one regressed category diluted by three stable ones), but with a more decisive within-category effect: 4 of 5 `accuracy` cases drop from 0.9 to 0.3 (1 case unaffected), diluted by three stable categories of 6 cases each:
+Real evidence doesn't disappear just because it's being asked about more rigorously — it just has to actually be strong enough. A second worked example, same shape (one regressed category diluted by three stable ones), with a more decisive within-category effect: 4 of 5 `accuracy` cases drop from 0.9 to 0.3 (1 case unaffected), diluted by three stable categories of 3 cases each (the `min_n=3` floor exactly):
 
 ```bash
 python scripts/score_eval.py current.jsonl --baseline baseline.jsonl --ci
 ```
 ```
 95% CI (bootstrap, 2000 resamples):
-  Pass rate:  [65.2%, 95.7%]
-  Mean score: [0.691, 0.874]
-  Pass rate vs baseline: 100.0% -> 82.6% (diff -17.4pp, 95% CI [-34.8pp, -4.3pp], p=0.014, not significant at corrected alpha=0.0050, n=23 matched case(s))
-  Mean score vs baseline: 0.900 -> 0.796 (diff -0.104, 95% CI [-0.209, -0.026], p=0.014, not significant at corrected alpha=0.0050, n=23 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
-  Multiple-comparisons correction: 10 significance test(s) examined together this pass -> Bonferroni-adjusted alpha=0.0050 (uncorrected alpha=0.05). Every verdict above and below already uses the corrected threshold.
+  Pass rate:  [42.9%, 92.9%]
+  Mean score: [0.557, 0.857]
+  Pass rate vs baseline: 100.0% -> 71.4% (diff -28.6pp, 95% CI [-57.1pp, -7.1pp], p=0.021, not significant (after correction), n=14 matched case(s))
+  Mean score vs baseline: 0.900 -> 0.729 (diff -0.171, 95% CI [-0.343, -0.043], p=0.021, not significant (after correction), n=14 matched case(s)) — unbinarized, catches magnitude the pass-rate test above can miss
+  Multiple-comparisons correction: 10 significance test(s) examined together this pass -> Benjamini-Hochberg (FDR) at family alpha=0.05, not a single fixed per-test threshold. Every verdict above and below already uses the corrected outcome.
 
-By category vs baseline (paired bootstrap significance, Bonferroni-corrected):
+By category vs baseline (paired bootstrap significance, Benjamini-Hochberg-corrected):
   accuracy (n=5): pass rate p=0.0 (SIGNIFICANT REGRESSION), score p=0.0 (SIGNIFICANT REGRESSION)
-  format (n=6): pass rate p=1.0 (not significant), score p=1.0 (not significant)
-  grounding (n=6): pass rate p=1.0 (not significant), score p=1.0 (not significant)
-  tool_use (n=6): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  format (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  grounding (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
+  tool_use (n=3): pass rate p=1.0 (not significant), score p=1.0 (not significant)
 ```
 
-The run-wide aggregate is still diluted below the corrected bar (p=0.014 > 0.005) — but `accuracy`'s p=0.0 clears it easily:
+The run-wide aggregate is still diluted below significance (p=0.021) — but `accuracy`'s p=0.0 clears it easily:
 
 ```
 GATE FAILED:

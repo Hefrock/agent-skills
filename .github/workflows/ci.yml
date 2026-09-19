@@ -113,12 +113,12 @@ jobs:
       - name: agent-eval — verify the statistical-confidence example's bootstrap numbers
         # Self-check, same rationale as the other worked-example checks:
         # examples/README.md quotes exact bootstrap numbers at the run-wide
-        # level and the accuracy-category level, plus the Bonferroni
-        # correction (10 tests -> alpha=0.005) that keeps
-        # --fail-on-significant-regression at exit-0 on this example even
-        # though the accuracy category's uncorrected p=0.043 alone used to
-        # trip it. Confirm none of it has silently drifted (numbers, test
-        # count, or which side of the corrected bar anything lands on).
+        # level and the accuracy-category level, plus the Benjamini-Hochberg
+        # correction (10 tests) that keeps --fail-on-significant-regression
+        # at exit-0 on this example even though the accuracy category's
+        # uncorrected p=0.043 alone used to trip it. Confirm none of it has
+        # silently drifted (numbers, test count, or which side of the
+        # corrected outcome anything lands on).
         run: python skills/agent-eval/scripts/verify_ci_example.py
 
       - name: agent-eval — unit-test bootstrap_stats.py (stdlib unittest)
