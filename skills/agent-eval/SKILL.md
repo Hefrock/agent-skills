@@ -78,6 +78,12 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```
    This is what makes an eval a gate rather than a report — the same run that scores your change also blocks it if it regressed. See [`examples/`](./examples/) for a worked before/after where a change looks like a win on cost, latency, and format but the gate catches three silent accuracy regressions.
 
+   `--fail-on-regression` alone only catches a case *crossing* the pass/fail line — a case that drops 1.00 → 0.71 against the default 0.7 threshold stays "passing" and is invisible to it, even though that's a real, large quality decay. Add `--regression-min-drop` (e.g. `0.2`) to also flag any case whose score fell by more than that amount, threshold-crossing or not — both kinds still gate under the same `--fail-on-regression` flag, just labeled separately in the report ("passed before, failing now" vs. "still passing, but dropped sharply") so you can tell which happened:
+   ```bash
+   python scripts/score_eval.py results.jsonl --baseline previous_results.jsonl --fail-on-regression --regression-min-drop 0.2
+   ```
+   Off by default — existing `--fail-on-regression` configs keep their exact prior behavior unless this is explicitly set.
+
    The reverse gap has a gate too: a change that holds accuracy perfectly steady while cost or latency quietly balloons was previously invisible to every flag above. `--fail-on-cost-regression`/`--fail-on-latency-regression` (needs `--baseline`; tolerance via `--cost-regression-tolerance`/`--latency-regression-tolerance`, default 20%) catch that directly; `--fail-if-mean-cost-above`/`--fail-if-mean-latency-above` set an absolute ceiling with no baseline needed:
    ```bash
    python scripts/score_eval.py results.jsonl --baseline previous_results.jsonl --fail-on-cost-regression --fail-on-latency-regression

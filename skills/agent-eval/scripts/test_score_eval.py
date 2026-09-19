@@ -240,6 +240,7 @@ class FindRegressions(unittest.TestCase):
         regs = score_eval.find_regressions(cur, base, 0.7)
         self.assertEqual(len(regs), 1)
         self.assertEqual(regs[0]["id"], "a")
+        self.assertEqual(regs[0]["kind"], "threshold_crossing")
 
     def test_fail_to_fail_not_flagged(self):
         base = [{"id": "a", "score": 0.2}]
@@ -255,6 +256,43 @@ class FindRegressions(unittest.TestCase):
         base = [{"id": "a", "score": 1.0}]
         cur = [{"id": "b", "score": 0.0}]
         self.assertEqual(score_eval.find_regressions(cur, base, 0.7), [])
+
+    def test_magnitude_drop_ignored_without_min_drop(self):
+        # 1.00 -> 0.71 against threshold 0.7: still passing, real quality
+        # decay, but min_drop isn't set (the old, default behavior) so
+        # this must NOT be flagged.
+        base = [{"id": "a", "score": 1.0}]
+        cur = [{"id": "a", "score": 0.71}]
+        self.assertEqual(score_eval.find_regressions(cur, base, 0.7), [])
+
+    def test_magnitude_drop_flagged_when_exceeding_min_drop(self):
+        base = [{"id": "a", "score": 1.0}]
+        cur = [{"id": "a", "score": 0.71}]  # drop of 0.29, still passing
+        regs = score_eval.find_regressions(cur, base, 0.7, min_drop=0.2)
+        self.assertEqual(len(regs), 1)
+        self.assertEqual(regs[0]["kind"], "magnitude_drop")
+        self.assertEqual(regs[0]["baseline_score"], 1.0)
+        self.assertEqual(regs[0]["current_score"], 0.71)
+
+    def test_magnitude_drop_not_flagged_when_within_min_drop(self):
+        base = [{"id": "a", "score": 1.0}]
+        cur = [{"id": "a", "score": 0.85}]  # drop of 0.15, under the 0.2 bar
+        self.assertEqual(score_eval.find_regressions(cur, base, 0.7, min_drop=0.2), [])
+
+    def test_threshold_crossing_takes_priority_over_magnitude_drop(self):
+        # A case that both crosses the threshold AND exceeds min_drop must
+        # be reported once, as threshold_crossing (the more severe kind) —
+        # not double-counted under both kinds.
+        base = [{"id": "a", "score": 1.0}]
+        cur = [{"id": "a", "score": 0.3}]  # crosses AND drops > 0.2
+        regs = score_eval.find_regressions(cur, base, 0.7, min_drop=0.2)
+        self.assertEqual(len(regs), 1)
+        self.assertEqual(regs[0]["kind"], "threshold_crossing")
+
+    def test_score_improvement_never_flagged_even_with_min_drop_set(self):
+        base = [{"id": "a", "score": 0.5}]
+        cur = [{"id": "a", "score": 0.9}]
+        self.assertEqual(score_eval.find_regressions(cur, base, 0.7, min_drop=0.2), [])
 
 
 class MatchedScores(unittest.TestCase):
@@ -770,9 +808,20 @@ class CheckGates(unittest.TestCase):
         self.assertEqual(len(failures), 1)
 
     def test_fail_on_regression_triggers(self):
-        regs = [{"id": "a", "baseline_score": 1.0, "current_score": 0.0}]
+        regs = [{"id": "a", "baseline_score": 1.0, "current_score": 0.0, "kind": "threshold_crossing"}]
         failures = score_eval.check_gates(self._summary(1.0), regs, None, True)
         self.assertEqual(len(failures), 1)
+
+    def test_fail_on_regression_message_breaks_down_by_kind(self):
+        regs = [
+            {"id": "a", "baseline_score": 1.0, "current_score": 0.0, "kind": "threshold_crossing"},
+            {"id": "b", "baseline_score": 1.0, "current_score": 0.75, "kind": "magnitude_drop"},
+        ]
+        failures = score_eval.check_gates(self._summary(1.0), regs, None, True)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("2 regression(s)", failures[0])
+        self.assertIn("1 crossed pass/fail", failures[0])
+        self.assertIn("1 dropped sharply", failures[0])
 
     def test_fail_on_regression_no_regs_passes(self):
         self.assertEqual(score_eval.check_gates(self._summary(1.0), [], None, True), [])
@@ -976,6 +1025,34 @@ class Cli(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data["total"], 1)
         self.assertIn("by_category", data)
+
+    def test_regression_min_drop_without_baseline_is_a_usage_error(self):
+        path = self.make([{"id": "a", "score": 1.0}])
+        proc = self.run_script(path, "--regression-min-drop", "0.2")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("requires --baseline", proc.stderr)
+
+    def test_regression_min_drop_catches_still_passing_case_that_fail_on_regression_alone_misses(self):
+        base = self.make([{"id": "a", "score": 1.0}])
+        cur = self.make([{"id": "a", "score": 0.71}])  # stays >= default 0.7 threshold
+
+        # Without --regression-min-drop, --fail-on-regression alone must NOT catch this.
+        proc_without = self.run_script(cur, "--baseline", base, "--fail-on-regression")
+        self.assertEqual(proc_without.returncode, 0)
+
+        # With it, the same still-passing drop must be caught.
+        proc_with = self.run_script(cur, "--baseline", base, "--fail-on-regression", "--regression-min-drop", "0.2")
+        self.assertEqual(proc_with.returncode, 1)
+        self.assertIn("GATE FAILED", proc_with.stderr)
+        self.assertIn("dropped sharply", proc_with.stderr)
+
+    def test_regression_min_drop_report_labels_kind_separately(self):
+        base = self.make([{"id": "a", "score": 1.0}, {"id": "b", "score": 1.0}])
+        cur = self.make([{"id": "a", "score": 0.0}, {"id": "b", "score": 0.71}])
+        proc = self.run_script(cur, "--baseline", base, "--regression-min-drop", "0.2")
+        self.assertEqual(proc.returncode, 0)  # no --fail-on-regression, so just a report
+        self.assertIn("Passed before, failing now", proc.stdout)
+        self.assertIn("Still passing, but dropped sharply", proc.stdout)
 
     def test_fail_on_cost_regression_without_baseline_is_a_usage_error(self):
         path = self.make([{"id": "a", "score": 1.0, "cost_usd": 0.01}])

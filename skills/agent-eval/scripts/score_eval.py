@@ -11,8 +11,20 @@ Usage:
 CI gate (exit non-zero on failure):
     python score_eval.py results.jsonl --fail-under 0.8
     python score_eval.py results.jsonl --baseline base.jsonl --fail-on-regression
+    python score_eval.py results.jsonl --baseline base.jsonl --fail-on-regression --regression-min-drop 0.2
     python score_eval.py results.jsonl --baseline base.jsonl --fail-on-cost-regression --fail-on-latency-regression
     python score_eval.py results.jsonl --fail-if-mean-cost-above 0.01 --fail-if-mean-latency-above 2000
+
+`--fail-on-regression` alone only catches a case that crossed the pass/
+fail line (passed baseline, fails now) — a case that drops 1.00 -> 0.71
+against the default 0.7 threshold stays "passing" and is invisible to it,
+even though that's a real, large quality decay. `--regression-min-drop`
+(a float, e.g. 0.2) additionally flags any case whose score fell by more
+than that amount, threshold-crossing or not — both kinds still gate under
+the same `--fail-on-regression` flag, tagged by `kind` in the report so
+"newly broken" and "still passing but meaningfully worse" aren't
+conflated. Off by default (None) so existing `--fail-on-regression`
+configs keep their exact prior behavior unless this is explicitly set.
 
 Statistical confidence (see bootstrap_stats.py):
     python score_eval.py results.jsonl --ci
@@ -226,18 +238,49 @@ def lowest_scoring(results, n=3):
     return sorted(results, key=lambda r: r["score"])[:n]
 
 
-def find_regressions(results, baseline_results, threshold):
+def find_regressions(results, baseline_results, threshold, min_drop=None):
+    """Cases that got meaningfully worse vs. baseline, in either of two
+    independent ways:
+
+    - threshold_crossing: passed baseline (score >= threshold) but fails
+      now (score < threshold) — the original, only check this function
+      used to make.
+    - magnitude_drop (only checked when `min_drop` is not None): current
+      score is more than `min_drop` below baseline, regardless of whether
+      either score is on the passing side of `threshold` — this is what
+      catches a 1.00 -> 0.71 case against a 0.7 threshold: still
+      "passing," but a real, large quality decay the threshold-crossing
+      check alone can never see, because it never looks at *how much*
+      a still-passing score changed.
+
+    A case that trips both conditions is reported once, as
+    threshold_crossing — it's no longer passing at all, which is the more
+    severe of the two, and double-counting one case under two "kind"s
+    would inflate the regression count for a single real failure.
+
+    Each returned dict carries "kind" so callers (the report, the gate)
+    can distinguish "newly broken" from "still passing but meaningfully
+    worse" rather than treating every entry as the same severity."""
     baseline_by_id = {r["id"]: r["score"] for r in baseline_results}
     regressions = []
     for r in results:
         base_score = baseline_by_id.get(r["id"])
         if base_score is None:
             continue
-        if base_score >= threshold and r["score"] < threshold:
+        current_score = r["score"]
+        if base_score >= threshold and current_score < threshold:
             regressions.append({
                 "id": r["id"],
                 "baseline_score": base_score,
-                "current_score": r["score"],
+                "current_score": current_score,
+                "kind": "threshold_crossing",
+            })
+        elif min_drop is not None and (base_score - current_score) > min_drop:
+            regressions.append({
+                "id": r["id"],
+                "baseline_score": base_score,
+                "current_score": current_score,
+                "kind": "magnitude_drop",
             })
     return regressions
 
@@ -663,7 +706,14 @@ def check_gates(
                 f"--fail-under {fail_under}: pass rate {summary['pass_rate']:.3f} is below the gate"
             )
     if fail_on_regression and regressions:
-        failures.append(f"--fail-on-regression: {len(regressions)} regression(s) vs baseline")
+        crossing = sum(1 for r in regressions if r["kind"] == "threshold_crossing")
+        magnitude = sum(1 for r in regressions if r["kind"] == "magnitude_drop")
+        parts = []
+        if crossing:
+            parts.append(f"{crossing} crossed pass/fail")
+        if magnitude:
+            parts.append(f"{magnitude} dropped sharply while still passing")
+        failures.append(f"--fail-on-regression: {len(regressions)} regression(s) vs baseline ({', '.join(parts)})")
     if significant_regression is not None and significant_regression["diff"] < 0 and significant_regression["significant_after_correction"]:
         failures.append(
             f"--fail-on-significant-regression (pass rate): {significant_regression['point_b']:.3f} -> "
@@ -817,9 +867,17 @@ def print_report(summary, results, regressions, threshold, cost_regression=None,
         print(f"  [{r['score']:.2f}] {r['id']}{suffix}")
 
     if regressions:
-        print(f"\n⚠ {len(regressions)} regression(s) vs baseline (passed before, failing now):")
-        for reg in regressions:
-            print(f"  {reg['id']}: {reg['baseline_score']:.2f} -> {reg['current_score']:.2f}")
+        crossing = [r for r in regressions if r["kind"] == "threshold_crossing"]
+        magnitude = [r for r in regressions if r["kind"] == "magnitude_drop"]
+        print(f"\n⚠ {len(regressions)} regression(s) vs baseline:")
+        if crossing:
+            print(f"  Passed before, failing now ({len(crossing)}):")
+            for reg in crossing:
+                print(f"    {reg['id']}: {reg['baseline_score']:.2f} -> {reg['current_score']:.2f}")
+        if magnitude:
+            print(f"  Still passing, but dropped sharply ({len(magnitude)}):")
+            for reg in magnitude:
+                print(f"    {reg['id']}: {reg['baseline_score']:.2f} -> {reg['current_score']:.2f}")
 
     for label, reg in (("Cost", cost_regression), ("Latency", latency_regression)):
         if reg is None:
@@ -843,6 +901,8 @@ def main():
                         help="Exit non-zero if the overall pass rate is below this value (CI gate)")
     parser.add_argument("--fail-on-regression", action="store_true",
                         help="Exit non-zero if any regression vs --baseline is found (CI gate)")
+    parser.add_argument("--regression-min-drop", type=float, default=None,
+                        help="Also count a case as a regression if its score fell by more than this amount vs --baseline, even if it's still passing (requires --baseline). Off by default — --fail-on-regression alone only catches a case crossing the pass/fail line.")
     parser.add_argument("--fail-on-cost-regression", action="store_true",
                         help="Exit non-zero if mean cost_usd increased more than --cost-regression-tolerance vs --baseline (CI gate; requires --baseline)")
     parser.add_argument("--fail-on-latency-regression", action="store_true",
@@ -873,6 +933,9 @@ def main():
     if args.fail_on_significant_regression and not args.baseline:
         print("--fail-on-significant-regression requires --baseline.", file=sys.stderr)
         sys.exit(2)
+    if args.regression_min_drop is not None and not args.baseline:
+        print("--regression-min-drop requires --baseline.", file=sys.stderr)
+        sys.exit(2)
 
     results = load_results(args.results)
     summary = summarize(results, args.threshold)
@@ -882,7 +945,7 @@ def main():
     baseline_results = []
     if args.baseline:
         baseline_results = load_results(args.baseline)
-        regressions = find_regressions(results, baseline_results, args.threshold)
+        regressions = find_regressions(results, baseline_results, args.threshold, min_drop=args.regression_min_drop)
         baseline_summary = summarize(baseline_results, args.threshold)
 
     categories_seen = {normalize_category(r.get("category", "uncategorized")) for r in results + baseline_results}

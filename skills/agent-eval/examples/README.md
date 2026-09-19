@@ -166,6 +166,43 @@ calibration cadence too, same as `score_eval.py`'s `--fail-under`. Add
 `--update-log references/llm-judge-prompt.md` to append this run to the
 calibration log automatically instead of editing the table by hand.
 
+## Magnitude-drop example — a regression that never crosses the pass/fail line
+
+`--fail-on-regression` alone only catches a case *crossing* the pass/fail
+line (passed baseline, fails now). It has its own blind spot: a case that
+drops from 1.00 to 0.75 against the default 0.7 threshold is a real,
+large quality decay — but it's still "passing," so the threshold-crossing
+check never sees it.
+
+[`results_magnitude_drop.jsonl`](./results_magnitude_drop.jsonl) is
+[`results_baseline.jsonl`](./results_baseline.jsonl) with exactly two
+scores changed (`acc_01`: 1.00 → 0.75, `grnd_02`: 1.00 → 0.72) — every
+other case is untouched. The overall pass rate doesn't move at all
+(18/20, 90%, identical to baseline):
+
+```bash
+# --fail-on-regression alone: passes. The two drops are invisible to it.
+python scripts/score_eval.py examples/results_magnitude_drop.jsonl \
+    --baseline examples/results_baseline.jsonl --fail-on-regression
+# exit 0
+
+# --regression-min-drop 0.2 added: catches both.
+python scripts/score_eval.py examples/results_magnitude_drop.jsonl \
+    --baseline examples/results_baseline.jsonl --fail-on-regression --regression-min-drop 0.2
+```
+
+```
+GATE FAILED:
+  - --fail-on-regression: 2 regression(s) vs baseline (2 dropped sharply while still passing)
+...
+⚠ 2 regression(s) vs baseline:
+  Still passing, but dropped sharply (2):
+    acc_01: 1.00 -> 0.75
+    grnd_02: 1.00 -> 0.72
+```
+
+Exit code **1** — same pass rate, same mean-score ballpark, but a real regression the plain gate would ship. This is the case-level analog of the cost/latency example below: a metric holding steady at the aggregate while something real degrades underneath it.
+
 ## Cost/latency regression example — the scenario the accuracy gate can't see
 
 The [worked example above](#the-scenario) demonstrates an accuracy

@@ -94,6 +94,23 @@ jobs:
             echo "OK: gate correctly caught the regression (exit non-zero)"
           fi
 
+      - name: agent-eval — verify the magnitude-drop example is invisible to --fail-on-regression alone, caught by --regression-min-drop
+        # Self-check, same rationale as the regression-example check above:
+        # this worked example is designed to demonstrate the exact gap
+        # --regression-min-drop closes. Confirm both halves of the story
+        # still hold so the example can't silently bit-rot.
+        run: |
+          if ! python skills/agent-eval/scripts/score_eval.py skills/agent-eval/examples/results_magnitude_drop.jsonl \
+               --baseline skills/agent-eval/examples/results_baseline.jsonl --fail-on-regression; then
+            echo "ERROR: --fail-on-regression alone unexpectedly tripped on the magnitude-drop example"; exit 1
+          fi
+          if python skills/agent-eval/scripts/score_eval.py skills/agent-eval/examples/results_magnitude_drop.jsonl \
+               --baseline skills/agent-eval/examples/results_baseline.jsonl --fail-on-regression --regression-min-drop 0.2; then
+            echo "ERROR: --regression-min-drop did not trip the gate on the magnitude-drop example"; exit 1
+          else
+            echo "OK: --fail-on-regression alone passed (as expected), --regression-min-drop correctly caught it"
+          fi
+
       - name: agent-eval — verify the cost/latency regression example trips the gate
         # Self-check, same rationale as the regression-example check above.
         run: |
