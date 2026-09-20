@@ -26,6 +26,7 @@ import score_utility
 from bootstrap import bootstrap_ratio_ci, paired_bootstrap_diff
 import score_stats
 from score_reid import resolve_population_path
+import n2c2_adapter
 
 SEED, N, POP = 20260101, 50, 100000
 
@@ -663,6 +664,131 @@ class LargeCorpusBootstrapHint(unittest.TestCase):
         finally:
             score_stats.LARGE_CORPUS_HINT_THRESHOLD = old
         self.assertNotIn("--n-boot 200", err)
+
+
+class N2c2Adapter(unittest.TestCase):
+    """issue #126, Tier 2: an n2c2-format XML adapter, built and scoped from public
+    sources only (the real corpus is DUA-gated) -- see n2c2_adapter.py's module
+    docstring for what's confirmed vs. not. These tests lock the confirmed-only
+    behavior: parses the schema shape correctly, self-tests every offset the same way
+    a generated corpus does, and -- the load-bearing property -- refuses to guess a
+    hipaa_category or accept a malformed tag rather than silently getting it wrong."""
+
+    FIXTURES = os.path.join(HERE, "fixtures", "n2c2")
+
+    def _write_xml(self, tmp, text, tags_xml):
+        path = os.path.join(tmp, "rec.xml")
+        with open(path, "w") as f:
+            f.write(f"<deIdi2b2><TEXT><![CDATA[{text}]]></TEXT><TAGS>{tags_xml}</TAGS></deIdi2b2>")
+        return path
+
+    def test_bundled_fixtures_parse_and_self_test_pass(self):
+        records = n2c2_adapter.load_records(self.FIXTURES)
+        self.assertEqual(len(records), 2)
+        by_id = {r["record_id"]: r for r in records}
+        self.assertIn("note_001", by_id)
+        cats = {s["hipaa_category"] for s in by_id["note_001"]["identifiers"]}
+        self.assertEqual(cats, {"geo_subdivision", "mrn", "ssn", "date"})
+        cats2 = {s["hipaa_category"] for s in by_id["note_002"]["identifiers"]}
+        self.assertEqual(cats2, {"geo_subdivision", "date", "phone_fax",
+                                 "account_number", "health_plan_id"})
+
+    def test_offset_invariant_is_enforced_not_trusted(self):
+        rec = {"record_id": "bad", "note_text": "hello world",
+               "identifiers": [{"span_id": "bad:s00", "start": 0, "end": 3, "text": "xyz"}]}
+        with self.assertRaises(AssertionError):
+            n2c2_adapter.self_test(rec)
+
+    def test_confirmed_category_maps_correctly(self):
+        # Both conventions accepted (see map_category's docstring): TYPE attribute...
+        self.assertEqual(n2c2_adapter.map_category("ID", "SSN"), "ssn")
+        self.assertEqual(n2c2_adapter.map_category("LOCATION", "ZIP"), "geo_subdivision")
+        # ...or the element's own tag name carrying the subcategory directly.
+        self.assertEqual(n2c2_adapter.map_category("MEDICALRECORD", None), "mrn")
+        self.assertEqual(n2c2_adapter.map_category("PATIENT", None), "name")
+
+    def test_removed_before_release_category_raises_with_specific_reason(self):
+        # LOCATION:ROOM/DEPARTMENT/OTHER are confirmed removed from the actual
+        # released files (Stubbs & Uzuner 2015, sec 5.2/8) -- distinct from merely
+        # unmapped, and the error message must say so.
+        with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+            n2c2_adapter.map_category("LOCATION", "ROOM")
+        self.assertIn("REMOVED", str(ctx.exception))
+
+    def test_non_hipaa_category_raises_with_specific_reason(self):
+        # PROFESSION is an n2c2-specific addition beyond HIPAA's 18 categories --
+        # must not be silently folded into other_unique_id.
+        with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+            n2c2_adapter.map_category("PROFESSION", None)
+        self.assertIn("beyond HIPAA", str(ctx.exception))
+
+    def test_annotated_but_not_safe_harbor_identifier_raises_with_specific_reason(self):
+        # DOCTOR/USERNAME/STATE/COUNTRY/HOSPITAL are annotated in the real corpus but
+        # deliberately excluded from the paper's own "HIPAA-identified categories"
+        # list -- must raise with a reason distinct from "unmapped", not silently map
+        # to geo_subdivision/name.
+        for element_tag in ("DOCTOR", "USERNAME", "STATE", "COUNTRY", "HOSPITAL"):
+            with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+                n2c2_adapter.map_category(element_tag, None)
+            self.assertIn("HIPAA-identified categories", str(ctx.exception))
+
+    def test_genuinely_unrecognized_category_raises_generic_reason(self):
+        with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+            n2c2_adapter.map_category("NOT_A_REAL_CATEGORY", None)
+        self.assertIn("not in SAFE_HARBOR_MAP", str(ctx.exception))
+
+    def test_tag_missing_required_attribute_raises(self):
+        tmp = tempfile.mkdtemp(prefix="n2c2test_")
+        try:
+            path = self._write_xml(tmp, "Seen in Boston.",
+                                   '<LOCATION id="P0" start="8" end="14" TYPE="CITY" />')  # no text=
+            with self.assertRaises(ValueError) as ctx:
+                n2c2_adapter.parse_file(path)
+            self.assertIn("missing a required attribute", str(ctx.exception))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_missing_text_element_raises(self):
+        tmp = tempfile.mkdtemp(prefix="n2c2test_")
+        try:
+            path = os.path.join(tmp, "rec.xml")
+            with open(path, "w") as f:
+                f.write("<deIdi2b2><TAGS></TAGS></deIdi2b2>")
+            with self.assertRaises(ValueError):
+                n2c2_adapter.parse_file(path)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_missing_tags_element_raises(self):
+        tmp = tempfile.mkdtemp(prefix="n2c2test_")
+        try:
+            path = os.path.join(tmp, "rec.xml")
+            with open(path, "w") as f:
+                f.write("<deIdi2b2><TEXT><![CDATA[hi]]></TEXT></deIdi2b2>")
+            with self.assertRaises(ValueError):
+                n2c2_adapter.parse_file(path)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_missing_directory_raises(self):
+        with self.assertRaises(SystemExit):
+            n2c2_adapter.load_records("/nonexistent/n2c2/dir")
+
+    def test_empty_directory_raises(self):
+        tmp = tempfile.mkdtemp(prefix="n2c2test_")
+        try:
+            with self.assertRaises(SystemExit):
+                n2c2_adapter.load_records(tmp)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_identity_key_is_the_documented_placeholder(self):
+        # Locks current (explicitly provisional -- see module docstring) behavior: if
+        # this is ever replaced with a real patient-grouping key, this test forces a
+        # conscious update, not a silent behavior change.
+        records = n2c2_adapter.load_records(self.FIXTURES)
+        for r in records:
+            self.assertEqual(r["identity_key"], r["record_id"])
 
 
 if __name__ == "__main__":

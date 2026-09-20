@@ -1,0 +1,9 @@
+<deIdi2b2>
+<TEXT><![CDATA[Seen in Boston. MRN 4567890. SSN 111-22-3333. Visit date 2007-05-09.]]></TEXT>
+<TAGS>
+<LOCATION id="P0" start="8" end="14" text="Boston" TYPE="CITY" />
+<ID id="P1" start="20" end="27" text="4567890" TYPE="MEDICALRECORD" />
+<ID id="P2" start="33" end="44" text="111-22-3333" TYPE="SSN" />
+<DATE id="P3" start="57" end="67" text="2007-05-09" TYPE="DATE" />
+</TAGS>
+</deIdi2b2>

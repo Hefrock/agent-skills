@@ -98,3 +98,71 @@ byte-identical when `--person-source` is left at the default.
 This has actually been run against a real, non-fixture Synthea population — see
 `RESULTS.md`'s "With a real Synthea-backed population" section for the real numbers
 (22,754-person background, 0/50 population-unique) and the exact reproduction command.
+
+## n2c2 — a different shape of "real data" (issue #126, Tier 2)
+
+Everything above swaps out *where synthetic demographic fields come from*, feeding
+`generate_corpus.py`'s segment-assembly pipeline. n2c2 is the opposite shape:
+pre-existing, already-annotated real clinical narrative under DUA — nothing to
+generate, an existing corpus to load. `n2c2_adapter.py` is that separate ingestion
+path (not a `PersonSource`), reading n2c2/i2b2 2014-format XML into
+`manifest-schema.md`'s `RECORD`/`SPAN` shape.
+
+**Built without the corpus itself**, which is DUA-gated — scoped by a premortem run
+before writing any code, from public sources only, in two rounds:
+
+- **Round 1** (secondary sources, before the primary paper was available — every
+  primary source was blocked by this environment's egress proxy at the time):
+  cross-checked the file *shape* against a real working parser for this exact corpus
+  (`xml_to_brat.py`, github.com/google/NeuroNER-CSPMC, read directly) — a root element
+  with one `<TEXT>` (the raw note) and one `<TAGS>` element whose children are one per
+  PHI instance, each carrying `start`/`end`/`text`/`TYPE`. That structural finding
+  stands. Category coverage was partial (`LOCATION`/`ID` only).
+- **Round 2** (the primary source itself: Stubbs & Uzuner, "Annotating longitudinal
+  clinical narratives for de-identification: The 2014 i2b2/UTHealth corpus," *J Biomed
+  Inform* 58 (2015) S20–S29, doi:10.1016/j.jbi.2015.07.020 — supplied directly and read
+  in full): closed the remaining category gaps *and* corrected an assumption. The
+  paper's own illustrative XML figure shows PHI tags inline in the text — which looked
+  like it contradicted round 1's separate-`<TAGS>`-with-offsets structure, until the
+  paper's own caption clarified it's "a simplified XML representation for readability,"
+  not the real file layout. More usefully, the paper twice gives its own literal
+  category:subcategory vocabulary (the annotation guidelines appendix, and its list of
+  the categories it calls specifically "HIPAA-identified": `NAME:PATIENT, AGE,
+  LOCATION:CITY, LOCATION:STREET, LOCATION:ZIP, LOCATION:ORGANIZATION, DATE,
+  CONTACT:PHONE, CONTACT:FAX, CONTACT:EMAIL, ID:SSN, ID:MEDICALRECORD, ID:HEALTHPLAN,
+  ID:ACCOUNT, ID:LICENSE, ID:VEHICLE, ID:DEVICE, ID:BIOID, ID:IDNUM`) — this list is
+  what `n2c2_adapter.py`'s `SAFE_HARBOR_MAP` is built from. Two more findings worth
+  keeping in mind: `LOCATION:ROOM`, `LOCATION:DEPARTMENT`, and `OTHER` are in the
+  annotation guidelines but were explicitly *removed from the released gold standard*
+  before the 2014 shared task; and the paper's own "HIPAA-identified" list deliberately
+  excludes `NAME:DOCTOR`, `NAME:USERNAME`, `PROFESSION`, `LOCATION:STATE`,
+  `LOCATION:COUNTRY`, and `LOCATION:HOSPITAL` even though all are annotated in the
+  corpus — correctly, since a doctor's/username's name isn't the *patient's* name in
+  the HIPAA sense, `PROFESSION` is an n2c2 addition beyond HIPAA's 18 categories, and a
+  US state or country is never "smaller than a state." `n2c2_adapter.py` follows this
+  split rather than the more naive "every `LOCATION` subtype → `geo_subdivision`" round
+  1 would have produced.
+- **Still not confirmed even after the primary source**: the exact literal
+  `TYPE`-attribute string a real released file uses (the paper documents the
+  annotation *scheme*, not a byte-exact file-format spec) — `map_category()` checks
+  both the tag's own element name and its `TYPE` attribute against the same table for
+  exactly this reason, so it isn't betting on which convention real files actually
+  use. Also still unconfirmed: how n2c2 encodes "these notes belong to the same
+  patient" — the corpus is explicitly longitudinal (1,304 notes across 296 patients)
+  but this paper covers annotation methodology, not the file distribution's naming
+  convention.
+
+`n2c2_adapter.py`'s `SAFE_HARBOR_MAP` covers the paper's own "HIPAA-identified"
+set; `map_category()` raises `UnmappedCategoryError` — loud, never a silent default —
+for anything else, with a *specific* reason each time (confirmed removed from the
+release; an n2c2 addition beyond HIPAA's 18; annotated but not a Safe Harbor
+identifier in this context; or genuinely unrecognized) — the same discipline
+`MA_CITY_ZIP3_OVERRIDES` and the inference attacker's compliance gate already use.
+`identity_key` is still a placeholder (the filename stem) pending the patient-grouping
+question. Validated so far against a hand-built fixture (`fixtures/n2c2/`) shaped to
+the confirmed schema — **not against real n2c2 files**. Per this project's own
+precedent, the Synthea FHIR reader was fixture-validated first and still surfaced two
+real bugs only at real scale (see above) — expect at least one more surprise here too,
+even for the categories already mapped. Not wired into `generate_corpus.py`'s CLI yet;
+this is ingestion infrastructure to build and test against now, not a ready-to-run
+corpus source.

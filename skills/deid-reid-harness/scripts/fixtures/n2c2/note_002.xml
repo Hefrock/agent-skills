@@ -1,0 +1,11 @@
+<deIdi2b2>
+<TEXT><![CDATA[Seen at Example Health Organization. 53-year-old caller, phone 555-0143. Account AC-90210, Plan HP-556, ZIP 02127.]]></TEXT>
+<TAGS>
+<LOCATION id="P0" start="8" end="35" text="Example Health Organization" TYPE="ORGANIZATION" />
+<AGE id="P1" start="37" end="39" text="53" TYPE="AGE" />
+<CONTACT id="P2" start="63" end="71" text="555-0143" TYPE="PHONE" />
+<ID id="P3" start="81" end="89" text="AC-90210" TYPE="ACCOUNT" />
+<ID id="P4" start="96" end="102" text="HP-556" TYPE="HEALTHPLAN" />
+<LOCATION id="P5" start="108" end="113" text="02127" TYPE="ZIP" />
+</TAGS>
+</deIdi2b2>
