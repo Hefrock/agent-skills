@@ -191,12 +191,19 @@ def map_category(element_tag: str, type_attr: "str | None") -> str:
 def parse_file(path: str) -> dict:
     """One n2c2-format XML file -> a manifest-schema.md RECORD dict.
 
-    Track 1 (Safe Harbor leakage) scope only: `identifiers` is populated and self-
-    tested; `quasi_identifiers`/`inference_case` are not attempted here (Tier 3/4).
-    `identity_key` is a PLACEHOLDER (the filename stem) -- n2c2's real patient-grouping
-    convention is unconfirmed (see module docstring), so do not trust any Track 2
-    linkage number built from records this function returns until it's replaced with a
-    confirmed grouping.
+    Track 1 (Safe Harbor leakage) ONLY, by deliberate scope decision (issue #126, Tier
+    3) -- not "not yet built". `quasi_identifiers` is never populated: n2c2 has no
+    structured demographic export, so a QI profile could only come from free-text
+    extraction, which is an open-ended NLP problem with an unmeasured error rate, not a
+    documentation gap the way the hipaa_category mapping was. Track 2's k-anonymity
+    math is only as trustworthy as the QI values feeding it -- a silently-wrong
+    extractor would corrupt every downstream risk number the same way the population-
+    path bug (#162) did, but continuously across every record rather than as a single
+    fixable mistake, and with no primary source available to catch it the way Stubbs &
+    Uzuner 2015 caught this file's own category-mapping errors. Track 2 against n2c2 is
+    out of scope for v1; revisit only if a validated extraction approach exists.
+    `identity_key` is a PLACEHOLDER (the filename stem) regardless -- n2c2's real
+    patient-grouping convention is unconfirmed (see module docstring).
     """
     root = ET.parse(path).getroot()
     text = root.findtext("TEXT")

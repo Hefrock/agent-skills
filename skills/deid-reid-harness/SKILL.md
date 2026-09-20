@@ -292,7 +292,12 @@ score never depends on one model's blind spots.
   reason, on anything the paper annotates but that isn't a genuine Safe Harbor
   identifier (`PROFESSION`, `DOCTOR`, `HOSPITAL`, …) rather than guessing. Fixture-
   validated, not real-data-validated; not wired into `generate_corpus.py`'s CLI yet.
-  See `references/data-sources.md`'s "n2c2 — a different shape of real data" section.
+  **Track 1 (Safe Harbor leakage) only, by deliberate scope decision, not a gap**:
+  Track 2 against n2c2 is out of scope for v1 — no structured demographic export
+  exists, so a QI profile could only come from free-text extraction, an open-ended
+  NLP problem with no primary source available to de-risk it the way Stubbs & Uzuner
+  2015 de-risked the category mapping above. See `references/data-sources.md`'s
+  "n2c2 — a different shape of real data" section.
 - **Operational scale — dry-run confirmed, not assumed.** Issue #126's Tier 5 ran the full
   pipeline at real MIMIC-IV-Note discharge-summary scale (331,794 records) before any real
   DUA-governed data touches the harness. It surfaced a real correctness bug (`score_reid.py`

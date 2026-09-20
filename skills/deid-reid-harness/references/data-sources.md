@@ -166,3 +166,19 @@ real bugs only at real scale (see above) — expect at least one more surprise h
 even for the categories already mapped. Not wired into `generate_corpus.py`'s CLI yet;
 this is ingestion infrastructure to build and test against now, not a ready-to-run
 corpus source.
+
+### Track 2 against n2c2 is out of scope for v1 — a decision, not a gap
+
+`n2c2_adapter.py` only ever populates `identifiers` (Track 1). This is a deliberate
+scope decision (issue #126, Tier 3 premortem), not unfinished work: n2c2 has no
+structured demographic export, so a QI profile could only come from extracting
+age/sex/ZIP from the free text itself — an open-ended NLP problem with an unmeasured
+error rate, categorically different from the category-mapping gap Tier 2 had. That gap
+closed because a primary source existed to read; there is no equivalent primary source
+that would make free-text QI extraction trustworthy, and Track 2's k-anonymity math is
+only as sound as the QI values feeding it. A silently-wrong extractor would corrupt
+every downstream risk number the same way the population-path bug (#162) did, but
+continuously across every record rather than as a single fixable mistake — and with no
+paper available to catch it the way Stubbs & Uzuner 2015 caught this file's own
+category-mapping errors before they shipped. Revisit only if a validated extraction
+approach becomes available; until then, n2c2 corpora run Track 1 only.
