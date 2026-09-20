@@ -67,18 +67,53 @@ MA_CITY_ZIP3_PATH = os.path.join(HERE, "ma_city_zip3.json")
 # matching on the word "Center" alone) produced confidently wrong answers for exactly
 # this reason, which is why every entry here is a specific, checked fact instead.
 MA_CITY_ZIP3_OVERRIDES = {
-    "Amherst Center": "010",           # -> Amherst (01002/01003)
     "Manchester-by-the-Sea": "019",    # USPS city name is just "Manchester" (01944)
-    "Marion Center": "027",            # -> Marion (02738)
     "Cochituate": "017",               # village of Wayland (01778)
     "Ocean Grove": "027",              # CDP in Swansea (02777)
     "Green Harbor-Cedar Crest": "020",  # CDP split Marshfield/Duxbury; Marshfield's zip (02050)
 }
-# "North Westport" -> Westport and "West Concord" -> Concord are NOT here: both resolve
-# generically via _zip3_from_city()'s directional-prefix-strip branch, confirmed directly
-# — an override entry for either would just be dead, unreachable data.
+# Several plausible entries are deliberately NOT here because they're dead, unreachable
+# data — _zip3_from_city()'s generic transforms already resolve them, confirmed directly:
+# "North Westport"/"West Concord" (directional-prefix strip), "Amherst Center"/
+# "Marion Center" (village-suffix strip).
 
 _DIRECTIONAL_PREFIXES = ("North ", "South ", "East ", "West ")
+
+# Village/CDP-name suffixes that mark a settlement inside a larger town Synthea (and the
+# ZIP dataset) already knows under its plain name — e.g. "Wareham Center" is a village of
+# "Wareham". Confirmed against a real 22,754-patient pilot: every one of these specific
+# suffixes, stripped, resolved to an already-known town; this is a real, observed pattern
+# in how Synthea names Massachusetts CDPs, not a guessed generalization of it.
+_VILLAGE_SUFFIXES = (" Center", " Common", " Corner", " Neck")
+
+
+def _strip_directional_prefix(name: str) -> "str | None":
+    for prefix in _DIRECTIONAL_PREFIXES:
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return None
+
+
+def _add_directional_prefixes(name: str) -> list:
+    return [prefix + name for prefix in _DIRECTIONAL_PREFIXES]
+
+
+def _borough_to_boro(name: str) -> "str | None":
+    """USPS's preferred city name for a New England "-borough" town is usually the
+    abbreviated "-boro" (Middleborough -> Middleboro, Tyngsborough -> Tyngsboro,
+    North Attleborough -> North Attleboro) — Synthea uses the town's full legal name,
+    the ZIP dataset uses USPS's postal name. Confirmed against the real dataset for all
+    three of the above before being added here, not assumed to generalize blindly."""
+    if name.endswith("borough"):
+        return name[: -len("borough")] + "boro"
+    return None
+
+
+def _strip_village_suffix(name: str) -> "str | None":
+    for suffix in _VILLAGE_SUFFIXES:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return None
 
 
 @functools.lru_cache(maxsize=1)
@@ -91,34 +126,46 @@ def _load_ma_city_zip3() -> dict:
 
 
 def _zip3_from_city(city: str) -> "str | None":
-    """Looks up a real ZIP3 for a Massachusetts city/town name — exact match against
-    MA_CITY_ZIP3 first, then a directional-prefix match in EITHER direction (USPS often
-    prefers "North X"/"South X" over the plain town name X — e.g. Synthea emits the plain
-    "Dartmouth", but the real dataset only has "North Dartmouth"/"South Dartmouth"; the
-    reverse also happens, e.g. "West Concord" -> "Concord"), then the small hand-verified
-    override table above. Returns None, not a guess, when nothing matches — the caller
-    decides what a genuine miss should fall back to.
+    """Looks up a real ZIP3 for a Massachusetts city/town name against MA_CITY_ZIP3 —
+    trying the name as-is, then every combination of up to two of a small, specific set
+    of real naming-convention transforms (a directional-prefix add/strip, a "-borough"
+    -> "-boro" postal-name swap, a village/CDP-suffix strip), then the small hand-
+    verified override table above. Returns None, not a guess, when nothing matches — the
+    caller decides what a genuine miss should fall back to.
 
-    Checked both directions on purpose, not just one: an earlier version of this function
-    only stripped a prefix off `city` and checked the table (catching "West Concord" ->
-    "Concord") but never tried the reverse — adding a prefix to `city` and checking the
-    table (needed for "Dartmouth" -> "North Dartmouth"/"South Dartmouth", "Easton",
-    "Hamilton", "Freetown", all of which the plain town name never appears in the
-    dataset for). Confirmed the one-directional version silently missed all four of
-    those on a real pilot run before this got fixed."""
+    Confirmed necessary on real pilot data at two different scales, not assumed: a
+    300-patient pilot needed the directional transform (e.g. "Dartmouth" only exists in
+    the dataset as "North Dartmouth"/"South Dartmouth"); scaling to a real 22,754-patient
+    background population surfaced two more real patterns single-transform matching
+    missed — "Middleborough" (needs the borough->boro swap) and, needing BOTH transforms
+    chained, "Middleborough Center" (strip " Center" -> "Middleborough", then still needs
+    the borough->boro swap to become "Middleboro" before it's found). Every transform
+    here is a specific, confirmed real-world naming convention, not a generic fuzzy
+    match — an earlier attempt at generic word-overlap matching produced confidently
+    wrong answers (see git history), which is why this stays a small, explicit,
+    individually-justified set instead."""
     table = _load_ma_city_zip3()
-    if city in table:
-        return table[city]
-    # city already carries a directional prefix Synthea doesn't use plainly -> strip it.
-    for prefix in _DIRECTIONAL_PREFIXES:
-        if city.startswith(prefix):
-            stripped = city[len(prefix):]
-            if stripped in table:
-                return table[stripped]
-    # city is the plain town name, but the dataset only has directional variants of it.
-    candidates = [table[prefix + city] for prefix in _DIRECTIONAL_PREFIXES if (prefix + city) in table]
-    if candidates:
-        return candidates[0]
+    transforms = (_strip_directional_prefix, _add_directional_prefixes, _borough_to_boro, _strip_village_suffix)
+
+    seen = {city}
+    frontier = [city]
+    for _ in range(2):  # up to two chained transforms (e.g. suffix-strip then borough->boro)
+        next_frontier = []
+        for name in frontier:
+            if name in table:
+                return table[name]
+            for transform in transforms:
+                result = transform(name)
+                results = result if isinstance(result, list) else [result] if result else []
+                for r in results:
+                    if r not in seen:
+                        seen.add(r)
+                        next_frontier.append(r)
+        frontier = next_frontier
+    for name in frontier:
+        if name in table:
+            return table[name]
+
     return MA_CITY_ZIP3_OVERRIDES.get(city)
 
 
