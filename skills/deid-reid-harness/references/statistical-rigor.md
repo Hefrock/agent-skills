@@ -76,9 +76,16 @@ python score_stats.py --seeds 10 --n 50 --out stats_sweep.json
 ## What this does NOT fix
 
 A bootstrap CI describes uncertainty **given this corpus and this attacker** — it cannot
-tell you whether n=50 synthetic notes generalize to real clinical text, whether the
-signature-match baseline generalizes to a real attacker, or whether the ZIP3 upper-bound
-caveat (see `references/expert-determination.md`) is resolved. Those require real data
-(see `references/data-sources.md`) and a real LLM attacker, not more bootstrap iterations.
-Wider CIs on synthetic data are not a substitute for external validity — treat this as
-"the numbers we report are stable," not "the numbers we report are true of real notes."
+tell you whether n=50 synthetic notes generalize to real clinical text, or whether the
+signature-match baseline generalizes to a real attacker. Those require real clinical
+text (n2c2/MIMIC-IV — see issue #126) and a real LLM attacker, not more bootstrap
+iterations. Wider CIs on synthetic data are not a substitute for external validity —
+treat this as "the numbers we report are stable," not "the numbers we report are true
+of real notes."
+
+The ZIP3 upper-bound caveat (see `references/expert-determination.md`) is a narrower,
+different question — not about note *text* realism but about background-*population*
+realism — and that one has actually been resolved: a real Synthea-backed population
+(see `references/data-sources.md` and `RESULTS.md`) replaced the uniform-ZIP3 draw with
+real geographic clustering. Don't conflate the two — the population being real doesn't
+make the sample's clinical *text* real.
