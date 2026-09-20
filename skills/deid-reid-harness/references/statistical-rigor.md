@@ -73,6 +73,43 @@ python score_stats.py --corpus corpus.json --out stats.json
 python score_stats.py --seeds 10 --n 50 --out stats_sweep.json
 ```
 
+## Bootstrap cost at real note-scale (issue #126, Tier 5)
+
+Everything above was verified at n=50. `bootstrap_ratio_ci` and `paired_bootstrap_diff`
+are both `O(n_boot * n_records)` — a pure-Python loop over `n_records` per resample —
+which is invisible at n=50 (well under a second) but not at real clinical-note scale. A
+dry run of the full pipeline at real MIMIC-IV-Note discharge-summary scale (331,794
+records, per PhysioNet's published counts — see `references/data-sources.md`) measured,
+not estimated:
+
+| stage | wall time | peak RSS |
+|---|---:|---:|
+| `generate_corpus.py` (331,794 records, `--inference --utility --population 350000`) | 106s | 2.5 GB |
+| `run_track1.py` (either bundled pipeline) | ~75s | — |
+| `score_leakage.py` / `score_reid.py` / `score_inference.py` | 20-44s each | — |
+| `score_stats.py` (default `--n-boot 2000`, full battery: 2 pipelines × privacy+utility, both paired diffs, inference, cross-track) | **88 min** | 4.6 GB |
+
+The corpus itself is 1.4 GB of JSON at this scale, and every scorer `json.load`s it whole
+(46s, 4.6 GB, just to parse) — that cost is paid once per script invocation, so a full
+`RESULTS.md`-style run through every scorer pays it 6-7 times over.
+
+**The 2000-resample default buys nothing at this scale and costs 8.6x for it.** Re-running
+`score_stats.py` on the identical 331,794-record corpus with `--n-boot 200` gave CIs
+identical to 3 decimal places in 10 minutes instead of 88 — expected, since bootstrap CI
+width is governed by `n_records`, not `n_boot`, once `n_boot` is large enough for the
+percentile estimate to be stable; at n≈300k the CIs are already near-zero width, so the
+extra 1800 resamples estimate a width that's already indistinguishable from zero. The
+default itself is unchanged (n=50's CIs are genuinely wide, and need the full 2000 for
+stability) — `score_stats.py` instead prints a one-time stderr hint when the corpus has
+≥50,000 records and `--n-boot` was left at the default, pointing at `--n-boot 200` as a
+measured, not guessed, speedup.
+
+Extrapolating (not measured) to MIMIC-IV-Note's radiology-report table — 2,321,355
+reports, ~7x the discharge-summary count — implies a `generate_corpus.py` peak in the
+mid-teens of GB and a multi-hour default `score_stats.py` run; a real run at that scale
+should budget for both before assuming the discharge-summary numbers above just scale
+down linearly in convenience.
+
 ## What this does NOT fix
 
 A bootstrap CI describes uncertainty **given this corpus and this attacker** — it cannot

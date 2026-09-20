@@ -283,6 +283,15 @@ score never depends on one model's blind spots.
   not against the tiny fixture. Still open: richer clinical content (labs, meds) for the
   utility axis, and DUA-governed real *clinical text* (n2c2/MIMIC-IV) — a categorically
   different, harder problem than a Synthea-sourced background population; see issue #126.
+- **Operational scale — dry-run confirmed, not assumed.** Issue #126's Tier 5 ran the full
+  pipeline at real MIMIC-IV-Note discharge-summary scale (331,794 records) before any real
+  DUA-governed data touches the harness. It surfaced a real correctness bug (`score_reid.py`
+  was silently scoring against the wrong background population when a same-named leftover
+  file sat in cwd — fixed) and a real performance one (the default `score_stats.py` bootstrap
+  took 88 minutes at this scale for CIs that `--n-boot 200` reproduces identically in 10 —
+  `score_stats.py` now hints at this itself above 50,000 records). See
+  `references/statistical-rigor.md`'s "Bootstrap cost at real note-scale" section for the
+  full numbers, including radiology-report-scale (2.3M notes) extrapolation.
 
 ## Reference files
 
