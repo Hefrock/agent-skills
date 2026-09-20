@@ -170,5 +170,5 @@ and calibrated through the [`agent-eval`](../agent-eval/) skill.
 
 Three orthogonal threat models, each with the right standard, none collapsed into
 one number; a privacy score always paired with a utility cost; and every headline
-figure carries a confidence interval. The `test_harness.py` regression suite (31
+figure carries a confidence interval. The `test_harness.py` regression suite (56
 tests) locks these numbers so a result can't silently move.
