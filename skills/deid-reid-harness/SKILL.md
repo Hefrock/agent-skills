@@ -283,14 +283,16 @@ score never depends on one model's blind spots.
   not against the tiny fixture. Still open: richer clinical content (labs, meds) for the
   utility axis, and DUA-governed real *clinical text* (n2c2/MIMIC-IV) — a categorically
   different, harder problem than a Synthea-sourced background population; see issue #126.
-- **n2c2 ingestion — scaffolding only, deliberately incomplete.** `n2c2_adapter.py`
-  reads n2c2/i2b2 2014-format XML into `manifest-schema.md`'s shape, scoped from public
-  sources without the (DUA-gated) corpus itself. Its `hipaa_category` mapping covers
-  only what was independently confirmed (`LOCATION`/`ID`'s subcategories); it raises
-  loudly rather than guessing on anything else, including `DATE` — the harness's own
-  highest-yield leakage category — which remains unconfirmed. Fixture-validated, not
-  real-data-validated; not wired into `generate_corpus.py`'s CLI yet. See
-  `references/data-sources.md`'s "n2c2 — a different shape of real data" section.
+- **n2c2 ingestion — scaffolding, no longer schema-blind.** `n2c2_adapter.py` reads
+  n2c2/i2b2 2014-format XML into `manifest-schema.md`'s shape, scoped from public
+  sources without the (DUA-gated) corpus itself. Its `hipaa_category` mapping
+  (`SAFE_HARBOR_MAP`) now covers the full set the primary source (Stubbs & Uzuner 2015)
+  itself calls "HIPAA-identified" — including `DATE`, the harness's own highest-yield
+  leakage category, previously the biggest gap. It still raises loudly, with a specific
+  reason, on anything the paper annotates but that isn't a genuine Safe Harbor
+  identifier (`PROFESSION`, `DOCTOR`, `HOSPITAL`, …) rather than guessing. Fixture-
+  validated, not real-data-validated; not wired into `generate_corpus.py`'s CLI yet.
+  See `references/data-sources.md`'s "n2c2 — a different shape of real data" section.
 - **Operational scale — dry-run confirmed, not assumed.** Issue #126's Tier 5 ran the full
   pipeline at real MIMIC-IV-Note discharge-summary scale (331,794 records) before any real
   DUA-governed data touches the harness. It surfaced a real correctness bug (`score_reid.py`

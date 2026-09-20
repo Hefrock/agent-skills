@@ -688,7 +688,10 @@ class N2c2Adapter(unittest.TestCase):
         by_id = {r["record_id"]: r for r in records}
         self.assertIn("note_001", by_id)
         cats = {s["hipaa_category"] for s in by_id["note_001"]["identifiers"]}
-        self.assertEqual(cats, {"geo_subdivision", "mrn", "ssn"})
+        self.assertEqual(cats, {"geo_subdivision", "mrn", "ssn", "date"})
+        cats2 = {s["hipaa_category"] for s in by_id["note_002"]["identifiers"]}
+        self.assertEqual(cats2, {"geo_subdivision", "date", "phone_fax",
+                                 "account_number", "health_plan_id"})
 
     def test_offset_invariant_is_enforced_not_trusted(self):
         rec = {"record_id": "bad", "note_text": "hello world",
@@ -697,21 +700,42 @@ class N2c2Adapter(unittest.TestCase):
             n2c2_adapter.self_test(rec)
 
     def test_confirmed_category_maps_correctly(self):
-        self.assertEqual(n2c2_adapter.map_category("ID", "SOCIAL SECURITY NUMBER"), "ssn")
+        # Both conventions accepted (see map_category's docstring): TYPE attribute...
+        self.assertEqual(n2c2_adapter.map_category("ID", "SSN"), "ssn")
         self.assertEqual(n2c2_adapter.map_category("LOCATION", "ZIP"), "geo_subdivision")
+        # ...or the element's own tag name carrying the subcategory directly.
+        self.assertEqual(n2c2_adapter.map_category("MEDICALRECORD", None), "mrn")
+        self.assertEqual(n2c2_adapter.map_category("PATIENT", None), "name")
 
-    def test_unmapped_category_raises_loud_not_silent(self):
-        # LOCATION/HOSPITAL is a CONFIRMED n2c2 subtype (see module docstring) with no
-        # reviewed hipaa_category mapping -- must raise, never silently default.
+    def test_removed_before_release_category_raises_with_specific_reason(self):
+        # LOCATION:ROOM/DEPARTMENT/OTHER are confirmed removed from the actual
+        # released files (Stubbs & Uzuner 2015, sec 5.2/8) -- distinct from merely
+        # unmapped, and the error message must say so.
         with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
-            n2c2_adapter.map_category("LOCATION", "HOSPITAL")
-        self.assertIn("HOSPITAL", str(ctx.exception))
+            n2c2_adapter.map_category("LOCATION", "ROOM")
+        self.assertIn("REMOVED", str(ctx.exception))
 
-    def test_unconfirmed_top_level_category_also_raises(self):
-        # DATE is not yet schema-confirmed at all (see module docstring) -- must raise,
-        # not be silently treated as some default category.
-        with self.assertRaises(n2c2_adapter.UnmappedCategoryError):
-            n2c2_adapter.map_category("DATE", "DATE")
+    def test_non_hipaa_category_raises_with_specific_reason(self):
+        # PROFESSION is an n2c2-specific addition beyond HIPAA's 18 categories --
+        # must not be silently folded into other_unique_id.
+        with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+            n2c2_adapter.map_category("PROFESSION", None)
+        self.assertIn("beyond HIPAA", str(ctx.exception))
+
+    def test_annotated_but_not_safe_harbor_identifier_raises_with_specific_reason(self):
+        # DOCTOR/USERNAME/STATE/COUNTRY/HOSPITAL are annotated in the real corpus but
+        # deliberately excluded from the paper's own "HIPAA-identified categories"
+        # list -- must raise with a reason distinct from "unmapped", not silently map
+        # to geo_subdivision/name.
+        for element_tag in ("DOCTOR", "USERNAME", "STATE", "COUNTRY", "HOSPITAL"):
+            with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+                n2c2_adapter.map_category(element_tag, None)
+            self.assertIn("HIPAA-identified categories", str(ctx.exception))
+
+    def test_genuinely_unrecognized_category_raises_generic_reason(self):
+        with self.assertRaises(n2c2_adapter.UnmappedCategoryError) as ctx:
+            n2c2_adapter.map_category("NOT_A_REAL_CATEGORY", None)
+        self.assertIn("not in SAFE_HARBOR_MAP", str(ctx.exception))
 
     def test_tag_missing_required_attribute_raises(self):
         tmp = tempfile.mkdtemp(prefix="n2c2test_")

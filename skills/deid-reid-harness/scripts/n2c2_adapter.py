@@ -11,39 +11,78 @@ path, deliberately NOT wired into generate_corpus.py's CLI yet (see load_records
 
 SCOPE AND CONFIDENCE (read before extending this file)
 
-The corpus itself is DUA-gated (Harvard DBMI); this adapter was built without it, from
-publicly available sources only, scoped by a premortem run before writing any code
-(issue #126). What's confirmed vs. still open:
+The corpus itself is DUA-gated (Harvard DBMI); this adapter was built without it. Two
+rounds of sourcing, in order:
 
-  CONFIRMED, cross-checked against a real working parser for this exact corpus
-  (github.com/google/NeuroNER-CSPMC's xml_to_brat.py, read directly, not summarized):
-  the file shape is a root element containing one <TEXT> element (the raw note) and one
-  <TAGS> element whose children are one per PHI instance, each carrying start/end/text/
-  TYPE attributes -- the child element's own tag name is the top-level category (NAME,
-  LOCATION, ...), TYPE is the finer subcategory. Independently confirmed subcategory
-  lists for two categories: LOCATION -> ROOM, DEPARTMENT, HOSPITAL, ORGANIZATION,
-  STREET, CITY, STATE, COUNTRY, ZIP, OTHER; ID -> SOCIAL SECURITY NUMBER, MEDICAL
-  RECORD NUMBER, HEALTH PLAN NUMBER, ACCOUNT NUMBER, LICENSE NUMBER, VEHICLE ID,
-  DEVICE ID, BIOMETRIC ID, ID NUMBER. Multiple independent sources agree on 6 top-level
-  categories, 25 subcategories, 28,872 total PHI instances across the real corpus.
+  Round 1 (secondary sources only -- ScienceDirect/PMC/the n2c2 portal were all
+  blocked by this environment's egress proxy): cross-checked the file SHAPE against a
+  real working parser for this exact corpus (github.com/google/NeuroNER-CSPMC's
+  xml_to_brat.py, read directly) -- a root element with one <TEXT> (the raw note) and
+  one <TAGS> element whose children are one per PHI instance, each carrying
+  start/end/text/TYPE attributes. That structural finding still stands and is what
+  parse_file() below implements. Category/subcategory coverage from this round was
+  partial (LOCATION, ID only) and is superseded by round 2.
 
-  NOT confirmed: DATE, AGE, CONTACT, PROFESSION, and most of NAME's actual tag/TYPE
-  structure -- ScienceDirect, ResearchGate, PMC, and the n2c2 portal itself (the
-  primary sources: the Stubbs & Uzuner 2015 paper and the challenge's own site) are all
-  blocked by this environment's egress proxy. DATE matters most here: it's the
-  harness's own documented highest-yield leakage category (see
-  references/safe-harbor-identifiers.md) and is exactly the one left unverified.
-  Also NOT confirmed: how n2c2 encodes "these notes belong to the same patient" --
-  the corpus is explicitly longitudinal (1,304 notes across 296 patients) but no
-  source found described the filename/grouping convention.
+  Round 2 (the primary source itself -- Stubbs & Uzuner, "Annotating longitudinal
+  clinical narratives for de-identification: The 2014 i2b2/UTHealth corpus", J Biomed
+  Inform 58 (2015) S20-S29, doi:10.1016/j.jbi.2015.07.020 -- supplied directly and read
+  in full): resolved every category/subcategory gap round 1 left open, AND corrected
+  an assumption round 1 got wrong. Specifically:
 
-  Consequence for this file: CATEGORY_MAP below is deliberately partial, covering only
-  entries confirmed above. map_category() raises UnmappedCategoryError -- loud, not a
-  silent default -- for anything else, the same "unsafe/unknown is never silent"
-  discipline person_sources.py's MA_CITY_ZIP3 fallback and inference_attackers.py's
-  compliance gate already use. identity_key is a placeholder (see parse_file) pending
-  the grouping question above. Extend CATEGORY_MAP only after confirming an entry
-  against a primary source or real data -- never guess one in.
+  - The paper's own illustrative XML figure (Fig. 3) shows PHI tags INLINE in the text
+    (e.g. <PATIENT>HOLCOMB,DENNIS</PATIENT>), which looked like it contradicted the
+    separate TEXT+TAGS+offsets structure round 1 found -- but the paper explicitly
+    calls this "a simplified XML representation for readability" and "in-line to
+    simplify the presentation" (sec 4). The offset-based structure from round 1, which
+    real distributed-file-parsing code actually implements, is what this adapter uses;
+    Fig. 3 corroborates the SUBCATEGORY NAMES (PATIENT, DOCTOR, USERNAME, MEDICALRECORD,
+    IDNUM, HOSPITAL, AGE, DATE) rather than the file layout.
+  - The paper gives its own literal category:subcategory vocabulary twice, independently
+    (the annotation guidelines appendix, and sec 8's list of "HIPAA-identified
+    categories": "NAME:PATIENT, AGE, LOCATION:CITY, LOCATION:STREET, LOCATION:ZIP,
+    LOCATION:ORGANIZATION, DATE, CONTACT:PHONE, CONTACT:FAX, CONTACT:EMAIL, ID:SSN,
+    ID:MEDICALRECORD, ID:HEALTHPLAN, ID:ACCOUNT, ID:LICENSE, ID:VEHICLE, ID:DEVICE,
+    ID:BIOID, and ID:IDNUM") -- this is the set SAFE_HARBOR_MAP below is built from.
+  - Sec 5.2/8: "we unmarked some of the PHI categories, i.e., ROOM, DEPARTMENT, OTHER"
+    before the 2014 release -- these three LOCATION subcategories are in the annotation
+    guidelines but CONFIRMED ABSENT from the actual released files. A real file
+    containing one would mean the wrong corpus version, not a gap in this table.
+  - The paper's own "HIPAA-identified" list (above) deliberately excludes
+    NAME:DOCTOR, NAME:USERNAME, PROFESSION, LOCATION:STATE, LOCATION:COUNTRY, and
+    LOCATION:HOSPITAL even though all are annotated in the corpus (Table 3). This
+    matches actual Safe Harbor rules, not an oversight: a doctor's/username's name
+    isn't the *patient's* name in the HIPAA sense, PROFESSION isn't one of HIPAA's 18
+    categories at all (it's an n2c2-specific addition -- "the 18 categories have been
+    expanded", sec 1), and a US state or country is not "smaller than a state", so
+    neither is Safe Harbor's `geo_subdivision`. SAFE_HARBOR_MAP follows the paper's own
+    split rather than the more naive "every LOCATION subtype -> geo_subdivision"
+    round 1 would have produced. CONTACT:URL and CONTACT:IPADDRESS are the one
+    deliberate departure from the paper's list -- included here despite the paper
+    omitting them, because HIPAA's own 18 categories explicitly list URLs and IP
+    addresses (categories 14-15; see references/safe-harbor-identifiers.md) and Table 3
+    shows both are genuinely annotated in the corpus (2 and 0 instances respectively) --
+    the paper's omission looks like negligible real-world frequency in this particular
+    corpus, not a claim that they aren't Safe Harbor identifiers.
+
+  Still NOT confirmed even after the primary source: the exact literal TYPE-attribute
+  string a real released file uses (the paper documents the ANNOTATION SCHEME, not a
+  byte-exact file format spec -- e.g. is it TYPE="MEDICALRECORD" or something else?
+  map_category() below checks both the tag's own element name and its TYPE attribute
+  against the same normalized table for exactly this reason, so it isn't betting on
+  which one the real convention actually uses). Also still not confirmed: how n2c2
+  encodes "these notes belong to the same patient" -- the corpus is explicitly
+  longitudinal (1,304 notes across 296 patients, sec 3) but this paper is about
+  annotation methodology, not the file distribution's naming convention; that would be
+  in the corpus's own accompanying documentation, not here.
+
+  Consequence for this file: SAFE_HARBOR_MAP is comprehensive for what n2c2 actually
+  calls a HIPAA-identified category, and deliberately excludes categories the corpus
+  annotates but that are not genuine Safe Harbor identifiers (see above) -- both are
+  distinct from "not yet reviewed". map_category() raises UnmappedCategoryError --
+  loud, never a silent default -- with a specific reason for each case, the same
+  "unsafe/unknown is never silent" discipline person_sources.py's MA_CITY_ZIP3 fallback
+  and inference_attackers.py's compliance gate already use. identity_key is still a
+  placeholder (see parse_file) pending the grouping question above.
 
   This has been validated against a hand-built fixture (fixtures/n2c2/) shaped to the
   confirmed schema above -- NOT against real n2c2 files. Per this project's own
@@ -52,44 +91,101 @@ publicly available sources only, scoped by a premortem run before writing any co
   more surprise once real files are available, even for the categories mapped here.
 """
 from __future__ import annotations
-import glob, os
+import glob, os, re
 import xml.etree.ElementTree as ET
 
-# (element tag, TYPE) -> hipaa_category, confirmed-only (see module docstring). TYPE is
-# upper-cased before lookup since case in real files isn't confirmed either way.
-CATEGORY_MAP = {
-    ("LOCATION", "STREET"): "geo_subdivision",
-    ("LOCATION", "CITY"): "geo_subdivision",
-    ("LOCATION", "STATE"): "geo_subdivision",
-    ("LOCATION", "COUNTRY"): "geo_subdivision",
-    ("LOCATION", "ZIP"): "geo_subdivision",
-    ("ID", "SOCIAL SECURITY NUMBER"): "ssn",
-    ("ID", "MEDICAL RECORD NUMBER"): "mrn",
-    ("ID", "HEALTH PLAN NUMBER"): "health_plan_id",
-    ("ID", "ACCOUNT NUMBER"): "account_number",
-    ("ID", "LICENSE NUMBER"): "license_number",
-    ("ID", "VEHICLE ID"): "vehicle_id",
-    ("ID", "DEVICE ID"): "device_id",
-    ("ID", "BIOMETRIC ID"): "biometric_id",
-    ("ID", "ID NUMBER"): "other_unique_id",
+
+def _normalize(s: "str | None") -> str:
+    return re.sub(r"[ _-]+", "", (s or "").upper())
+
+
+# n2c2 subcategory -> harness hipaa_category. Exactly the set Stubbs & Uzuner 2015 (sec
+# 8) call "HIPAA-identified categories", plus CONTACT:URL/IPADDRESS (see module
+# docstring for why those two are a deliberate, documented departure from that list).
+# Keys are normalized (spaces/hyphens/underscores stripped, upper-cased) since the real
+# TYPE-attribute spelling isn't independently confirmed byte-for-byte.
+SAFE_HARBOR_MAP = {
+    "PATIENT": "name",
+    "AGE": "date",              # Safe Harbor category 3 covers ages > 89
+    "CITY": "geo_subdivision",
+    "STREET": "geo_subdivision",
+    "ZIP": "geo_subdivision",
+    "ORGANIZATION": "geo_subdivision",
+    "DATE": "date",
+    "PHONE": "phone_fax",
+    "FAX": "fax",
+    "EMAIL": "email",
+    "SSN": "ssn",
+    "MEDICALRECORD": "mrn",
+    "HEALTHPLAN": "health_plan_id",
+    "ACCOUNT": "account_number",
+    "LICENSE": "license_number",
+    "VEHICLE": "vehicle_id",
+    "DEVICE": "device_id",
+    "BIOID": "biometric_id",
+    "IDNUM": "other_unique_id",
+    "URL": "url",                  # documented departure -- see module docstring
+    "IPADDRESS": "ip_address",     # documented departure -- see module docstring
 }
+
+# Annotated in the corpus (Table 3) but NOT one of the paper's own "HIPAA-identified
+# categories" -- a doctor's/username's name is not the patient's own name in the HIPAA
+# sense, and a US state or country is never "smaller than a state" (Safe Harbor's own
+# geo_subdivision wording). Distinct from "not yet reviewed": these were reviewed and
+# excluded on purpose.
+_NOT_A_SAFE_HARBOR_IDENTIFIER = {"DOCTOR", "USERNAME", "STATE", "COUNTRY", "HOSPITAL"}
+
+# PROFESSION is an n2c2-specific addition beyond HIPAA's 18 categories (sec 1: "the 18
+# categories have been expanded to include more specific identifiers"). Track 1
+# measures Safe Harbor's checklist specifically, so PROFESSION has no honest
+# hipaa_category home here.
+_NOT_A_HIPAA_CATEGORY = {"PROFESSION"}
+
+# Confirmed present in the annotation GUIDELINES but confirmed REMOVED from the
+# released gold standard before the 2014 shared task (Stubbs & Uzuner 2015, sec 5.2/8:
+# "we unmarked some of the PHI categories, i.e., ROOM, DEPARTMENT, OTHER"). A real
+# released file containing one of these means the wrong corpus version is in hand, not
+# a gap in this table.
+_REMOVED_BEFORE_RELEASE = {"ROOM", "DEPARTMENT", "OTHER"}
 
 
 class UnmappedCategoryError(Exception):
-    """An n2c2 (element, TYPE) pair with no reviewed hipaa_category mapping yet. Raised,
-    never caught-and-defaulted internally -- see CATEGORY_MAP's docstring in the module
-    header for why guessing one in here would be the wrong fix."""
+    """An n2c2 tag with no hipaa_category mapping -- for a specific, stated reason (see
+    map_category). Raised, never caught-and-defaulted internally."""
 
 
 def map_category(element_tag: str, type_attr: "str | None") -> str:
-    key = (element_tag, (type_attr or "").upper())
-    if key not in CATEGORY_MAP:
+    """Checks BOTH the tag's own element name and its TYPE attribute against the same
+    table, since the real file's convention for which one carries the subcategory
+    isn't independently confirmed (see module docstring) -- either matching is
+    accepted, so this doesn't bet on which convention real files actually use."""
+    candidates = {_normalize(element_tag), _normalize(type_attr)}
+    for c in candidates:
+        if c in SAFE_HARBOR_MAP:
+            return SAFE_HARBOR_MAP[c]
+    if candidates & _REMOVED_BEFORE_RELEASE:
         raise UnmappedCategoryError(
-            f"no reviewed hipaa_category mapping for n2c2 category ({element_tag!r}, "
-            f"TYPE={type_attr!r}). Add one to CATEGORY_MAP only after confirming it "
-            f"against a primary source (the Stubbs & Uzuner 2015 paper, or the n2c2 "
-            f"portal) or real data -- issue #126, Tier 2. Never default this silently.")
-    return CATEGORY_MAP[key]
+            f"n2c2 category ({element_tag!r}, TYPE={type_attr!r}) was confirmed REMOVED "
+            f"from the released gold standard before the 2014 shared task (Stubbs & "
+            f"Uzuner 2015, sec 5.2/8) -- a real file should never contain this; check "
+            f"that the corpus version in hand is the actual release.")
+    if candidates & _NOT_A_HIPAA_CATEGORY:
+        raise UnmappedCategoryError(
+            f"n2c2 category ({element_tag!r}, TYPE={type_attr!r}) is an n2c2-specific "
+            f"addition beyond HIPAA Safe Harbor's 18 categories (Stubbs & Uzuner 2015, "
+            f"sec 1) -- Track 1 measures Safe Harbor coverage specifically, so this has "
+            f"no honest hipaa_category home; do not fold it into other_unique_id.")
+    if candidates & _NOT_A_SAFE_HARBOR_IDENTIFIER:
+        raise UnmappedCategoryError(
+            f"n2c2 category ({element_tag!r}, TYPE={type_attr!r}) is annotated in the "
+            f"corpus but deliberately excluded from Stubbs & Uzuner 2015's own "
+            f"'HIPAA-identified categories' list (sec 8) -- not a genuine Safe Harbor "
+            f"identifier in this context (see module docstring for the specific reason).")
+    raise UnmappedCategoryError(
+        f"no reviewed hipaa_category mapping for n2c2 category ({element_tag!r}, "
+        f"TYPE={type_attr!r}) -- not in SAFE_HARBOR_MAP or any of the documented "
+        f"exclusions. Add one only after confirming it against a primary source or "
+        f"real data (issue #126, Tier 2). Never default this silently.")
 
 
 def parse_file(path: str) -> dict:
@@ -130,7 +226,7 @@ def parse_file(path: str) -> dict:
             # text wasn't rendered by this harness, so there's no injected "how was this
             # value written" metadata to carry. Revisit once Track 1 is actually run on
             # n2c2 output and it's clear whether this granularity is useful or noise.
-            "surface_form": (type_attr or "").lower() or "unknown",
+            "surface_form": (type_attr or tag.tag or "").lower() or "unknown",
             "context": "n2c2",
         })
 
@@ -156,9 +252,10 @@ def load_records(directory: str) -> list:
     """Parse every *.xml file in `directory` (non-recursive) into a self-tested RECORD.
 
     Deliberately NOT wired into generate_corpus.py's CLI: Tier 2 isn't complete (see
-    this module's docstring and references/data-sources.md) -- the category mapping is
-    partial by design and identity_key is a placeholder. This is ingestion
-    infrastructure to build and test against now, not a ready-to-run corpus source.
+    this module's docstring and references/data-sources.md) -- identity_key is a
+    placeholder, and the byte-exact TYPE-string convention is still unconfirmed against
+    real data. This is ingestion infrastructure to build and test against now, not a
+    ready-to-run corpus source.
     """
     if not directory or not os.path.isdir(directory):
         raise SystemExit(f"n2c2 directory not found: {directory!r}")
