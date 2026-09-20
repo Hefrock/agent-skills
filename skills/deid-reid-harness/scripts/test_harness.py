@@ -25,6 +25,7 @@ import inference_attackers as ia
 import score_utility
 from bootstrap import bootstrap_ratio_ci, paired_bootstrap_diff
 import score_stats
+from score_reid import resolve_population_path
 
 SEED, N, POP = 20260101, 50, 100000
 
@@ -539,6 +540,78 @@ class StatisticalRigor(unittest.TestCase):
                             "baseline must be lower-privacy than over-redact on EVERY seed")
             self.assertGreater(row["utility::regex-baseline-v0"], row["utility::over-redact-v0"],
                                "baseline must be higher-utility than over-redact on EVERY seed")
+
+
+class PopulationPathResolution(unittest.TestCase):
+    """Regression for a real bug found during a real MIMIC-IV-Note-scale dry run
+    (issue #126, Tier 5) -- not constructed. resolve_population_path used to check
+    the CALLER's cwd for population_ref's bare filename before falling back to the
+    corpus's own directory. population.jsonl is this tool's own default output
+    filename, so a leftover from an earlier run sitting in cwd got silently
+    substituted for the population that actually matches the corpus under test --
+    corrupting Track 2's journalist/marketer numbers with no error or warning. This
+    went undetected by the existing HeadlineNumbers/StatisticalRigor tests only
+    because their fixture and the stray file happened to both use POP=100000."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="popres_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_population_ref_resolves_next_to_corpus_not_cwd(self):
+        corpus_dir = os.path.join(self.tmp, "corpus_dir")
+        cwd_dir = os.path.join(self.tmp, "cwd_dir")
+        os.makedirs(corpus_dir); os.makedirs(cwd_dir)
+        real_pop = os.path.join(corpus_dir, "population.jsonl")
+        with open(real_pop, "w") as f:
+            f.write('{"age": 40}\n')
+        # A same-named DECOY in some other directory (e.g. wherever the caller's cwd is).
+        with open(os.path.join(cwd_dir, "population.jsonl"), "w") as f:
+            f.write('{"age": 1}\n{"age": 2}\n{"age": 3}\n')
+        corpus = {"population_ref": "population.jsonl"}
+        corpus_path = os.path.join(corpus_dir, "c.json")
+        old_cwd = os.getcwd()
+        os.chdir(cwd_dir)
+        try:
+            resolved = resolve_population_path(None, corpus, corpus_path)
+        finally:
+            os.chdir(old_cwd)
+        self.assertEqual(os.path.abspath(resolved), os.path.abspath(real_pop),
+                         "population_ref must resolve next to the corpus, never via cwd")
+
+    def test_explicit_population_flag_bypasses_population_ref(self):
+        p = os.path.join(self.tmp, "explicit.jsonl")
+        with open(p, "w") as f:
+            f.write('{"age": 1}\n')
+        resolved = resolve_population_path(p, {"population_ref": "unrelated.jsonl"}, "/nonexistent/c.json")
+        self.assertEqual(resolved, p)
+
+    def test_missing_explicit_population_flag_raises(self):
+        with self.assertRaises(SystemExit):
+            resolve_population_path(os.path.join(self.tmp, "nope.jsonl"), {}, "/nonexistent/c.json")
+
+    def test_missing_population_ref_file_raises(self):
+        corpus_path = os.path.join(self.tmp, "c.json")
+        with self.assertRaises(SystemExit):
+            resolve_population_path(None, {"population_ref": "nope.jsonl"}, corpus_path)
+
+    def test_no_population_ref_and_no_flag_raises(self):
+        with self.assertRaises(SystemExit):
+            resolve_population_path(None, {}, "/nonexistent/c.json")
+
+    def test_end_to_end_score_reid_ignores_cwd_decoy(self):
+        """Full CLI reproduction: generate a corpus/population pair, then run
+        score_reid.py from HERE (the scripts dir `run()` uses as cwd) -- exactly the
+        directory the dry run hit this in -- and confirm the corpus's OWN population
+        is scored regardless of whatever population.jsonl (if any) already sits there."""
+        corpus_path = os.path.join(self.tmp, "c.json")
+        r = run("generate_corpus.py", "--n", "10", "--seed", str(SEED),
+                "--population", "40", "--out", corpus_path,
+                "--population-out", os.path.join(self.tmp, "population.jsonl"))
+        assert r.returncode == 0, r.stderr
+        out = os.path.join(self.tmp, "reid.json")
+        r = run("score_reid.py", "--corpus", corpus_path, "--out", out)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(load(out)["population_size"], 40)
 
 
 if __name__ == "__main__":

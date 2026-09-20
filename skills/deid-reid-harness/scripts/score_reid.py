@@ -50,16 +50,27 @@ def load_population(path: str) -> list:
 
 
 def resolve_population_path(cli_path, corpus, corpus_path):
-    path = cli_path or corpus.get("population_ref")
-    if not path:
+    # --population is an explicit, user-typed path: resolve it against the CWD, same
+    # as any other CLI path argument.
+    if cli_path:
+        if not os.path.exists(cli_path):
+            raise SystemExit(f"population file not found: {cli_path}")
+        return cli_path
+    ref = corpus.get("population_ref")
+    if not ref:
         raise SystemExit(
             "no background population: pass --population PATH, or regenerate the "
             "corpus with `--population N` so population_ref is set.")
-    # population_ref is stored as a bare filename; resolve it next to the corpus.
-    if not os.path.exists(path):
-        cand = os.path.join(os.path.dirname(os.path.abspath(corpus_path)), path)
-        if os.path.exists(cand):
-            path = cand
+    # population_ref is stored as a bare filename and is ONLY ever resolved next to
+    # the corpus file -- never via the caller's cwd. A cwd lookup would silently
+    # prefer a same-named leftover (e.g. a stale population.jsonl from an earlier
+    # run sitting in the scripts/ directory -- the tool's own default output name)
+    # over the population that actually matches this corpus, corrupting Track 2's
+    # numbers with no error or warning. Found running a real note-scale dry run
+    # (issue #126, Tier 5), not constructed: cwd held an old 100k-person
+    # population.jsonl and score_reid silently scored against it instead of the
+    # 350k population generated alongside the corpus under test.
+    path = os.path.join(os.path.dirname(os.path.abspath(corpus_path)), ref)
     if not os.path.exists(path):
         raise SystemExit(f"population file not found: {path}")
     return path
