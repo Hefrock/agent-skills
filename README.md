@@ -99,7 +99,7 @@ agent-skills/
 │   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 563-test suite
 │   ├── agent-eval/              # rubric-based evals, LLM-as-judge, regression test sets
 │   ├── agent-redteam/           # adversarial case generation, pairs with agent-eval
-│   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 40-test suite
+│   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 44-test suite
 │   ├── repo-pincer/             # codebase reverse-engineering — claims vs. reality reconciliation, scripts/check_structural_claims.py + track_findings.py, test suite
 │   ├── issue-reconciler/        # GitHub issues vs. reality reconciliation — scripts/find_closing_references.py, test suite
 │   ├── privacy-linter/          # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite

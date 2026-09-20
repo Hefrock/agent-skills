@@ -305,6 +305,35 @@ class MaCityZip3Fallback(unittest.TestCase):
         from person_sources import _zip3_from_city
         self.assertEqual(_zip3_from_city("Cochituate"), "017")  # village of Wayland
 
+    def test_borough_to_boro_postal_name_swap(self):
+        # Confirmed on a real 22,754-patient background-population generation: Synthea
+        # uses the town's full legal name, the ZIP dataset uses USPS's abbreviated
+        # postal name -- "Middleborough" only exists in the dataset as "Middleboro".
+        # 95 of 511 unresolved-city occurrences on that run were this single town alone.
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Middleborough"), "023")
+        self.assertEqual(_zip3_from_city("North Attleborough"), "027")
+        self.assertEqual(_zip3_from_city("Tyngsborough"), "018")
+
+    def test_village_suffix_strip(self):
+        # "Wareham Center" is a village of "Wareham", which is already in the dataset.
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Wareham Center"), "025")
+
+    def test_two_transforms_chained(self):
+        # Real regression case from the same 22,754-patient run: "Middleborough Center"
+        # needs BOTH the village-suffix strip (-> "Middleborough") AND the borough->boro
+        # swap (-> "Middleboro") before it's found -- neither transform alone resolves
+        # it, confirmed directly before this two-transform chaining was added.
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Middleborough Center"), "023")
+
+    def test_generic_transforms_do_not_shadow_a_real_exact_match(self):
+        # A town whose plain name IS in the dataset must resolve directly, not get
+        # mangled by a transform that happens to also apply syntactically.
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Boston"), "021")
+
     def test_unresolvable_city_returns_none(self):
         from person_sources import _zip3_from_city
         self.assertIsNone(_zip3_from_city("Not A Real Massachusetts Town"))
