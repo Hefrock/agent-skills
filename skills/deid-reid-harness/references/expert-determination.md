@@ -69,7 +69,9 @@ averaged number — averaging hides the singletons, which are the whole point. F
   far more dispersed than real geography; sample uniqueness (and thus prosecutor /
   k-anonymity) is an **upper bound**. The population-side journalist and marketer risks
   are the load-bearing numbers, and a Synthea-backed population (the `make_person` swap
-  point) restores realistic equivalence-class sizes.
+  point) restores realistic equivalence-class sizes — confirmed directly, not just
+  theorized: a real 22,754-person Synthea Massachusetts background population brought
+  population-unique records from 6/50 down to 0/50 (see `RESULTS.md`).
 
 ## Why this attacker is load-bearing
 

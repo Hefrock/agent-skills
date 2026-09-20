@@ -138,7 +138,15 @@ still a re-identification target through the QIs that must clinically remain (Ex
 Determination fail). One caveat the report states in-band: the v0 generator draws ZIP3
 uniformly, so the QI space is more dispersed than real geography — the prosecutor /
 k-anonymity numbers are an upper bound, and the population-side risks are the
-load-bearing figures. A Synthea-backed population restores realistic class sizes.
+load-bearing figures.
+
+That upper-bound caveat is no longer just a caveat — it's been confirmed directly. A
+real Synthea-backed run (a real 22,754-person Massachusetts background population, real
+city/ZIP3 clustering) brought the population-unique count from 6/50 down to **0/50**;
+see [`RESULTS.md`](./RESULTS.md#with-a-real-synthea-backed-population) for the full
+numbers and the exact reproduction command. The sample-side story (min_k = 1, prosecutor
+risk ~0.9) doesn't change — that's about the released cohort's own small size, not
+population realism.
 
 **Track 3.** Each note gets a diagnosis-free vignette rendering the diagnosis's clinical
 signature; the attacker must name the withheld diagnosis from context alone. The bundled
@@ -254,18 +262,27 @@ score never depends on one model's blind spots.
   next step here is the LLM attacker + judge:** register an LLM attacker in
   `inference_attackers.py` (respecting the no-shared-base-model rule) and move scoring to
   agent-eval's LLM judge for semantic grading of free-text guesses and confidence
-  calibration. See `references/inference-threat.md`.
+  calibration. See `references/inference-threat.md`. **One requirement that's now
+  enforced in code, not just a rule to remember:** any attacker that calls a third-party
+  API must set `calls_external_api = True` on its class — `get_attacker()` refuses to
+  return it without `--acknowledge-external-api-risk` on the CLI, since calling an
+  external LLM API on DUA-governed clinical text is almost certainly a prohibited
+  disclosure (issue #126, Tier 1).
 - **Utility axis / frontier — BUILT.** `--utility` marks clinical spans, `score_utility.py`
   scores preservation, and `score_frontier.py` reports `(privacy, utility)` per defender
   over one corpus. Extend it by adding richer clinical content (labs, meds) as clinical
   spans and more defenders to the registry to fill in the frontier between the two
   bundled corners.
-- **Data fidelity — BUILT (reader), pending real data.** The `fhir-synthea` person source
-  reads Synthea FHIR bundles so real demographics enter at the source — this is what turns
-  Track 2's uniform-ZIP3 upper bound into a defensible estimate. Validated against a
-  bundled fixture; point it at real Synthea output and sanity-check the first run. Still
-  open: a FHIR-sourced Track 2 population, and richer clinical content (labs, meds) for the
-  utility axis.
+- **Data fidelity — BUILT, and run for real.** The `fhir-synthea` person source reads
+  Synthea FHIR bundles so real demographics enter at the source — this is what turns
+  Track 2's uniform-ZIP3 upper bound into a defensible estimate. No longer just validated
+  against the bundled fixture: a real 22,754-person Synthea Massachusetts background
+  population has actually been generated and scored (see `RESULTS.md`), surfacing and
+  fixing two real ZIP3-recovery bugs (`Dartmouth`-style directional-prefix towns,
+  `Middleborough`-style USPS postal-name variants) that only showed up at real scale,
+  not against the tiny fixture. Still open: richer clinical content (labs, meds) for the
+  utility axis, and DUA-governed real *clinical text* (n2c2/MIMIC-IV) — a categorically
+  different, harder problem than a Synthea-sourced background population; see issue #126.
 
 ## Reference files
 

@@ -21,6 +21,7 @@ sys.path.insert(0, HERE)
 import generate_corpus as gc
 from deid_pipelines import get_pipeline, REGISTRY, REDACTION
 from person_sources import get_source, PERSON_KEYS
+import inference_attackers as ia
 import score_utility
 from bootstrap import bootstrap_ratio_ci, paired_bootstrap_diff
 import score_stats
@@ -377,6 +378,63 @@ class MaCityZip3Fallback(unittest.TestCase):
             self.assertIn("no ZIP3 known", stderr.getvalue())
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class InferenceAttackerComplianceGate(unittest.TestCase):
+    """Issue #126, Tier 1: calling a third-party API on DUA-governed clinical text is
+    almost certainly a prohibited disclosure -- get_attacker() must refuse to hand back
+    an attacker that calls one unless explicitly acknowledged. No live-LLM attacker
+    exists yet (see inference_attackers.py's module docstring), so a fake one injected
+    via get_attacker()'s registry override is the only way to test this today."""
+
+    class FakeExternalAttacker(ia.InferenceAttacker):
+        name = "fake-external-v0"
+        calls_external_api = True
+
+        def infer(self, note_text):
+            return {"guess": None, "confidence": 0.0, "rationale": ""}
+
+    FAKE_REGISTRY = {FakeExternalAttacker.name: FakeExternalAttacker}
+
+    def test_baseline_attacker_needs_no_acknowledgment(self):
+        a = ia.get_attacker("signature-match-v0")
+        self.assertFalse(a.calls_external_api)
+
+    def test_external_api_attacker_refused_without_acknowledgment(self):
+        with self.assertRaises(SystemExit) as ctx:
+            ia.get_attacker("fake-external-v0", registry=self.FAKE_REGISTRY)
+        self.assertIn("calls_external_api", str(ctx.exception))
+        self.assertIn("--acknowledge-external-api-risk", str(ctx.exception))
+
+    def test_external_api_attacker_allowed_with_acknowledgment(self):
+        a = ia.get_attacker("fake-external-v0", acknowledge_external_api=True, registry=self.FAKE_REGISTRY)
+        self.assertEqual(a.name, "fake-external-v0")
+
+    def test_acknowledgment_flag_is_a_no_op_for_the_baseline(self):
+        # Passing the flag when it isn't needed must never change behavior.
+        a = ia.get_attacker("signature-match-v0", acknowledge_external_api=True)
+        self.assertEqual(a.name, "signature-match-v0")
+
+    def test_unknown_attacker_still_raises_keyerror_not_swallowed_by_the_gate(self):
+        with self.assertRaises(KeyError):
+            ia.get_attacker("nonexistent-attacker")
+
+    def test_cli_refuses_without_the_flag(self):
+        r = run("score_inference.py", "--corpus", self._corpus_path(),
+                "--attacker", "signature-match-v0", "--out", self._out("inference_report.json"))
+        self.assertEqual(r.returncode, 0, "the bundled baseline must never need the flag")
+
+    def _out(self, name):
+        fd, path = tempfile.mkstemp(prefix="gate_", suffix="_" + name)
+        os.close(fd)
+        return path
+
+    def _corpus_path(self):
+        path = self._out("corpus.json")
+        c = gc.generate(3, 1, with_inference=True)
+        with open(path, "w") as f:
+            json.dump(c, f)
+        return path
 
 
 class BootstrapPrimitives(unittest.TestCase):

@@ -126,6 +126,10 @@ def main():
     ap.add_argument("--out", default="inference_report.json")
     ap.add_argument("--eval-out", default="inference_eval.jsonl",
                     help="per-case results in agent-eval's JSONL schema")
+    ap.add_argument("--acknowledge-external-api-risk", action="store_true",
+                    help="required to run an attacker that calls a third-party API (calls_external_api=True) "
+                         "-- only pass this after confirming the specific data/DUA in use actually permits it "
+                         "(see issue #126, references/data-sources.md). No effect on the bundled model-independent baseline.")
     args = ap.parse_args()
 
     corpus = json.load(open(args.corpus))
@@ -135,7 +139,7 @@ def main():
             "corpus has no inference cases — regenerate with `--inference` so each "
             "record carries an inference_case vignette.")
 
-    attacker = get_attacker(args.attacker)
+    attacker = get_attacker(args.attacker, acknowledge_external_api=args.acknowledge_external_api_risk)
     results = score_corpus(records, attacker)
     report = aggregate(results)
     report["attacker"] = attacker.name

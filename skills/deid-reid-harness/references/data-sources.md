@@ -94,3 +94,7 @@ A file-backed population is capped at the directory's supply (with a printed not
 real 100k-person denominator needs ~100k bundles — that volume is what actually retires
 Track 2's uniform-ZIP3 upper bound. The synthetic population path is unchanged and
 byte-identical when `--person-source` is left at the default.
+
+This has actually been run against a real, non-fixture Synthea population — see
+`RESULTS.md`'s "With a real Synthea-backed population" section for the real numbers
+(22,754-person background, 0/50 population-unique) and the exact reproduction command.
