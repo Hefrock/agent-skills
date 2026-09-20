@@ -77,3 +77,19 @@ cardinal rule still binds: **an LLM attacker must not share a base model with an
 defender, nor with the judge that grades it**, or their blind spots correlate and the
 score means nothing. The deterministic attacker and the programmatic scorer stay
 load-bearing so no single model's blind spot can quietly flatter the result.
+
+### The DUA constraint is enforced in code, not just written here
+
+Calling any third-party LLM API on DUA-governed clinical text is, per how academic
+clinical-NLP DUAs are standardly written, almost certainly a prohibited third-party
+disclosure (see `references/data-sources.md`'s "before use" notes on n2c2/MIMIC-IV).
+Before issue #126's Tier 1, that restriction lived only as a sentence in issue #29 —
+nothing stopped a Track 3 real-attacker run from calling an external API against real
+data. Every `InferenceAttacker` subclass now declares `calls_external_api` (`True` for
+anything that makes a network call, `False` for the bundled baseline); `get_attacker()`
+refuses to return an attacker whose class sets it `True` unless the caller explicitly
+passes `acknowledge_external_api=True` (`score_inference.py --acknowledge-external-api-risk`
+on the CLI) — a technical gate against an *accidental* real-data run, not a substitute
+for the human compliance review Tier 1 also requires before any DUA-governed corpus is
+used at all. Registering a new LLM attacker means setting `calls_external_api = True`
+on it; there is no default a new subclass can silently inherit its way around.

@@ -24,6 +24,22 @@ in Track 2. A real LLM attacker is a strictly stronger swap-in — register it h
 run it through agent-eval (see references/inference-threat.md). Per the harness's
 cardinal rule, an LLM attacker must not share a base model with any LLM defender, nor
 with the judge that grades it.
+
+Compliance gate (issue #126, Tier 1): calling any third-party LLM API on DUA-governed
+clinical text is, per how academic clinical-NLP DUAs are standardly written, almost
+certainly a prohibited third-party disclosure — n2c2's and MIMIC's own DUA text (see
+references/data-sources.md) both name this restriction explicitly. Before this gate
+existed, that restriction lived only as a sentence in issue #29 — nothing in the code
+enforced it. Every attacker registered here now declares `calls_external_api` (True for
+anything that makes a network call to grade real data, False for the bundled
+model-independent baseline); get_attacker() refuses to hand back an attacker whose
+class sets it True unless the caller explicitly passes acknowledge_external_api=True —
+loud, not a comment someone has to remember, the same "unsafe-by-default requires
+explicit opt-in" pattern privacy-linter's --strip-metadata already uses. This is a
+technical gate against an accidental real-data run, not a substitute for the actual
+human compliance review Tier 1 also requires before any DUA-governed corpus is used at
+all -- passing the flag says "I've confirmed this specific run's data and DUA permit
+it," not "the tool has decided it's fine."
 """
 from __future__ import annotations
 from typing import Optional
@@ -31,6 +47,10 @@ from typing import Optional
 
 class InferenceAttacker:
     name = "base"
+    # True on any subclass that calls a third-party API to grade real data -- see the
+    # compliance-gate note above. Every attacker MUST set this explicitly; there is no
+    # safe default to assume for a subclass this base class has never seen.
+    calls_external_api = False
 
     def infer(self, note_text: str) -> dict:
         raise NotImplementedError
@@ -80,7 +100,23 @@ REGISTRY: dict = {
 }
 
 
-def get_attacker(name: str) -> InferenceAttacker:
-    if name not in REGISTRY:
-        raise KeyError(f"unknown attacker '{name}'; have {list(REGISTRY)}")
-    return REGISTRY[name]()
+def get_attacker(name: str, acknowledge_external_api: bool = False, registry: dict = None) -> InferenceAttacker:
+    """`registry` defaults to the real REGISTRY above; overridable so a test can inject
+    a fake calls_external_api=True attacker without registering one for real (there is
+    no live-LLM attacker built yet — see the module docstring's compliance-gate note —
+    so this is the only way to test the gate today)."""
+    reg = REGISTRY if registry is None else registry
+    if name not in reg:
+        raise KeyError(f"unknown attacker '{name}'; have {list(reg)}")
+    cls = reg[name]
+    if cls.calls_external_api and not acknowledge_external_api:
+        raise SystemExit(
+            f"attacker {name!r} calls a third-party API (calls_external_api=True) -- refusing "
+            f"to run it without explicit acknowledgment. Calling any external LLM API on "
+            f"DUA-governed clinical text is, per how academic clinical-NLP DUAs are standardly "
+            f"written, almost certainly a prohibited third-party disclosure (see issue #126, "
+            f"references/data-sources.md). Pass --acknowledge-external-api-risk (score_inference.py) "
+            f"only after confirming, for the SPECIFIC data and DUA this run uses, that it's "
+            f"actually permitted -- this flag records that you checked, it doesn't check for you."
+        )
+    return cls()

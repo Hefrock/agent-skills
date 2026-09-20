@@ -12,3 +12,11 @@ crosstrack_report.json
 stats_report.json
 stats.json
 stats_sweep.json
+
+# Real, DUA-governed corpora (n2c2, MIMIC-IV, etc. -- issue #126, Tier 1). The
+# fixed-filename list above only protects TODAY's default output names living directly
+# in scripts/; a real corpus saved under any other name, in any format, anywhere else
+# in this directory had zero automatic protection before this. Put real data ONLY under
+# real_data/ -- everything in it is ignored except its own README, regardless of name.
+real_data/*
+!real_data/README.md
