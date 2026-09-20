@@ -110,6 +110,42 @@ fail — the divergence the harness exists to surface.
 > count is the load-bearing number. A Synthea-backed population restores realistic
 > class sizes.
 
+### With a real Synthea-backed population
+
+The above caveat, confirmed directly rather than left as a promise. Reproducing this
+needs real Synthea output first (a `--person-source fhir-synthea` cohort and a
+disjoint, larger `--population-source fhir-synthea` background set — see
+[`references/data-sources.md`](./references/data-sources.md)):
+
+```bash
+python generate_corpus.py \
+    --person-source fhir-synthea --fhir-dir <50-patient cohort dir> \
+    --population 25000 --population-source fhir-synthea --population-fhir-dir <background dir> \
+    --inference --utility --out corpus.json
+python score_reid.py --corpus corpus.json --out reid_report.json
+```
+
+Sample: 50 real-Synthea-sourced patients (seed `42`, Massachusetts — the same cohort
+[`fhir-synthea-lab`](https://github.com/Hefrock/fhir-synthea-lab) pins). Population:
+22,754 real-Synthea-sourced Massachusetts residents (seed `10000`, disjoint from the
+sample), with realistic city/ZIP3 clustering instead of the uniform draw above.
+
+- **min k = 1** — still not k-anonymous. A 50-patient released cohort has real
+  singleton risk no background-population realism fixes; this part of the story
+  doesn't change.
+- **Prosecutor risk: mean 0.90, max 1.0** — same story, sample-internal, unaffected
+  by population realism.
+- **The population-side risk is what actually moves**: mean journalist/marketer risk
+  **2.9%** (max 33.3%), and — the headline number — **0 of 50 records remain unique
+  against the real population**, down from **6/50** against the 100k uniform-ZIP3
+  synthetic population above. All 40 records that look sample-unique (80%) turn out
+  to share their quasi-identifier profile with at least one real person once weighed
+  against actual Massachusetts geography.
+
+Not a strictly controlled before/after (different sample, different seed, a
+differently-sized population) — but it's the first real evidence, not just a
+documented caveat, that the uniform-ZIP3 draw was overstating population-level risk.
+
 ---
 
 ## Track 3 — free-text inference (the pure AI-era threat)
