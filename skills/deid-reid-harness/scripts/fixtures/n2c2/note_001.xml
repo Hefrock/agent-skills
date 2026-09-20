@@ -1,0 +1,9 @@
+<deIdi2b2>
+<TEXT><![CDATA[PATIENT: seen in Boston at 12 Main Street. MRN 4567890. SSN 111-22-3333.]]></TEXT>
+<TAGS>
+<LOCATION id="P0" start="17" end="23" text="Boston" TYPE="CITY" />
+<LOCATION id="P1" start="27" end="41" text="12 Main Street" TYPE="STREET" />
+<ID id="P2" start="47" end="54" text="4567890" TYPE="MEDICAL RECORD NUMBER" />
+<ID id="P3" start="60" end="71" text="111-22-3333" TYPE="SOCIAL SECURITY NUMBER" />
+</TAGS>
+</deIdi2b2>

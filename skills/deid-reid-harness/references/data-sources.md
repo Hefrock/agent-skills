@@ -98,3 +98,46 @@ byte-identical when `--person-source` is left at the default.
 This has actually been run against a real, non-fixture Synthea population — see
 `RESULTS.md`'s "With a real Synthea-backed population" section for the real numbers
 (22,754-person background, 0/50 population-unique) and the exact reproduction command.
+
+## n2c2 — a different shape of "real data" (issue #126, Tier 2)
+
+Everything above swaps out *where synthetic demographic fields come from*, feeding
+`generate_corpus.py`'s segment-assembly pipeline. n2c2 is the opposite shape:
+pre-existing, already-annotated real clinical narrative under DUA — nothing to
+generate, an existing corpus to load. `n2c2_adapter.py` is that separate ingestion
+path (not a `PersonSource`), reading n2c2/i2b2 2014-format XML into
+`manifest-schema.md`'s `RECORD`/`SPAN` shape.
+
+**Built without the corpus itself**, which is DUA-gated — scoped by a premortem run
+before writing any code, from public sources only:
+
+- **Confirmed**, cross-checked against a real working parser for this exact corpus
+  (`xml_to_brat.py`, github.com/google/NeuroNER-CSPMC, read directly): a root element
+  with one `<TEXT>` (the raw note) and one `<TAGS>` element whose children are one per
+  PHI instance, each carrying `start`/`end`/`text`/`TYPE` — the child's own tag name is
+  the top-level category, `TYPE` the subcategory. Independently confirmed subcategories
+  for two categories only: `LOCATION` (`ROOM, DEPARTMENT, HOSPITAL, ORGANIZATION,
+  STREET, CITY, STATE, COUNTRY, ZIP, OTHER`) and `ID` (`SOCIAL SECURITY NUMBER, MEDICAL
+  RECORD NUMBER, HEALTH PLAN NUMBER, ACCOUNT NUMBER, LICENSE NUMBER, VEHICLE ID, DEVICE
+  ID, BIOMETRIC ID, ID NUMBER`). Multiple sources agree on 6 top-level categories, 25
+  subcategories, 28,872 total PHI instances in the real corpus.
+- **Not confirmed**: `DATE`, `AGE`, `CONTACT`, `PROFESSION`, and most of `NAME`'s tag
+  structure — the primary sources (the Stubbs & Uzuner 2015 paper, the n2c2 portal
+  itself) are blocked by this environment's egress proxy; everything above came from
+  secondary sources. `DATE` matters most: it's this harness's own documented
+  highest-yield leakage category (`references/safe-harbor-identifiers.md`), and it's
+  exactly the one left unverified. Also unconfirmed: how n2c2 encodes "these notes
+  belong to the same patient" (the corpus is explicitly longitudinal — 1,304 notes
+  across 296 patients — but no source found described the grouping convention).
+
+`n2c2_adapter.py`'s `CATEGORY_MAP` covers only the confirmed entries above;
+`map_category()` raises `UnmappedCategoryError` — loud, never a silent default — for
+anything else, the same discipline `MA_CITY_ZIP3_OVERRIDES` and the inference
+attacker's compliance gate already use. `identity_key` is a placeholder (the filename
+stem) pending the patient-grouping question. Validated so far against a hand-built
+fixture (`fixtures/n2c2/`) shaped to the confirmed schema — **not against real n2c2
+files**. Per this project's own precedent, the Synthea FHIR reader was fixture-
+validated first and still surfaced two real bugs only at real scale (see above) —
+expect at least one more surprise here too, even for the categories already mapped.
+Not wired into `generate_corpus.py`'s CLI yet; this is ingestion infrastructure to
+build and test against now, not a ready-to-run corpus source.

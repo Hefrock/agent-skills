@@ -1,0 +1,11 @@
+<deIdi2b2>
+<TEXT><![CDATA[Transferred within Riverton, MA, USA. ZIP 02127. Account # AC-90210. Plan # HP-556.]]></TEXT>
+<TAGS>
+<LOCATION id="P0" start="19" end="27" text="Riverton" TYPE="CITY" />
+<LOCATION id="P1" start="29" end="31" text="MA" TYPE="STATE" />
+<LOCATION id="P2" start="33" end="36" text="USA" TYPE="COUNTRY" />
+<LOCATION id="P3" start="42" end="47" text="02127" TYPE="ZIP" />
+<ID id="P4" start="59" end="67" text="AC-90210" TYPE="ACCOUNT NUMBER" />
+<ID id="P5" start="76" end="82" text="HP-556" TYPE="HEALTH PLAN NUMBER" />
+</TAGS>
+</deIdi2b2>
