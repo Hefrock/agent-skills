@@ -148,6 +148,28 @@ documented caveat, that the uniform-ZIP3 draw was overstating population-level r
 
 ---
 
+## Operational scale — a real MIMIC-IV-Note-scale dry run (issue #126, Tier 5)
+
+Everything above ran at n=50. Before any real DUA-governed corpus touches the harness,
+Tier 5 dry-runs the full pipeline at real note-scale using synthetic volume — 331,794
+records, matching MIMIC-IV-Note's published discharge-summary count — to catch runtime
+and memory surprises early. It caught one of each:
+
+- **A real correctness bug**, not a constructed one: `score_reid.py` silently scored
+  Track 2 against the wrong background population whenever a same-named leftover
+  `population.jsonl` happened to be sitting in the caller's working directory — exactly
+  what happened running this dry run itself. Fixed (population_ref now always resolves
+  next to the corpus, never via cwd) and regression-tested.
+- **A real performance ceiling**: the default `score_stats.py` bootstrap (`--n-boot
+  2000`) took **88 minutes** at this scale; `--n-boot 200` on the identical corpus gave
+  CIs identical to 3 decimal places in **10 minutes**. `score_stats.py` now prints this
+  as a hint above 50,000 records rather than leaving it to be discovered the hard way.
+
+Full numbers (per-stage timing, memory, and the radiology-report-scale extrapolation) are
+in `references/statistical-rigor.md`'s "Bootstrap cost at real note-scale" section.
+
+---
+
 ## Track 3 — free-text inference (the pure AI-era threat)
 
 Each note gets a diagnosis-free vignette; the attacker must name the *withheld*
@@ -170,5 +192,5 @@ and calibrated through the [`agent-eval`](../agent-eval/) skill.
 
 Three orthogonal threat models, each with the right standard, none collapsed into
 one number; a privacy score always paired with a utility cost; and every headline
-figure carries a confidence interval. The `test_harness.py` regression suite (56
+figure carries a confidence interval. The `test_harness.py` regression suite (59
 tests) locks these numbers so a result can't silently move.

@@ -614,5 +614,56 @@ class PopulationPathResolution(unittest.TestCase):
         self.assertEqual(load(out)["population_size"], 40)
 
 
+class LargeCorpusBootstrapHint(unittest.TestCase):
+    """A real, measured finding (issue #126, Tier 5): score_stats.py's default
+    n_boot=2000 cost ~88 minutes at real MIMIC-IV-Note scale (331,794 records, full
+    metric battery) for CIs that n_boot=200 reproduced identically to 3 decimal places
+    in ~10 minutes. Too large a corpus to regression-test at real scale, so this locks
+    the CLI-level hint that fires instead, using a lowered threshold to stay fast."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="hinttest_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.corpus_path = os.path.join(self.tmp, "c.json")
+        r = run("generate_corpus.py", "--n", str(N), "--seed", str(SEED), "--out", self.corpus_path)
+        assert r.returncode == 0, r.stderr
+
+    def _run_main_capture_stderr(self, extra_args):
+        old_argv = sys.argv
+        sys.argv = (["score_stats.py", "--corpus", self.corpus_path,
+                     "--out", os.path.join(self.tmp, "out.json")] + extra_args)
+        err, out = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
+                score_stats.main()
+        finally:
+            sys.argv = old_argv
+        return err.getvalue()
+
+    def test_hint_fires_at_default_n_boot_over_threshold(self):
+        old = score_stats.LARGE_CORPUS_HINT_THRESHOLD
+        score_stats.LARGE_CORPUS_HINT_THRESHOLD = 10  # N=50 fixture is "large" for this test
+        try:
+            err = self._run_main_capture_stderr(["--n-boot", str(score_stats.DEFAULT_N_BOOT)])
+        finally:
+            score_stats.LARGE_CORPUS_HINT_THRESHOLD = old
+        self.assertIn("--n-boot 200", err)
+
+    def test_hint_silent_below_threshold(self):
+        # Default LARGE_CORPUS_HINT_THRESHOLD (50000) is far above the N=50 fixture.
+        err = self._run_main_capture_stderr(["--n-boot", str(score_stats.DEFAULT_N_BOOT)])
+        self.assertNotIn("--n-boot 200", err)
+
+    def test_hint_silent_when_n_boot_already_overridden(self):
+        # Above threshold but the caller already chose a non-default n_boot -- no nag.
+        old = score_stats.LARGE_CORPUS_HINT_THRESHOLD
+        score_stats.LARGE_CORPUS_HINT_THRESHOLD = 10
+        try:
+            err = self._run_main_capture_stderr(["--n-boot", "50"])
+        finally:
+            score_stats.LARGE_CORPUS_HINT_THRESHOLD = old
+        self.assertNotIn("--n-boot 200", err)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
