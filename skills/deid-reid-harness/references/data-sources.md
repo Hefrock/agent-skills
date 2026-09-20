@@ -48,9 +48,25 @@ is always complete and reproducible.
 ## Known limitations (read before a real run)
 
 - **The FHIR reader is validated against a bundled Synthea-structured fixture**
-  (`fixtures/fhir/`), not against a live Synthea export in this environment. Sanity-check
-  the first real run — Synthea profiles vary (identifier systems, extensions), and the
-  mapping above covers the common shape, not every variant.
+  (`fixtures/fhir/`) and, since, against a real 353-patient Synthea v3.3.0 Massachusetts
+  export (light `years_of_history` config, seed 999) — that pilot run is what surfaced
+  and fixed the ZIP3 issue below, not a hypothetical. Still worth a fresh sanity-check
+  against a differently-configured Synthea export (a different state, a newer Synthea
+  version) before trusting it blind — profiles vary, and the mapping covers the common
+  shape confirmed so far, not every variant.
+- **ZIP3 recovery from a degenerate Synthea postal code.** Confirmed on that same pilot:
+  Synthea v3.3.0's Massachusetts module emits a literal `postalCode: "00000"` for
+  patients in certain towns — systematically, per town, not per-patient randomness
+  (~24% of the pilot population) — even though the same record carries a real city,
+  state, and lat/long. Left unhandled, that silently dumped a real quarter of the
+  population into one fake `zip3="000"` bucket, corrupting Track 2's k-anonymity numbers
+  (an artificially huge "safe" bucket, with every affected patient's true ZIP3
+  undercounted). `_zip3_from_city()` in `person_sources.py` now recovers a real ZIP3 from
+  the city name (`ma_city_zip3.json`, sourced from real USPS/Census-derived city-ZIP
+  facts, not guessed) whenever `postalCode` is missing or `"00000"`. A city this table
+  has never seen still falls back to `"000"` — now with a loud stderr warning naming the
+  city, not a silent corruption — since a new Synthea version or a different state will
+  surface towns not yet in the table.
 - **Track 3 diagnosis mapping is lossy by design.** Real conditions are open-vocabulary
   SNOMED; the harness's inference signatures cover nine diagnoses. `fhir-synthea` maps
   each condition to the nearest known diagnosis (keyword match, else a deterministic

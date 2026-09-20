@@ -27,7 +27,7 @@ circular — generate_corpus imports this). SyntheticSource is handed make_perso
 caller, and the FHIR diagnosis mapping imports the known-diagnosis tables lazily.
 """
 from __future__ import annotations
-import glob, hashlib, json, os, re, sys
+import functools, glob, hashlib, json, os, re, sys
 
 # The keys build_note / qi_profile / build_inference_case consume. A source that omits
 # any of these would break generation, so every source is checked against this set.
@@ -35,6 +35,91 @@ PERSON_KEYS = ("first", "last", "sex", "age", "city", "zip3", "admission", "last
                "diagnosis", "rare", "mrn", "ssn", "phone", "facility")
 
 REF_YEAR = 2026  # age = REF_YEAR - birth year, matching the corpus's 2026 admission window
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+MA_CITY_ZIP3_PATH = os.path.join(HERE, "ma_city_zip3.json")
+
+# Confirmed empirically, not theorized: Synthea v3.3.0's Massachusetts module emits a
+# literal "postalCode": "00000" for patients in certain towns -- the same patient record
+# still carries a real city, state, and lat/long, only the postal code is degenerate. On a
+# real 300-patient pilot generation, ~24% of patients hit this, and it's systematic per
+# TOWN (every patient from a given affected town gets "00000", confirmed by checking
+# whether any patient from that same town anywhere in the same population had a real
+# code -- none did), not per-patient randomness. Left unhandled, the naive
+# `postalCode[:3]` extraction below puts a real quarter of the population into a fake
+# "000" zip3 bucket, which would badly corrupt Track 2's k-anonymity numbers: that bucket
+# looks artificially huge (safe) while every affected patient's TRUE zip3 is silently
+# undercounted.
+#
+# MA_CITY_ZIP3 below maps a real Massachusetts city/town name to its most-populous ZIP3
+# prefix -- built from a real, government-sourced (USPS/Census/ACS) city/ZIP dataset
+# (the free tier of simplemaps.com's US Zips database), not guessed or hand-typed. Only
+# the individual town/ZIP3 facts extracted from that source are embedded here (463 MA
+# city-name -> ZIP3 pairs, ma_city_zip3.json) -- this module does not redistribute that
+# database itself, so it isn't subject to that product's own database-license terms.
+#
+# Some town names Synthea emits don't appear verbatim in that dataset at all -- USPS's
+# preferred city name for the ZIP is a directional variant (Dartmouth -> North/South
+# Dartmouth) or a village/CDP name distinct from its own town (Cochituate is a village of
+# Wayland; Green Harbor-Cedar Crest is a CDP split across Marshfield/Duxbury). Each entry
+# below was individually confirmed against a real source before being added, not derived
+# by fuzzy string matching -- an earlier attempt at generic word-overlap matching (e.g.
+# matching on the word "Center" alone) produced confidently wrong answers for exactly
+# this reason, which is why every entry here is a specific, checked fact instead.
+MA_CITY_ZIP3_OVERRIDES = {
+    "Amherst Center": "010",           # -> Amherst (01002/01003)
+    "Manchester-by-the-Sea": "019",    # USPS city name is just "Manchester" (01944)
+    "Marion Center": "027",            # -> Marion (02738)
+    "Cochituate": "017",               # village of Wayland (01778)
+    "Ocean Grove": "027",              # CDP in Swansea (02777)
+    "Green Harbor-Cedar Crest": "020",  # CDP split Marshfield/Duxbury; Marshfield's zip (02050)
+}
+# "North Westport" -> Westport and "West Concord" -> Concord are NOT here: both resolve
+# generically via _zip3_from_city()'s directional-prefix-strip branch, confirmed directly
+# — an override entry for either would just be dead, unreachable data.
+
+_DIRECTIONAL_PREFIXES = ("North ", "South ", "East ", "West ")
+
+
+@functools.lru_cache(maxsize=1)
+def _load_ma_city_zip3() -> dict:
+    try:
+        with open(MA_CITY_ZIP3_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _zip3_from_city(city: str) -> "str | None":
+    """Looks up a real ZIP3 for a Massachusetts city/town name — exact match against
+    MA_CITY_ZIP3 first, then a directional-prefix match in EITHER direction (USPS often
+    prefers "North X"/"South X" over the plain town name X — e.g. Synthea emits the plain
+    "Dartmouth", but the real dataset only has "North Dartmouth"/"South Dartmouth"; the
+    reverse also happens, e.g. "West Concord" -> "Concord"), then the small hand-verified
+    override table above. Returns None, not a guess, when nothing matches — the caller
+    decides what a genuine miss should fall back to.
+
+    Checked both directions on purpose, not just one: an earlier version of this function
+    only stripped a prefix off `city` and checked the table (catching "West Concord" ->
+    "Concord") but never tried the reverse — adding a prefix to `city` and checking the
+    table (needed for "Dartmouth" -> "North Dartmouth"/"South Dartmouth", "Easton",
+    "Hamilton", "Freetown", all of which the plain town name never appears in the
+    dataset for). Confirmed the one-directional version silently missed all four of
+    those on a real pilot run before this got fixed."""
+    table = _load_ma_city_zip3()
+    if city in table:
+        return table[city]
+    # city already carries a directional prefix Synthea doesn't use plainly -> strip it.
+    for prefix in _DIRECTIONAL_PREFIXES:
+        if city.startswith(prefix):
+            stripped = city[len(prefix):]
+            if stripped in table:
+                return table[stripped]
+    # city is the plain town name, but the dataset only has directional variants of it.
+    candidates = [table[prefix + city] for prefix in _DIRECTIONAL_PREFIXES if (prefix + city) in table]
+    if candidates:
+        return candidates[0]
+    return MA_CITY_ZIP3_OVERRIDES.get(city)
 
 
 class PersonSource:
@@ -142,7 +227,19 @@ class FhirSynthaSource(PersonSource):
         age = self._age(patient.get("birthDate"), pid)
         addr = (patient.get("address") or [{}])[0]
         city = addr.get("city") or "Unknown"
-        zip3 = (re.sub(r"\D", "", addr.get("postalCode", "")) + "000")[:3]
+        raw_zip3 = re.sub(r"\D", "", addr.get("postalCode", ""))[:3]
+        if raw_zip3 and raw_zip3 != "000":
+            zip3 = raw_zip3
+        else:
+            # postalCode was missing or Synthea's own known "00000" placeholder (see
+            # MA_CITY_ZIP3's docstring) -- recover a real zip3 from the city instead of
+            # silently lumping this patient into a fake "000" bucket.
+            zip3 = _zip3_from_city(city)
+            if zip3 is None:
+                print(f"warning: no ZIP3 known for Massachusetts city {city!r} (patient {pid}) "
+                      f"-- falling back to \"000\". Add it to MA_CITY_ZIP3_OVERRIDES in "
+                      f"person_sources.py once confirmed against a real source.", file=sys.stderr)
+                zip3 = "000"
 
         ssn = self._identifier(patient, "us-ssn", "SS") or \
             f"{_stable_int(pid+'ssn', 100, 899)}-{_stable_int(pid+'s2',10,99)}-{_stable_int(pid+'s3',1000,9999)}"

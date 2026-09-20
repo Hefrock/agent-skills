@@ -13,7 +13,7 @@ layers:
 If a number here changes on purpose, update the expected value in the same commit — a
 failure means "a result moved," which should always be a conscious decision.
 """
-import json, os, subprocess, sys, tempfile, shutil, unittest
+import contextlib, io, json, os, subprocess, sys, tempfile, shutil, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -255,6 +255,99 @@ class FhirPersonSource(unittest.TestCase):
         a = gc.generate_population(200, 7)
         b = gc.generate_population(200, 7, source=None)
         self.assertEqual(a, b)
+
+
+class MaCityZip3Fallback(unittest.TestCase):
+    """Regression coverage for a real, confirmed bug: Synthea v3.3.0's Massachusetts
+    module emits a literal postalCode "00000" for patients in certain towns (confirmed
+    on a real 300-patient pilot generation, ~24% of patients, systematic per town, not
+    per-patient randomness) — the naive postalCode[:3] extraction put a real quarter of
+    the population into a fake "000" zip3 bucket, which would corrupt Track 2's
+    k-anonymity numbers. Fixed by falling back to a real, government-sourced MA
+    city->ZIP3 table (ma_city_zip3.json) when postalCode is missing or "00000"."""
+
+    def _bundle(self, city, postal_code):
+        return {
+            "resourceType": "Bundle", "type": "collection",
+            "entry": [{"resource": {
+                "resourceType": "Patient", "id": "test-patient-1",
+                "name": [{"family": "Test", "given": ["Case"]}],
+                "gender": "female", "birthDate": "1980-01-01",
+                "address": [{"city": city, "state": "MA", "postalCode": postal_code}],
+            }}],
+        }
+
+    def _load_one(self, tmp, city, postal_code):
+        with open(os.path.join(tmp, "patient.json"), "w") as f:
+            json.dump(self._bundle(city, postal_code), f)
+        src = get_source("fhir-synthea", fhir_dir=tmp)
+        return src.person(0, None)
+
+    # --- _zip3_from_city() unit coverage ------------------------------------------
+    def test_exact_city_match(self):
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Boston"), "021")
+
+    def test_directional_strip_from_input(self):
+        # "West Concord" isn't in the dataset; "Concord" is.
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("West Concord"), "017")
+
+    def test_directional_strip_onto_input(self):
+        # "Dartmouth" isn't in the dataset; only "North Dartmouth"/"South Dartmouth" are.
+        # The bug this specifically regression-tests: an earlier version only tried
+        # stripping a prefix FROM the input, never adding one TO it, and silently missed
+        # this direction on a real pilot run.
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Dartmouth"), "027")
+
+    def test_override_table_hit(self):
+        from person_sources import _zip3_from_city
+        self.assertEqual(_zip3_from_city("Cochituate"), "017")  # village of Wayland
+
+    def test_unresolvable_city_returns_none(self):
+        from person_sources import _zip3_from_city
+        self.assertIsNone(_zip3_from_city("Not A Real Massachusetts Town"))
+
+    # --- end-to-end through FhirSynthaSource ---------------------------------------
+    def test_degenerate_postal_code_recovers_real_zip3(self):
+        tmp = tempfile.mkdtemp(prefix="fhirzip_")
+        try:
+            person = self._load_one(tmp, "Dartmouth", "00000")
+            self.assertEqual(person["zip3"], "027")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_missing_postal_code_recovers_real_zip3(self):
+        tmp = tempfile.mkdtemp(prefix="fhirzip_")
+        try:
+            person = self._load_one(tmp, "Boston", "")
+            self.assertEqual(person["zip3"], "021")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_valid_postal_code_still_used_directly(self):
+        # A real postal code must never be overridden by the city lookup, even for a
+        # city also present in ma_city_zip3.json.
+        tmp = tempfile.mkdtemp(prefix="fhirzip_")
+        try:
+            person = self._load_one(tmp, "Boston", "02199")
+            self.assertEqual(person["zip3"], "021")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_genuinely_unknown_city_falls_back_to_000_without_crashing(self):
+        # The safety net for a town this table has never seen: still "000", still a
+        # warning, never a crash -- the harness's existing "never raises" discipline.
+        tmp = tempfile.mkdtemp(prefix="fhirzip_")
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(stderr):
+                person = self._load_one(tmp, "Not A Real Massachusetts Town", "00000")
+            self.assertEqual(person["zip3"], "000")
+            self.assertIn("no ZIP3 known", stderr.getvalue())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class BootstrapPrimitives(unittest.TestCase):
