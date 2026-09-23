@@ -45,20 +45,29 @@ simulate ingestion or write a Source note with a pointer to a file that wasn't s
    external, durable action — show what will be stored and get confirmation before the
    push, unless the user said to just do it.
 
-## /ingest [file] [title]
+## /ingest [file-or-url] [title]
 
 Store a raw document in the warehouse and index it in the vault.
 
-1. **Locate the file** the user provided (a path, or a file they attached). Confirm it
-   exists.
+1. **Locate the source** the user provided — a path, a file they attached, or an
+   `http(s)://` URL. A URL needs no local download first; `intake.py` fetches it directly.
+   For a path, confirm it exists.
 2. **Run the warehouse intake tool** from the warehouse repo:
    ```bash
-   python bin/intake.py <file> --title "<title>"
+   python bin/intake.py <file-or-url> --title "<title>"
    ```
-   This hashes the file, dedupes, copies the original into `raw/<year>/`, extracts text
-   into `text/<year>/`, updates `manifest.json`, and prints a **frontmatter block** plus a
-   short excerpt. Capture that output — the `doc_id`, paths, `extraction_method`, and
-   excerpt are what the vault note needs.
+   For a URL, this fetches the page, hashes the fetched bytes, and picks the extension
+   from the response's `Content-Type` (not the URL's path) — so a linked PDF gets PDF
+   extraction even without a `.pdf` suffix, and a webpage gets `html-stripped` text. If
+   `--title` is omitted for a URL, an HTML page's `<title>` is used before falling back to
+   the last URL path segment. Otherwise this hashes the file, dedupes, copies the original
+   into `raw/<year>/`, extracts text into `text/<year>/`, updates `manifest.json`, and
+   prints a **frontmatter block** plus a short excerpt. Capture that output — the
+   `doc_id`, paths, `extraction_method`, `source_url` (URLs only), and excerpt are what
+   the vault note needs.
+   - If the fetch fails (network error, 4xx/5xx), `intake.py` exits with a clear error and
+     creates no manifest entry — do not write a vault note for a URL that wasn't actually
+     archived.
    - If intake reports **"already ingested,"** search the vault for a Source note carrying
      that `doc_id`. If one exists, stop and point the user to it. If not (warehoused but
      never indexed), continue from step 4 using the existing paths.
@@ -86,6 +95,7 @@ Store a raw document in the warehouse and index it in the vault.
    warehouse_path: raw/<year>/<slug>-<shortid>.<ext>
    text_path: text/<year>/<slug>-<shortid>.txt
    extraction_method: <method>
+   source_url: <url>   # only if ingested from a URL — carry it over verbatim
    ```
    Body: a `## Summary` (a paragraph you distilled), `## Key excerpts` (a few verbatim
    quotes with rough locators), and `## Connections` linking to relevant `Knowledge/`

@@ -30,6 +30,7 @@ doc_id: sha256:9f8a3b21…              # the join key
 warehouse_path: raw/2026/slug-shortid.pdf    # convenience; manifest is authoritative
 text_path: text/2026/slug-shortid.txt
 extraction_method: text-layer:pymupdf | ocr:ocrmypdf | plaintext | html-stripped | …
+source_url: https://example.com/…            # only present if ingested from a URL
 ```
 
 `warehouse_path` and `text_path` are **convenience copies** of what the manifest holds at
@@ -40,6 +41,12 @@ detects and offers to fix).
 The note **body** holds a distilled `## Summary`, a few `## Key excerpts` (verbatim, with
 rough locators), and `## Connections` to `Knowledge/` concepts. It never holds the full
 extracted text — that lives only in the warehouse's `text_path`.
+
+`source_url` is only present when the document was ingested via `intake.py <url>` rather
+than a local file — `intake.py` fetches the page, hashes the fetched bytes (so the same
+URL content dedupes exactly like a local file would), and picks the extension from the
+response's `Content-Type`, not the URL's path. Carry `source_url` into the vault note
+verbatim when present; it's the only record of provenance a `doc_id`/path alone can't give.
 
 ## Manifest entry (warehouse side)
 
