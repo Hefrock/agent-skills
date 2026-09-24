@@ -19,7 +19,11 @@ unattended on a schedule (not from an interactive Claude session). It:
   (which itself shells out to `git rev-parse` even for non-git input — needs `git`
   on `PATH` even though the vault itself need not be a git repo)
 - Writes one compact JSON line per run to the log file (never the actual matched
-  PII/secret text — only labels and file:line locations, confirmed safe to log)
+  PII/secret text — only labels and file:line locations, confirmed safe to log),
+  and automatically prunes lines older than 90 days on every run (no logrotate
+  needed — this is handled by `prune_log.py`, invoked internally). Override with
+  a third positional argument (`cron_check.sh <vault> <log-file> <retention-days>`)
+  if a different window is wanted; there's no need to add external log rotation.
 - Best-effort fires a desktop notification via `notify-send` (Linux) if a
   `high`-severity finding exists, falling back to stderr if no notifier is found
 - Always exits 0 regardless of findings — the log/notification carry the signal,

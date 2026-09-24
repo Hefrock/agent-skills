@@ -132,6 +132,38 @@ class CronCheck(unittest.TestCase):
         subprocess.run(["bash", CRON_CHECK, self.vault], capture_output=True, text=True, env=env)
         self.assertTrue(os.path.exists(os.path.join(fake_home, ".wiki-privacy-audit.log")))
 
+    def test_stale_log_lines_pruned_automatically_each_run(self):
+        # A run doesn't just append -- it also prunes anything past the default
+        # 90-day retention window, so the log can't grow forever under an
+        # unattended timer with nobody around to clean it up.
+        stale_line = json.dumps({"timestamp": "2020-01-01T00:00:00Z", "blocked": False, "result": {}}) + "\n"
+        with open(self.log_file, "w") as f:
+            f.write(stale_line)
+        self._write_note("notes.md", "nothing sensitive\n")
+
+        self._run()
+
+        lines = self._log_lines()
+        self.assertEqual(len(lines), 1)
+        self.assertNotEqual(lines[0]["timestamp"], "2020-01-01T00:00:00Z")
+
+    def test_retention_days_overridable_via_third_argument(self):
+        recent_but_outside_short_window = json.dumps(
+            {"timestamp": "2026-01-01T00:00:00Z", "blocked": False, "result": {}}
+        ) + "\n"
+        with open(self.log_file, "w") as f:
+            f.write(recent_but_outside_short_window)
+        self._write_note("notes.md", "nothing sensitive\n")
+
+        subprocess.run(
+            ["bash", CRON_CHECK, self.vault, self.log_file, "1"],
+            capture_output=True, text=True, env=dict(os.environ),
+        )
+
+        lines = self._log_lines()
+        self.assertEqual(len(lines), 1)
+        self.assertNotEqual(lines[0]["timestamp"], "2026-01-01T00:00:00Z")
+
 
 if __name__ == "__main__":
     unittest.main()

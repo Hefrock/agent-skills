@@ -9,20 +9,28 @@
 # needs a live Claude session with the obsidian-vault MCP server connected to
 # hand off to wiki-operator. Run /privacy-audit interactively once notified.
 #
-# Usage: cron_check.sh /path/to/vault [/path/to/log/file]
+# Usage: cron_check.sh /path/to/vault [/path/to/log/file] [retention-days]
 #
 # The log line is JSON-per-line (timestamp, blocked, and check_vault_privacy.py's
 # own --json output verbatim). check_vault_privacy.py's findings never contain the
 # actual matched PII/secret text (only a label like "AWS access key: aws_access_key"
 # and a file:line location) -- confirmed in scan_diff.py's Finding construction --
 # so this log can't become a second copy of whatever triggered a finding.
+#
+# Because the log is pure disposable telemetry (no PII/secret text, ever), every
+# run also prunes lines older than retention-days (default 90) via prune_log.py --
+# automatically, no confirmation needed. This runs unattended on a schedule, so
+# there's no human present to periodically clean up the log themselves; without
+# this it would grow forever.
 
 set -uo pipefail
 
-VAULT_PATH="${1:?Usage: $0 /path/to/vault [/path/to/log/file]}"
+VAULT_PATH="${1:?Usage: $0 /path/to/vault [/path/to/log/file] [retention-days]}"
 LOG_FILE="${2:-$HOME/.wiki-privacy-audit.log}"
+RETENTION_DAYS="${3:-90}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECK_SCRIPT="$SCRIPT_DIR/check_vault_privacy.py"
+PRUNE_SCRIPT="$SCRIPT_DIR/prune_log.py"
 
 if OUTPUT="$(python3 "$CHECK_SCRIPT" "$VAULT_PATH" --block-on high --json)"; then
   BLOCKED=false
@@ -35,6 +43,8 @@ TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # so the log stays one JSON object per line, not one object spread across many.
 COMPACT_OUTPUT="$(printf '%s' "$OUTPUT" | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin)))')"
 printf '{"timestamp": "%s", "blocked": %s, "result": %s}\n' "$TIMESTAMP" "$BLOCKED" "$COMPACT_OUTPUT" >> "$LOG_FILE"
+
+python3 "$PRUNE_SCRIPT" --log-file "$LOG_FILE" --retention-days "$RETENTION_DAYS" >&2
 
 if [ "$BLOCKED" = true ]; then
   MESSAGE="wiki-privacy-audit: high-severity finding(s) in vault -- run /privacy-audit"

@@ -73,15 +73,22 @@ write the audit-log entry back into the vault afterward.
 ## Running unattended, on an actual schedule
 
 Steps 1–2 above (scan and gate) need no MCP or Claude session at all — `scripts/
-cron_check.sh /path/to/vault [/path/to/log/file]` wraps `check_vault_privacy.py
---block-on high --json` for exactly this: a plain OS-level scheduler invocation. It
-logs one compact JSON line per run (findings only — labels and file:line locations,
-never the actual matched PII/secret text, so the log can't become a second copy of
-whatever triggered a finding) and best-effort fires a desktop notification
-(`notify-send` on Linux, `osascript` on macOS, falling back to stderr if neither is
-present) when a `high`-severity finding exists. Always exits 0 regardless of
-findings — the log/notification carry the signal, not the scheduler's own
-success/failure bookkeeping.
+cron_check.sh /path/to/vault [/path/to/log/file] [retention-days]` wraps
+`check_vault_privacy.py --block-on high --json` for exactly this: a plain OS-level
+scheduler invocation. It logs one compact JSON line per run (findings only — labels
+and file:line locations, never the actual matched PII/secret text, so the log can't
+become a second copy of whatever triggered a finding) and best-effort fires a
+desktop notification (`notify-send` on Linux, `osascript` on macOS, falling back to
+stderr if neither is present) when a `high`-severity finding exists. Always exits 0
+regardless of findings — the log/notification carry the signal, not the scheduler's
+own success/failure bookkeeping.
+
+Every run also prunes log lines older than `retention-days` (default 90) via
+`scripts/prune_log.py`, automatically and with no confirmation needed — unlike
+`broadcast`'s `prune_episodes.py`, this log holds zero PII/secret text, so it's
+disposable telemetry, not something a human might want to keep. This runs
+unattended on a schedule, so there's nobody around to clean it up manually; without
+this the log would grow forever.
 
 This is a **detector, not a fixer** — steps 3–4 above (propose a fix, leave a trail
 in the journal) genuinely need a live Claude session with the `obsidian-vault` MCP
@@ -158,4 +165,6 @@ reading `.privacy-linter-ignore` itself) is a reasonable follow-up, not built he
 | `scripts/test_check_vault_privacy.py` | Unit + integration tests (temp-directory fixtures, no MCP or real vault needed) |
 | `scripts/cron_check.sh` | Unattended wrapper for OS-level schedulers — logs + best-effort notifies, never fixes |
 | `scripts/test_cron_check.py` | End-to-end tests: real temp vault, real subprocess, fake notifier binaries injected via `PATH` |
+| `scripts/prune_log.py` | Retention for `cron_check.sh`'s own log — drops lines older than `retention-days`, automatic, no `--apply` gate |
+| `scripts/test_prune_log.py` | Unit tests for the pure pruning function plus the in-place file rewrite |
 | `references/nixos-home-manager-handoff.md` | Self-contained handoff for a separate Claude Code session managing NixOS/home-manager config, to actually install the systemd timer |
