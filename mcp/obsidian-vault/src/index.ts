@@ -8,77 +8,10 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
-import os from "os";
-import { BM25Index, tokenize } from "./bm25.js";
-
-const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? (() => {
-  console.error("OBSIDIAN_VAULT_PATH environment variable is required");
-  process.exit(1);
-})();
-
-// #9 — validate vault exists at startup
-const vaultRoot = path.resolve(VAULT_PATH);
-try {
-  const stat = await fs.stat(vaultRoot);
-  if (!stat.isDirectory()) {
-    console.error(`OBSIDIAN_VAULT_PATH is not a directory: ${vaultRoot}`);
-    process.exit(1);
-  }
-} catch {
-  console.error(`OBSIDIAN_VAULT_PATH does not exist: ${vaultRoot}`);
-  process.exit(1);
-}
-
-// ── Path helpers ──────────────────────────────────────────────────────────────
-
-// Lexical containment check — used for all operations
-function vaultPath(notePath: string): string {
-  const resolved = path.resolve(vaultRoot, notePath);
-  if (!resolved.startsWith(vaultRoot + path.sep) && resolved !== vaultRoot) {
-    throw new Error("Path traversal not allowed");
-  }
-  return resolved;
-}
-
-// #7 — symlink-aware check + #8 — .md only + no hidden dirs — used for all writes
-async function vaultPathForWrite(notePath: string): Promise<string> {
-  // #8: block hidden path components (.obsidian/, .git/, etc.)
-  const parts = notePath.split(/[\\/]/).filter(Boolean);
-  if (parts.some((p) => p.startsWith("."))) {
-    throw new Error("Access to hidden directories or files is not allowed");
-  }
-  // #8: .md files only
-  if (!notePath.endsWith(".md")) {
-    throw new Error("Only .md files are supported");
-  }
-
-  const resolved = vaultPath(notePath); // lexical check first
-
-  // #7: realpath check on parent dir (file may not exist yet for creates)
-  const parentDir = path.dirname(resolved);
-  try {
-    const realParent = await fs.realpath(parentDir);
-    if (!realParent.startsWith(vaultRoot + path.sep) && realParent !== vaultRoot) {
-      throw new Error("Path traversal not allowed (symlink in parent directory)");
-    }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    // Parent doesn't exist yet — will be created, trust lexical check
-  }
-
-  // #7: for existing files, also realpath the file itself
-  try {
-    const realResolved = await fs.realpath(resolved);
-    if (!realResolved.startsWith(vaultRoot + path.sep) && realResolved !== vaultRoot) {
-      throw new Error("Path traversal not allowed (symlink)");
-    }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    // File doesn't exist yet — OK for creates
-  }
-
-  return resolved;
-}
+import { tokenize } from "./bm25.js";
+import { vaultRoot, vaultPath, vaultPathForWrite, readNote, tryReadNote, atomicWrite, walkVault, extractWikilinks } from "./vault-io.js";
+import { bm25, noteCache, syncIndex, invalidateCacheEntry, withinFolder, selectExcerpt } from "./vault-index.js";
+import * as warehouse from "./warehouse.js";
 
 // ── Arg validation helpers ────────────────────────────────────────────────────
 
@@ -113,165 +46,10 @@ function optionalNumber(args: Record<string, unknown>, key: string): number | un
   return val;
 }
 
-// ── Core I/O ──────────────────────────────────────────────────────────────────
-
-async function readNote(notePath: string): Promise<{ frontmatter: Record<string, unknown>; body: string; raw: string }> {
-  const full = vaultPath(notePath);
-  const raw = await fs.readFile(full, "utf-8");
-  const { data, content } = matter(raw);
-  return { frontmatter: data, body: content, raw };
-}
-
-// #11 — vault-wide scans (search/list/query) tolerate malformed per-file
-// frontmatter instead of aborting entirely. One file with broken YAML fencing
-// (e.g. `--- type: project` glued onto the opening line, which gray-matter
-// misreads as a request for an unregistered custom parser engine) used to
-// throw and take down search_notes/list_notes/query_frontmatter/list_links
-// for the whole vault, no matter how unrelated the query was. Callers that
-// read a single known path still get a normal thrown error — this helper is
-// only for loops over `walkVault()` results, where one bad file shouldn't
-// hide every other result.
-async function tryReadNote(
-  notePath: string
-): Promise<
-  | { ok: true; frontmatter: Record<string, unknown>; body: string; raw: string }
-  | { ok: false; error: string }
-> {
-  try {
-    const note = await readNote(notePath);
-    return { ok: true, ...note };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-// #3 — atomic write: temp file in same dir → rename
-async function atomicWrite(fullPath: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(fullPath), { recursive: true });
-  const tmpPath = fullPath + ".tmp";
-  try {
-    await fs.writeFile(tmpPath, content, "utf-8");
-    await fs.rename(tmpPath, fullPath);
-  } catch (err) {
-    // Clean up temp file on failure
-    await fs.unlink(tmpPath).catch(() => undefined);
-    throw err;
-  }
-}
-
-async function walkVault(dir: string = vaultRoot): Promise<string[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files: string[] = [];
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await walkVault(full));
-    } else if (entry.name.endsWith(".md")) {
-      files.push(path.relative(vaultRoot, full));
-    }
-  }
-  return files;
-}
-
-function extractWikilinks(content: string): string[] {
-  return [...content.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)].map((m) => m[1].trim());
-}
-
-// ── Search index cache ──────────────────────────────────────────────────────────
-//
-// Field weights match the old scorer's boosts (title 5x, tags 3x, body 1x),
-// now used as BM25F per-field term-frequency multipliers instead of flat
-// match-count multipliers — see bm25.ts for what that means precisely.
-const bm25 = new BM25Index({ title: 5, tags: 3, body: 1 });
-
-interface CachedNote {
-  mtimeMs: number;
-  size: number;
-  frontmatter: Record<string, unknown>;
-  body: string;
-}
-const noteCache = new Map<string, CachedNote>();
-
-function tokenizeFields(notePath: string, frontmatter: Record<string, unknown>, body: string) {
-  const title = path.basename(notePath, ".md");
-  const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.join(" ") : "";
-  return { title: tokenize(title), tags: tokenize(tags), body: tokenize(body) };
-}
-
-// Walks the vault, stats every file, and reparses only what changed since the
-// last sync (by mtimeMs OR size — either changing means content may have
-// changed). Deleted files are dropped from both the cache and the BM25 index.
-// Called at the top of every search so results are always current; cheap when
-// nothing changed (a stat per file, no reads), matching the cost profile the
-// handoff asked for. Explicit invalidation on writes (see invalidateCacheEntry)
-// is a SEPARATE, faster-than-mtime-resolution mechanism for the server's own
-// writes — this sync is the fallback that also catches edits made outside MCP.
-async function syncIndex(): Promise<{ skipped: { path: string; error: string }[] }> {
-  const allFiles = await walkVault();
-  const current = new Set(allFiles);
-  const skipped: { path: string; error: string }[] = [];
-
-  for (const cachedPath of [...noteCache.keys()]) {
-    if (!current.has(cachedPath)) {
-      noteCache.delete(cachedPath);
-      bm25.remove(cachedPath);
-    }
-  }
-
-  for (const file of allFiles) {
-    let stat;
-    try {
-      stat = await fs.stat(vaultPath(file));
-    } catch {
-      continue; // vanished between walk and stat; next sync's deletion pass catches it
-    }
-    const cached = noteCache.get(file);
-    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) continue;
-
-    const note = await tryReadNote(file);
-    if (!note.ok) {
-      skipped.push({ path: file, error: note.error });
-      noteCache.delete(file);
-      bm25.remove(file);
-      continue;
-    }
-    noteCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, frontmatter: note.frontmatter, body: note.body });
-    bm25.upsert(file, tokenizeFields(file, note.frontmatter, note.body));
-  }
-
-  return { skipped };
-}
-
-// Every write tool calls this immediately after a successful write/delete.
-// Not just belt-and-suspenders alongside syncIndex's mtime check: mtime
-// resolution on some filesystems is coarse enough that a write immediately
-// followed by a search can land in the same tick, making the stat-diff in
-// syncIndex miss the change. This invalidation doesn't depend on mtime at
-// all. A no-op if the path was never indexed (safe to call unconditionally).
-function invalidateCacheEntry(notePath: string): void {
-  noteCache.delete(notePath);
-  bm25.remove(notePath);
-}
-
-function withinFolder(notePath: string, folderRel: string): boolean {
-  const rel = path.relative(folderRel, notePath);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-}
-
-// Body line containing the most DISTINCT query tokens (token match, not
-// substring — "art" no longer matches an excerpt line just because it
-// contains "heart"), falling back to the first non-empty line.
-function selectExcerpt(body: string, queryTerms: string[]): string {
-  const lines = body.split("\n");
-  let best: { line: string; count: number } | null = null;
-  for (const line of lines) {
-    const lineTokens = new Set(tokenize(line));
-    const count = queryTerms.filter((t) => lineTokens.has(t)).length;
-    if (count > 0 && (!best || count > best.count)) best = { line, count };
-  }
-  const chosen = best?.line ?? lines.find((l) => l.trim() !== "") ?? "";
-  return chosen.trim().slice(0, 150);
+function requireNumber(args: Record<string, unknown>, key: string): number {
+  const val = args[key];
+  if (typeof val !== "number") throw new Error(`Missing or invalid required argument: "${key}" (expected number)`);
+  return val;
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
@@ -492,6 +270,37 @@ const server = new Server(
   { capabilities: { tools: {} } }
 );
 
+const CONSTITUTION_NOTE = "Constitution: distill what you find into vault notes -- never paste warehouse text directly into a note (see knowledge-os/constitution.md).";
+
+const warehouseTools = [
+  {
+    name: "search_warehouse",
+    description: `Read-only passage search over warehouse full text (primary sources) -- not the vault's distilled notes. Every hit is pinned to a content-hash doc_id and Unicode code-point character offsets, with a passage_hash so a caller can detect if the underlying text changed since this hit was returned (warehouse text is NOT immutable -- a re-extraction can rewrite it in place). ${CONSTITUTION_NOTE}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        limit: { type: "number", description: "Max hits (default 8, max 25)" },
+        doc_id: { type: "string", description: "Restrict to one document (sha256:<hex> or bare hex). At most 3 hits per document regardless of limit." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "read_warehouse_text",
+    description: `Read an exact character span (Unicode code points) from a warehouse document's extracted text -- for expanding context around a search_warehouse hit, not for loading whole documents (capped at 8,000 characters per call). Returns a text_hash to compare against a search_warehouse hit's passage_hash for the same range, to detect drift from a re-extraction. ${CONSTITUTION_NOTE}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        doc_id: { type: "string" },
+        char_start: { type: "number" },
+        char_end: { type: "number" },
+      },
+      required: ["doc_id", "char_start", "char_end"],
+    },
+  },
+];
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
@@ -613,6 +422,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["path"],
       },
     },
+    ...(warehouse.isWarehouseAvailable() ? warehouseTools : []),
   ],
 }));
 
@@ -653,6 +463,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "delete_note":
         result = await deleteNote(requireString(args, "path"));
+        break;
+      case "search_warehouse":
+        if (!warehouse.isWarehouseAvailable()) throw new Error(`Unknown tool: ${name}`);
+        result = await warehouse.searchWarehouse(requireString(args, "query"), optionalNumber(args, "limit"), optionalString(args, "doc_id"));
+        break;
+      case "read_warehouse_text":
+        if (!warehouse.isWarehouseAvailable()) throw new Error(`Unknown tool: ${name}`);
+        result = await warehouse.readWarehouseText(requireString(args, "doc_id"), requireNumber(args, "char_start"), requireNumber(args, "char_end"));
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);

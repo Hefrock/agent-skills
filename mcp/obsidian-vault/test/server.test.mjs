@@ -77,6 +77,20 @@ function parse(r) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+console.log("\n── Warehouse tools: absent entirely when WAREHOUSE_PATH is unset ─");
+
+// This server was spawned above with only OBSIDIAN_VAULT_PATH set (no
+// WAREHOUSE_PATH) -- see test/warehouse.test.mjs for the full warehouse
+// tool suite, spawned with WAREHOUSE_PATH set instead.
+let toolListResp = await rpc(100, "tools/list", {});
+const toolNames = toolListResp.result.tools.map((t) => t.name);
+check(
+  "tools/list — search_warehouse is not registered when WAREHOUSE_PATH is unset",
+  !toolNames.includes("search_warehouse"),
+  `tools: ${JSON.stringify(toolNames)}`
+);
+check("tools/list — read_warehouse_text is not registered when WAREHOUSE_PATH is unset", !toolNames.includes("read_warehouse_text"));
+
 console.log("\n── write_note: mode=create ──────────────────────────────────────");
 
 let r = await tool(1, "write_note", { path: "Knowledge/new-create.md", content: "---\ntype: concept\n---\n# New", mode: "create" });
