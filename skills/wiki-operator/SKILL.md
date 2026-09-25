@@ -130,11 +130,12 @@ Answer a question by retrieving and grounding an answer in the vault — never f
    - If sources disagree, surface the disagreement rather than smoothing it over.
    - If the answer draws on two clusters that aren't linked to each other yet, note it and offer to run `/connect`.
 6. If nothing vetted is found, check `Journal/Daily/` as a last resort — but flag any journal-sourced content explicitly as unprocessed, not yet promoted to `Knowledge/`.
-7. If still nothing relevant exists, or what's found doesn't actually answer the question:
+7. If a retrieved Source note points to a warehoused document (`doc_id` in its frontmatter) but its own distilled summary and excerpts don't have enough detail to answer confidently, go to the primary source: `search_warehouse` (scoped to that `doc_id` if one specific Source note is the target) for passages, `read_warehouse_text` to expand context around a hit if still not enough. Requires `WAREHOUSE_PATH` to be configured — if `search_warehouse` isn't available, skip this hop, same as any other missing tool. Cite a claim that came from this hop by `doc_id` + `char_start`/`char_end`, not just the note's `[[link]]`; the note's own excerpts stay the citation for anything they already cover. Same distill-don't-paste rule as ingestion: pull the fact into the answer, never paste the raw passage.
+8. If still nothing relevant exists, or what's found doesn't actually answer the question:
    - Say so plainly — do not reach for general knowledge to fill the gap.
    - Append an entry to `Maps/_ask_log.md` (create from `assets/ask-log.md` if it doesn't exist yet). This logging always happens — no confirmation needed, same as any new-draft creation.
    - Then ask whether the user wants a general-knowledge answer instead, clearly labeled as coming from outside the vault. Never blend the two without saying so.
-8. For partial answers, ground what the vault supports and log only the ungrounded portion.
+9. For partial answers, ground what the vault supports and log only the ungrounded portion.
 
 ### /review [page or area]
 Critique wiki quality without rewriting.
