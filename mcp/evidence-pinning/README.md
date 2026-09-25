@@ -94,7 +94,13 @@ Consistent with this repo's git-diffable-plain-files preference elsewhere
 - **Crossref retraction detection is unverified against a live retracted DOI.** The
   classifier reads Crossref's documented CrossMark `update-to` schema, but hasn't been
   checked against a real retracted-paper response. Verify before trusting it in
-  production — see the caveat in `src/decay.ts`.
+  production — see the caveat in `src/decay.ts`. Attempted from a Claude Code cloud
+  session on 2026-09-25 using a known-retracted DOI (Wakefield et al. 1998,
+  `10.1016/S0140-6736(97)11096-0`, retracted 2010) — blocked by that session's own
+  egress policy (`api.crossref.org` not allowlisted; the proxy returned a 403 policy
+  denial, not a DNS/timeout failure, so this was an environment restriction, not
+  evidence the endpoint or classifier is broken). Still open: run this from an
+  environment with `api.crossref.org` egress allowed.
 - **PubMed XML parsing is regex-based, not a real XML parser** (no XML dependency in
   this repo yet). Works for PubMed's typical flat tag structure; would miss a
   namespaced or attribute-heavy variant of the same fields.
