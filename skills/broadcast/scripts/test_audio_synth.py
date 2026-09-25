@@ -393,5 +393,37 @@ class SegmentAudioCache(unittest.TestCase):
             self.assertEqual(set(os.listdir(tmp)), entries_after_first)  # no second file
 
 
+class DialogueTextForTurns(unittest.TestCase):
+    """Pure logic — no network. synthesize_dialogue() itself gets the same
+    treatment as synthesize_text(): deliberately NOT unit tested here,
+    verified live via live_smoke_test.py instead (see this file's own
+    docstring for why)."""
+
+    def test_formats_speaker_labeled_lines_in_order(self):
+        turns = [
+            {"speaker": "A", "kind": "claim", "text": "A device got a new clearance."},
+            {"speaker": "B", "kind": "reactive", "text": "That's significant."},
+        ]
+        self.assertEqual(audio_synth.dialogue_text_for_turns(turns), "A: A device got a new clearance.\nB: That's significant.")
+
+    def test_single_turn_produces_a_single_line_no_trailing_newline(self):
+        turns = [{"speaker": "A", "kind": "claim", "text": "Just one line."}]
+        self.assertEqual(audio_synth.dialogue_text_for_turns(turns), "A: Just one line.")
+
+    def test_identical_turns_always_produce_the_same_string(self):
+        # This doubles as orchestrate.py's audio-cache key for a dialogue
+        # segment (see orchestrate.py) — it must be deterministic the same
+        # way plain segment "text" already is.
+        turns = [{"speaker": "A", "kind": "claim", "text": "Some text."}, {"speaker": "B", "kind": "reactive", "text": "Noted."}]
+        self.assertEqual(audio_synth.dialogue_text_for_turns(turns), audio_synth.dialogue_text_for_turns(turns))
+
+    def test_different_turn_order_produces_a_different_string(self):
+        # Order-preserving, not just content-preserving -- who speaks
+        # first is part of what's being cached/synthesized.
+        turns_ab = [{"speaker": "A", "kind": "claim", "text": "First."}, {"speaker": "B", "kind": "reactive", "text": "Second."}]
+        turns_ba = [{"speaker": "B", "kind": "reactive", "text": "Second."}, {"speaker": "A", "kind": "claim", "text": "First."}]
+        self.assertNotEqual(audio_synth.dialogue_text_for_turns(turns_ab), audio_synth.dialogue_text_for_turns(turns_ba))
+
+
 if __name__ == "__main__":
     unittest.main()

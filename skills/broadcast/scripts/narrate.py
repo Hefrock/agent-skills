@@ -120,6 +120,47 @@ DEFAULT_SUCCESS_THRESHOLD = 0.7
 DEFAULT_LENGTH_RATIO_MIN = 0.4
 DEFAULT_LENGTH_RATIO_MAX = 2.0
 
+# Two-host dialogue mode (--host-style dialogue) — see this module's
+# docstring for why a second AI voice is never free-generated here. Every
+# "reactive" turn is picked from this fixed, hand-authored pool, never
+# produced by a Gemini call: the whole point is that Host B can never
+# invent a claim, because Host B's words are never generated at all. This
+# keeps narrate_fn's per-story grounding discipline (see above) completely
+# unchanged — dialogue mode is a presentation layer on top of the same
+# single grounded narration, not a second source of prose to verify.
+REACTIVE_TEMPLATES = {
+    "top_three_item": [
+        "That's a significant one.",
+        "Let's dig into what that means.",
+        "Worth pausing on this.",
+    ],
+    "quick_hits_item": [
+        "Interesting.",
+        "Noted.",
+        "That's worth tracking.",
+    ],
+}
+# Fallback pool for any segment_type not listed above (there currently is
+# none, since narrate_script() only ever calls this for STORY_SEGMENT_TYPES
+# — see script_gen.py — but pick_reactive_turn() stays defined for any
+# segment_type rather than raising, matching this pipeline's general
+# "degrade, don't crash on an unexpected but harmless shape" posture).
+DEFAULT_REACTIVE_POOL_KEY = "quick_hits_item"
+
+DIALOGUE_SPEAKER_A = "A"
+DIALOGUE_SPEAKER_B = "B"
+
+
+def pick_reactive_turn(segment_type: str, index: int) -> str:
+    """Pure, deterministic selection from REACTIVE_TEMPLATES — no network,
+    no randomness. A fixed (segment_type, index) always yields the same
+    phrase, which keeps audio_synth.py's text-addressed cache correct and
+    keeps tests non-flaky. index rotates through the pool (index % len)
+    so an episode's several stories of the same segment_type don't all
+    get the identical interjection back to back."""
+    pool = REACTIVE_TEMPLATES.get(segment_type, REACTIVE_TEMPLATES[DEFAULT_REACTIVE_POOL_KEY])
+    return pool[index % len(pool)]
+
 # Substring-matched, case-insensitive, against source and narration text —
 # the same "short, hand-curated list, simple matching is the right level
 # of sophistication for now" philosophy source_registry.classify_topic_
@@ -186,7 +227,7 @@ def check_narration_grounded(
     return {"passed": not reasons, "reasons": reasons}
 
 
-def narrate_segment(segment: dict, api_key: str, narrate_fn=None) -> dict:
+def narrate_segment(segment: dict, api_key: str, narrate_fn=None, host_style: str = "single", reactive_index: int = 0) -> dict:
     """Attempts to narrate ONE story segment (script_gen.py's shape:
     {"segment_type", "text", "canonical_id", "claim_id", "source_id"}) in
     isolation — narrate_fn sees only this segment's own already-vetted
@@ -201,8 +242,20 @@ def narrate_segment(segment: dict, api_key: str, narrate_fn=None) -> dict:
     exactly like a failed grounding check, not a special case — either
     way, this one story falls back to its original mechanical text.
 
-    Returns {"segment": <a segment dict, same 5-key shape as the input —
-    "text" replaced only if narration succeeded and passed
+    host_style="dialogue" (default "single") additionally sets "turns" on
+    a SUCCESSFULLY narrated segment: [{"speaker": "A", "kind": "claim",
+    "text": <the same grounded narration>}, {"speaker": "B",
+    "kind": "reactive", "text": <pick_reactive_turn(...)>}]. "text" itself
+    is always still set exactly as it was before this parameter existed —
+    every existing consumer (qa_gate.py's checks, distribute.py,
+    audio_synth.py's single-voice path) keeps working unchanged whether or
+    not "turns" is present. A fallback segment (grounding failed, or
+    host_style="single") never gets "turns" set at all — there is no
+    partial-dialogue state; a story is either full two-voice dialogue or
+    exactly today's single mechanical/narrated text, never a mix.
+
+    Returns {"segment": <a segment dict — "text" replaced, and "turns"
+    added, only if narration succeeded and passed
     check_narration_grounded()>, "narrated": bool, "reasons": [...]}."""
     if narrate_fn is None:
         narrate_fn = generate_narration
@@ -213,18 +266,34 @@ def narrate_segment(segment: dict, api_key: str, narrate_fn=None) -> dict:
         return {"segment": segment, "narrated": False, "reasons": [f"{type(e).__name__}: {e}"]}
 
     check = check_narration_grounded(result.get("narration", ""), result.get("supporting_spans", []), segment["text"])
-    if check["passed"]:
-        return {"segment": {**segment, "text": result["narration"]}, "narrated": True, "reasons": []}
-    return {"segment": segment, "narrated": False, "reasons": check["reasons"]}
+    if not check["passed"]:
+        return {"segment": segment, "narrated": False, "reasons": check["reasons"]}
+
+    new_segment = {**segment, "text": result["narration"]}
+    if host_style == "dialogue":
+        new_segment["turns"] = [
+            {"speaker": DIALOGUE_SPEAKER_A, "kind": "claim", "text": result["narration"]},
+            {"speaker": DIALOGUE_SPEAKER_B, "kind": "reactive", "text": pick_reactive_turn(segment["segment_type"], reactive_index)},
+        ]
+    return {"segment": new_segment, "narrated": True, "reasons": []}
 
 
-def narrate_script(script: dict, api_key: str, narrate_fn=None, success_threshold: float = DEFAULT_SUCCESS_THRESHOLD) -> dict:
+def narrate_script(
+    script: dict, api_key: str, narrate_fn=None, success_threshold: float = DEFAULT_SUCCESS_THRESHOLD, host_style: str = "single",
+) -> dict:
     """Attempts narration for every STORY segment in script["segments"]
     (identified by claim_id is not None — script_gen.py's own convention
     for "this segment traces to a pinned claim", which is exactly the set
     this module's per-story-only design targets; connective segments
     including the disclosure are never touched, see this module's
     docstring).
+
+    host_style ("single" default, or "dialogue"): passed straight through
+    to narrate_segment() for every attempted segment — see its docstring
+    for exactly what "dialogue" adds ("turns") and what stays identical
+    either way ("text"). reactive_index uses each segment's own position
+    in script["segments"] (i below), so pick_reactive_turn()'s rotation is
+    deterministic across a whole episode, not just within one story.
 
     Two-tier fallback — see this module's docstring for the full
     reasoning, not repeated here:
@@ -254,7 +323,10 @@ def narrate_script(script: dict, api_key: str, narrate_fn=None, success_threshol
         narrate_fn = generate_narration
 
     segments = script["segments"]
-    attempts = {i: narrate_segment(s, api_key, narrate_fn) for i, s in enumerate(segments) if s["claim_id"] is not None}
+    attempts = {
+        i: narrate_segment(s, api_key, narrate_fn, host_style=host_style, reactive_index=i)
+        for i, s in enumerate(segments) if s["claim_id"] is not None
+    }
 
     attempted = len(attempts)
     succeeded = sum(1 for a in attempts.values() if a["narrated"])

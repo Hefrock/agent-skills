@@ -315,5 +315,83 @@ class NarrateScript(unittest.TestCase):
         self.assertEqual(result["script"]["excluded_no_evidence"], [])
 
 
+# ── pick_reactive_turn — pure, no network, --host-style dialogue only ────
+
+class PickReactiveTurn(unittest.TestCase):
+    def test_returns_a_real_pool_member_for_a_known_segment_type(self):
+        phrase = narrate.pick_reactive_turn("top_three_item", 0)
+        self.assertIn(phrase, narrate.REACTIVE_TEMPLATES["top_three_item"])
+
+    def test_rotates_through_the_pool_by_index(self):
+        pool = narrate.REACTIVE_TEMPLATES["quick_hits_item"]
+        seen = [narrate.pick_reactive_turn("quick_hits_item", i) for i in range(len(pool))]
+        self.assertEqual(seen, pool)  # index 0..len-1 walks the pool in order, deterministically
+
+    def test_same_inputs_always_return_the_same_phrase(self):
+        # Determinism matters here: audio_synth.py's cache is keyed on this
+        # text, and a random pick would silently defeat the cache.
+        self.assertEqual(narrate.pick_reactive_turn("top_three_item", 2), narrate.pick_reactive_turn("top_three_item", 2))
+
+    def test_unknown_segment_type_falls_back_to_the_default_pool_rather_than_raising(self):
+        phrase = narrate.pick_reactive_turn("some_future_segment_type", 0)
+        self.assertIn(phrase, narrate.REACTIVE_TEMPLATES[narrate.DEFAULT_REACTIVE_POOL_KEY])
+
+
+# ── narrate_segment/narrate_script host_style="dialogue" ─────────────────
+
+class DialogueHostStyle(unittest.TestCase):
+    def test_successful_narration_in_dialogue_mode_adds_turns(self):
+        segment = make_story_segment("a")
+        narrate_fn = FakeNarrateFn({segment["text"]: GROUNDED_RESULT})
+        result = narrate.narrate_segment(segment, "fake-key", narrate_fn, host_style="dialogue", reactive_index=0)
+        self.assertTrue(result["narrated"])
+        turns = result["segment"]["turns"]
+        self.assertEqual(len(turns), 2)
+        self.assertEqual(turns[0], {"speaker": "A", "kind": "claim", "text": GROUNDED_RESULT["narration"]})
+        self.assertEqual(turns[1]["speaker"], "B")
+        self.assertEqual(turns[1]["kind"], "reactive")
+        self.assertIn(turns[1]["text"], narrate.REACTIVE_TEMPLATES["top_three_item"])
+        # "text" is still set exactly as in single-host mode — every
+        # existing consumer (qa_gate, distribute.py, the plain synth_fn
+        # path) keeps working whether or not "turns" is present.
+        self.assertEqual(result["segment"]["text"], GROUNDED_RESULT["narration"])
+
+    def test_default_host_style_never_adds_turns(self):
+        segment = make_story_segment("a")
+        narrate_fn = FakeNarrateFn({segment["text"]: GROUNDED_RESULT})
+        result = narrate.narrate_segment(segment, "fake-key", narrate_fn)
+        self.assertNotIn("turns", result["segment"])
+
+    def test_fallback_segment_in_dialogue_mode_never_gets_turns(self):
+        # A story is either full two-voice dialogue or exactly today's
+        # single mechanical/narrated text -- never a partial/mixed state.
+        segment = make_story_segment("a")
+        narrate_fn = FakeNarrateFn({segment["text"]: UNGROUNDED_RESULT})
+        result = narrate.narrate_segment(segment, "fake-key", narrate_fn, host_style="dialogue")
+        self.assertFalse(result["narrated"])
+        self.assertNotIn("turns", result["segment"])
+
+    def test_narrate_script_dialogue_mode_gives_each_story_a_rotating_reactive_turn(self):
+        segs = [make_story_segment(str(i), text=f"Story number {i}. Source: Test.") for i in range(2)]
+        behaviors = {s["text"]: grounded_result_for(s["text"]) for s in segs}
+        script = {"run_date": "2026-09-02", "show_name": "Test", "segments": segs, "excluded_no_evidence": []}
+        result = narrate.narrate_script(script, "fake-key", FakeNarrateFn(behaviors), host_style="dialogue")
+        turns_0 = result["script"]["segments"][0]["turns"]
+        turns_1 = result["script"]["segments"][1]["turns"]
+        self.assertEqual(len(turns_0), 2)
+        self.assertEqual(len(turns_1), 2)
+        # different segment index (0 vs 1) -> different rotation position,
+        # so the two stories don't get the identical reactive phrase
+        self.assertNotEqual(turns_0[1]["text"], turns_1[1]["text"])
+
+    def test_narrate_script_single_mode_never_adds_turns_to_any_segment(self):
+        segs = [make_story_segment(str(i), text=f"Story number {i}. Source: Test.") for i in range(2)]
+        behaviors = {s["text"]: grounded_result_for(s["text"]) for s in segs}
+        script = {"run_date": "2026-09-02", "show_name": "Test", "segments": segs, "excluded_no_evidence": []}
+        result = narrate.narrate_script(script, "fake-key", FakeNarrateFn(behaviors))
+        for segment in result["script"]["segments"]:
+            self.assertNotIn("turns", segment)
+
+
 if __name__ == "__main__":
     unittest.main()
