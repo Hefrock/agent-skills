@@ -6,18 +6,18 @@ MCP server for the wiki-operator skill: 10 tools to read, write, search, and mai
 
 | Tool | Purpose |
 |---|---|
-| `search_notes` | Real BM25F-style full-text search with per-field weights (title 5x, tags 3x, body 1x), IDF, and length normalization — not a flat match-count score. Word-boundary token matching, not substring. |
+| `search_notes` | Real BM25F-style full-text search — per-field weights (title 5x, tags 3x, body 1x), IDF, length normalization, word-boundary matching — not a flat match-count or substring search |
 | `read_note` | Read full note content + parsed frontmatter |
 | `write_note` | Create or overwrite a note (creates parent folders) |
-| `append_note` | Append content to an existing note without overwriting it; creates the file if missing, provided `content` starts with a frontmatter block — errors otherwise rather than silently creating a malformed note |
+| `append_note` | Append to a note without overwriting it; creates the file if missing, but only if `content` starts with a frontmatter block — errors otherwise, never leaves a malformed note |
 | `patch_section` | Replace content under a heading without touching the rest |
 | `patch_frontmatter` | Merge fields into a note's frontmatter without touching the body |
 | `query_frontmatter` | Find notes where a frontmatter field equals a value |
 | `list_links` | Get outbound wikilinks + inbound backlinks for a note |
 | `list_notes` | List all notes (optionally in a subfolder) with frontmatter |
 | `delete_note` | Move a note to `.trash/` (recoverable, not permanent) — always confirm with the user first |
-| `search_warehouse` *(requires `WAREHOUSE_PATH`)* | Read-only BM25 passage search over warehouse full text (primary sources, not the vault's distilled notes). Every hit carries a content-hash `doc_id`, Unicode-code-point character offsets, and a `passage_hash` for staleness detection. |
-| `read_warehouse_text` *(requires `WAREHOUSE_PATH`)* | Read-only: an exact character span from a warehouse document's extracted text, for expanding context around a `search_warehouse` hit. |
+| `search_warehouse` *(requires `WAREHOUSE_PATH`)* | Read-only BM25 passage search over warehouse full text (primary sources, not the vault's distilled notes). Each hit carries a content-hash `doc_id`, Unicode-code-point offsets, and a `passage_hash` for staleness detection. |
+| `read_warehouse_text` *(requires `WAREHOUSE_PATH`)* | Read-only: an exact character span from a warehouse document, to expand context around a `search_warehouse` hit. |
 
 ## Warehouse retrieval (optional)
 
