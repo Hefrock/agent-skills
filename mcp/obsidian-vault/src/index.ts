@@ -9,6 +9,7 @@ import fs from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
 import os from "os";
+import { BM25Index, tokenize } from "./bm25.js";
 
 const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? (() => {
   console.error("OBSIDIAN_VAULT_PATH environment variable is required");
@@ -173,51 +174,138 @@ async function walkVault(dir: string = vaultRoot): Promise<string[]> {
   return files;
 }
 
-// Single source of truth for query tokenization. Both scoring and excerpt
-// selection must use this — an empty-string term makes `includes("")` match
-// every line, which silently returns the note's first line as the excerpt.
-function tokenize(query: string): string[] {
-  return query.toLowerCase().split(/\s+/).filter(Boolean);
-}
-
-function scoreNote(query: string, notePath: string, body: string, frontmatter: Record<string, unknown>): number {
-  const terms = tokenize(query);
-  const title = path.basename(notePath, ".md").toLowerCase();
-  const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.join(" ").toLowerCase() : "";
-  const bodyLower = body.toLowerCase();
-  let score = 0;
-  for (const term of terms) {
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    score += (title.match(new RegExp(escaped, "g")) || []).length * 5;
-    score += (tags.match(new RegExp(escaped, "g")) || []).length * 3;
-    score += (bodyLower.match(new RegExp(escaped, "g")) || []).length;
-  }
-  return score;
-}
-
 function extractWikilinks(content: string): string[] {
   return [...content.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)].map((m) => m[1].trim());
+}
+
+// ── Search index cache ──────────────────────────────────────────────────────────
+//
+// Field weights match the old scorer's boosts (title 5x, tags 3x, body 1x),
+// now used as BM25F per-field term-frequency multipliers instead of flat
+// match-count multipliers — see bm25.ts for what that means precisely.
+const bm25 = new BM25Index({ title: 5, tags: 3, body: 1 });
+
+interface CachedNote {
+  mtimeMs: number;
+  size: number;
+  frontmatter: Record<string, unknown>;
+  body: string;
+}
+const noteCache = new Map<string, CachedNote>();
+
+function tokenizeFields(notePath: string, frontmatter: Record<string, unknown>, body: string) {
+  const title = path.basename(notePath, ".md");
+  const tags = Array.isArray(frontmatter.tags) ? frontmatter.tags.join(" ") : "";
+  return { title: tokenize(title), tags: tokenize(tags), body: tokenize(body) };
+}
+
+// Walks the vault, stats every file, and reparses only what changed since the
+// last sync (by mtimeMs OR size — either changing means content may have
+// changed). Deleted files are dropped from both the cache and the BM25 index.
+// Called at the top of every search so results are always current; cheap when
+// nothing changed (a stat per file, no reads), matching the cost profile the
+// handoff asked for. Explicit invalidation on writes (see invalidateCacheEntry)
+// is a SEPARATE, faster-than-mtime-resolution mechanism for the server's own
+// writes — this sync is the fallback that also catches edits made outside MCP.
+async function syncIndex(): Promise<{ skipped: { path: string; error: string }[] }> {
+  const allFiles = await walkVault();
+  const current = new Set(allFiles);
+  const skipped: { path: string; error: string }[] = [];
+
+  for (const cachedPath of [...noteCache.keys()]) {
+    if (!current.has(cachedPath)) {
+      noteCache.delete(cachedPath);
+      bm25.remove(cachedPath);
+    }
+  }
+
+  for (const file of allFiles) {
+    let stat;
+    try {
+      stat = await fs.stat(vaultPath(file));
+    } catch {
+      continue; // vanished between walk and stat; next sync's deletion pass catches it
+    }
+    const cached = noteCache.get(file);
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) continue;
+
+    const note = await tryReadNote(file);
+    if (!note.ok) {
+      skipped.push({ path: file, error: note.error });
+      noteCache.delete(file);
+      bm25.remove(file);
+      continue;
+    }
+    noteCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, frontmatter: note.frontmatter, body: note.body });
+    bm25.upsert(file, tokenizeFields(file, note.frontmatter, note.body));
+  }
+
+  return { skipped };
+}
+
+// Every write tool calls this immediately after a successful write/delete.
+// Not just belt-and-suspenders alongside syncIndex's mtime check: mtime
+// resolution on some filesystems is coarse enough that a write immediately
+// followed by a search can land in the same tick, making the stat-diff in
+// syncIndex miss the change. This invalidation doesn't depend on mtime at
+// all. A no-op if the path was never indexed (safe to call unconditionally).
+function invalidateCacheEntry(notePath: string): void {
+  noteCache.delete(notePath);
+  bm25.remove(notePath);
+}
+
+function withinFolder(notePath: string, folderRel: string): boolean {
+  const rel = path.relative(folderRel, notePath);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+// Body line containing the most DISTINCT query tokens (token match, not
+// substring — "art" no longer matches an excerpt line just because it
+// contains "heart"), falling back to the first non-empty line.
+function selectExcerpt(body: string, queryTerms: string[]): string {
+  const lines = body.split("\n");
+  let best: { line: string; count: number } | null = null;
+  for (const line of lines) {
+    const lineTokens = new Set(tokenize(line));
+    const count = queryTerms.filter((t) => lineTokens.has(t)).length;
+    if (count > 0 && (!best || count > best.count)) best = { line, count };
+  }
+  const chosen = best?.line ?? lines.find((l) => l.trim() !== "") ?? "";
+  return chosen.trim().slice(0, 150);
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
 
 async function searchNotes(query: string, folder?: string, limit = 10): Promise<object> {
-  const allFiles = await walkVault(folder ? vaultPath(folder) : undefined);
+  const { skipped } = await syncIndex();
+  const terms = tokenize(query);
+  let folderRel: string | undefined;
+  if (folder) {
+    const resolved = vaultPath(folder);
+    // Folder scoping used to walk the folder directly (fs.readdir), which
+    // threw on a nonexistent path -- now that the whole vault is always
+    // walked and folder scoping is a path-prefix filter instead, that same
+    // typo would otherwise silently return zero results rather than erroring.
+    const stat = await fs.stat(resolved).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw new Error(`Folder not found: ${folder}`);
+    }
+    folderRel = path.relative(vaultRoot, resolved);
+  }
+
   const results: { path: string; score: number; excerpt: string; frontmatter: Record<string, unknown> }[] = [];
-  const skipped: { path: string; error: string }[] = [];
-  for (const file of allFiles) {
-    const note = await tryReadNote(file);
-    if (!note.ok) { skipped.push({ path: file, error: note.error }); continue; }
-    const { frontmatter, body } = note;
-    const score = scoreNote(query, file, body, frontmatter);
+  for (const notePath of noteCache.keys()) {
+    if (folderRel && !withinFolder(notePath, folderRel)) continue;
+    const score = bm25.score(notePath, terms);
     if (score > 0) {
-      const terms = tokenize(query);
-      const matchLine = body.split("\n").find((l) => terms.some((t) => l.toLowerCase().includes(t))) ?? body.split("\n")[0] ?? "";
-      results.push({ path: file, score, excerpt: matchLine.trim().slice(0, 150), frontmatter });
+      const cached = noteCache.get(notePath)!;
+      results.push({ path: notePath, score, excerpt: selectExcerpt(cached.body, terms), frontmatter: cached.frontmatter });
     }
   }
   results.sort((a, b) => b.score - a.score);
-  return { results: results.slice(0, limit), total: results.length, ...(skipped.length > 0 ? { skipped } : {}) };
+
+  const relevantSkipped = folderRel ? skipped.filter((s) => withinFolder(s.path, folderRel)) : skipped;
+  return { results: results.slice(0, limit), total: results.length, ...(relevantSkipped.length > 0 ? { skipped: relevantSkipped } : {}) };
 }
 
 async function writeNoteContents(notePath: string, content: string, mode: string = "upsert"): Promise<object> {
@@ -241,6 +329,7 @@ async function writeNoteContents(notePath: string, content: string, mode: string
   }
 
   await atomicWrite(full, content);
+  invalidateCacheEntry(notePath);
   return { path: notePath, written: true, backed_up: exists };
 }
 
@@ -272,6 +361,7 @@ async function appendNoteContents(notePath: string, content: string): Promise<ob
   const existing = await fs.readFile(full, "utf-8").catch(() => "");
   const separator = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
   await fs.appendFile(full, separator + content, "utf-8");
+  invalidateCacheEntry(notePath);
   return { path: notePath, appended: true };
 }
 
@@ -319,6 +409,7 @@ async function patchSection(notePath: string, heading: string, newContent: strin
 
   const full = await vaultPathForWrite(notePath);
   await atomicWrite(full, updated);
+  invalidateCacheEntry(notePath);
   return { path: notePath, heading, patched: true };
 }
 
@@ -328,6 +419,7 @@ async function patchFrontmatter(notePath: string, updates: Record<string, unknow
   const updated = matter.stringify(body, merged);
   const full = await vaultPathForWrite(notePath);
   await atomicWrite(full, updated);
+  invalidateCacheEntry(notePath);
   return { path: notePath, frontmatter: merged, patched: true };
 }
 
@@ -389,6 +481,7 @@ async function deleteNote(notePath: string): Promise<object> {
   const trashName = `${path.basename(notePath, ".md")}_${timestamp}.md`;
   const trashDest = path.join(trashDir, trashName);
   await fs.rename(full, trashDest);
+  invalidateCacheEntry(notePath);
   return { path: notePath, moved_to: `.trash/${trashName}`, recoverable: true };
 }
 
