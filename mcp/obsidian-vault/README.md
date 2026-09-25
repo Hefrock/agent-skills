@@ -1,6 +1,6 @@
 # obsidian-vault MCP
 
-MCP server for the wiki-operator skill. Provides 10 tools for reading, writing, searching, and maintaining a local Obsidian vault, plus 2 more read-only tools for warehouse passage retrieval when `WAREHOUSE_PATH` is set (see below) — 12 tools total in that configuration.
+MCP server for the wiki-operator skill: 10 tools to read, write, search, and maintain a local Obsidian vault, plus 2 read-only warehouse-retrieval tools when `WAREHOUSE_PATH` is set (12 total).
 
 ## Tools
 
@@ -21,9 +21,9 @@ MCP server for the wiki-operator skill. Provides 10 tools for reading, writing, 
 
 ## Warehouse retrieval (optional)
 
-Set `WAREHOUSE_PATH` to a local clone of `Hefrock/knowledge-warehouse` to register `search_warehouse` and `read_warehouse_text`. If unset, those two tools simply don't exist — everything else is unaffected. If set but invalid (missing directory, or no `manifest.json`), the server logs why to stderr and still doesn't register them; it never exits, so the 10 vault tools keep working either way.
+Set `WAREHOUSE_PATH` to a local clone of `Hefrock/knowledge-warehouse` to register `search_warehouse` and `read_warehouse_text`. Unset, invalid, or missing `manifest.json` — the two tools just don't register (invalid/missing logs why to stderr); the server never exits and the 10 vault tools keep working regardless.
 
-This is retrieval over **primary sources**, distinct from `search_notes`'s retrieval over the vault's **distilled** notes — see `references/warehouse-schema.md` (in `skills/wiki-warehouse/`) for the join contract between the two. Both warehouse tools are read-only and their descriptions remind the caller of the constitution's rule: distill what you find into a vault note, never paste warehouse text directly into one.
+This is retrieval over **primary sources**, distinct from `search_notes`'s retrieval over the vault's **distilled** notes — see `references/warehouse-schema.md` (in `skills/wiki-warehouse/`) for the join contract between the two. Both tools are read-only; per the constitution, distill what you find into a vault note rather than pasting warehouse text directly into one.
 
 ## Install
 
@@ -40,18 +40,10 @@ npm run build
 claude mcp add obsidian-vault \
   -s user \
   -e OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
-  -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
-```
-`-s user` registers the server at the user level (available in every project) and writes to `~/.claude.json` for you. If `node` isn't found on `PATH` when Claude Code runs it, use `which node`'s output as the command instead of the bare `node`.
-
-To also enable warehouse retrieval, add a second `-e` for `WAREHOUSE_PATH`:
-```bash
-claude mcp add obsidian-vault \
-  -s user \
-  -e OBSIDIAN_VAULT_PATH=/absolute/path/to/your/vault \
   -e WAREHOUSE_PATH=/absolute/path/to/your/knowledge-warehouse/clone \
   -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
 ```
+Drop the `WAREHOUSE_PATH` line if you don't want warehouse retrieval. `-s user` registers the server at the user level (available in every project) and writes to `~/.claude.json` for you. If `node` isn't on `PATH` when Claude Code runs it, use `which node`'s output as the command instead of the bare `node`.
 
 **Manual** — add this to `~/.claude.json` yourself:
 ```json
@@ -82,7 +74,7 @@ Then verify inside Claude Code:
 - Path traversal protection: all paths are resolved and validated against the vault root
 - Only reads/writes `.md` files within `OBSIDIAN_VAULT_PATH`
 - Recommend enabling git on your vault for reversibility
-- Warehouse tools are read-only (never write to the vault or the warehouse) and apply the same symlink-aware containment check to every manifest entry's `text_path`; a malformed or malicious manifest entry is rejected and logged, not trusted, and never stops the rest of the corpus from indexing
+- Warehouse tools are read-only and apply the same symlink-aware containment check to every manifest entry's `text_path`; a bad entry is rejected and logged, not trusted, without blocking the rest of the corpus from indexing
 
 ## Vault structure expected by wiki-operator
 
