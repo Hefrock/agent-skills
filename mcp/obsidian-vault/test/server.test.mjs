@@ -311,6 +311,175 @@ check(
   d.outbound?.includes("Projects/Target Project")
 );
 
+console.log("\n── BM25: IDF — a rare term beats a common term repeated ────────");
+
+// A term that appears in nearly every note (low IDF) shouldn't outscore a
+// term that appears in almost none of them (high IDF), even at 50x the raw
+// frequency. This is the textbook property a flat match-count scorer (the
+// old implementation) doesn't have at all.
+for (let i = 0; i < 8; i++) {
+  await fs.writeFile(
+    `${VAULT}/Knowledge/idf-filler-${i}.md`,
+    `---\ntype: concept\n---\nThis filler note mentions commonzword several times: commonzword commonzword commonzword.`
+  );
+}
+await fs.writeFile(`${VAULT}/Knowledge/idf-rare.md`, "---\ntype: concept\n---\nThis note mentions rarezword exactly once.");
+await fs.writeFile(
+  `${VAULT}/Knowledge/idf-common.md`,
+  "---\ntype: concept\n---\n" + "commonzword ".repeat(50)
+);
+
+r = await tool(21, "search_notes", { query: "rarezword commonzword" });
+d = parse(r);
+const rareHit = d.results?.find((x) => x.path.includes("idf-rare"));
+const commonHit = d.results?.find((x) => x.path.includes("idf-common"));
+check(
+  "IDF — one hit on a rare term outranks 50 hits on a common one",
+  rareHit !== undefined && commonHit !== undefined && rareHit.score > commonHit.score,
+  `rare=${rareHit?.score} common=${commonHit?.score}`
+);
+
+console.log("\n── BM25: length normalization — equal tf, shorter note wins ────");
+
+const padding = Array.from({ length: 200 }, (_, i) => `paddingword${i}`).join(" ");
+await fs.writeFile(`${VAULT}/Knowledge/len-short.md`, "---\ntype: concept\n---\nAbout distinctiveqterm only.");
+await fs.writeFile(`${VAULT}/Knowledge/len-long.md`, `---\ntype: concept\n---\nAbout distinctiveqterm too. ${padding}`);
+
+r = await tool(22, "search_notes", { query: "distinctiveqterm" });
+d = parse(r);
+const shortHit = d.results?.find((x) => x.path.includes("len-short"));
+const longHit = d.results?.find((x) => x.path.includes("len-long"));
+check(
+  "length normalization — same raw term frequency, shorter body ranks higher",
+  shortHit !== undefined && longHit !== undefined && shortHit.score > longHit.score,
+  `short=${shortHit?.score} long=${longHit?.score}`
+);
+
+console.log("\n── BM25: word boundaries — token match, not substring ──────────");
+
+await fs.writeFile(`${VAULT}/Knowledge/boundary-fixture.md`, "---\ntype: concept\n---\nMy heart will start beating.");
+
+r = await tool(23, "search_notes", { query: "art" });
+d = parse(r);
+check(
+  "word boundaries — query 'art' does not match a note containing only 'heart'/'start'",
+  !d.results?.some((x) => x.path.includes("boundary-fixture")),
+  `results: ${JSON.stringify(d.results?.map((x) => x.path))}`
+);
+
+console.log("\n── BM25: field weights — title match beats one body occurrence ─");
+
+await fs.writeFile(`${VAULT}/Knowledge/keystonewordq.md`, "---\ntype: concept\n---\nNo mention of that term here at all.");
+await fs.writeFile(`${VAULT}/Knowledge/other-body-holder.md`, "---\ntype: concept\n---\nThis note mentions keystonewordq one time.");
+
+r = await tool(24, "search_notes", { query: "keystonewordq" });
+d = parse(r);
+const titleHit = d.results?.find((x) => x.path.includes("keystonewordq"));
+const bodyHit = d.results?.find((x) => x.path.includes("other-body-holder"));
+check(
+  "field weights — a title match outranks the same term once in a body",
+  titleHit !== undefined && bodyHit !== undefined && titleHit.score > bodyHit.score,
+  `title=${titleHit?.score} body=${bodyHit?.score}`
+);
+
+console.log("\n── Cache invalidation: write_note and delete_note ───────────────");
+
+r = await tool(25, "search_notes", { query: "unwrittenyetterm" });
+d = parse(r);
+check("cache invalidation — term absent before the note exists", !d.results?.some((x) => x.path.includes("cache-write-fixture")));
+
+r = await tool(26, "write_note", {
+  path: "Knowledge/cache-write-fixture.md",
+  content: "---\ntype: concept\n---\nThis contains unwrittenyetterm.",
+  mode: "create",
+});
+check("cache invalidation — write_note succeeded", parse(r).written === true);
+
+r = await tool(27, "search_notes", { query: "unwrittenyetterm" });
+d = parse(r);
+check(
+  "cache invalidation — search immediately after write_note finds the new note",
+  d.results?.some((x) => x.path.includes("cache-write-fixture")),
+  `results: ${JSON.stringify(d.results?.map((x) => x.path))}`
+);
+
+r = await tool(28, "delete_note", { path: "Knowledge/cache-write-fixture.md" });
+check("cache invalidation — delete_note succeeded", parse(r).moved_to !== undefined);
+
+r = await tool(29, "search_notes", { query: "unwrittenyetterm" });
+d = parse(r);
+check(
+  "cache invalidation — search immediately after delete_note no longer finds it",
+  !d.results?.some((x) => x.path.includes("cache-write-fixture")),
+  `results: ${JSON.stringify(d.results?.map((x) => x.path))}`
+);
+
+console.log("\n── Cache sync: an edit made outside MCP is picked up ────────────");
+
+await fs.writeFile(`${VAULT}/Knowledge/external-edit-fixture.md`, "---\ntype: concept\n---\nOriginal content, no special term.");
+
+r = await tool(30, "search_notes", { query: "externallyeditedterm" });
+d = parse(r);
+check("external edit — term absent before the direct edit", !d.results?.some((x) => x.path.includes("external-edit-fixture")));
+
+// Bypass MCP entirely: write straight to disk, then force the mtime forward
+// so this test exercises syncIndex's mtime/size diff even on a filesystem
+// with coarse mtime resolution, not invalidateCacheEntry (which only fires
+// on writes made THROUGH this server).
+await fs.writeFile(`${VAULT}/Knowledge/external-edit-fixture.md`, "---\ntype: concept\n---\nNow mentions externallyeditedterm directly.");
+const future = new Date(Date.now() + 5000);
+await fs.utimes(`${VAULT}/Knowledge/external-edit-fixture.md`, future, future);
+
+r = await tool(31, "search_notes", { query: "externallyeditedterm" });
+d = parse(r);
+check(
+  "external edit — a direct on-disk edit (bypassing MCP) is reflected on the next search",
+  d.results?.some((x) => x.path.includes("external-edit-fixture")),
+  `results: ${JSON.stringify(d.results?.map((x) => x.path))}`
+);
+
+console.log("\n── Folder scoping: restricted results, unrestricted-comparable score ─");
+
+await fs.mkdir(`${VAULT}/Knowledge`, { recursive: true });
+await fs.writeFile(`${VAULT}/Knowledge/scoped-in-folder.md`, "---\ntype: concept\n---\nThis mentions scopedqterm once.");
+await fs.writeFile(`${VAULT}/Projects/scoped-outside-folder.md`, "---\ntype: project\n---\nThis also mentions scopedqterm once.");
+
+r = await tool(32, "search_notes", { query: "scopedqterm" });
+d = parse(r);
+const unrestrictedHit = d.results?.find((x) => x.path === "Knowledge/scoped-in-folder.md");
+
+r = await tool(33, "search_notes", { query: "scopedqterm", folder: "Knowledge" });
+d = parse(r);
+check(
+  "folder scoping — results restricted to the folder exclude a match outside it",
+  d.results?.some((x) => x.path === "Knowledge/scoped-in-folder.md") &&
+    !d.results?.some((x) => x.path === "Projects/scoped-outside-folder.md"),
+  `results: ${JSON.stringify(d.results?.map((x) => x.path))}`
+);
+const scopedHit = d.results?.find((x) => x.path === "Knowledge/scoped-in-folder.md");
+check(
+  "folder scoping — the in-folder note's score is unchanged from the unrestricted query (IDF stays vault-wide)",
+  unrestrictedHit !== undefined && scopedHit !== undefined && unrestrictedHit.score === scopedHit.score,
+  `unrestricted=${unrestrictedHit?.score} scoped=${scopedHit?.score}`
+);
+
+r = await tool(34, "search_notes", { query: "scopedqterm", folder: "NoSuchFolder" });
+check(
+  "folder scoping — a nonexistent folder errors rather than silently returning zero results",
+  r.result?.isError,
+  `result: ${JSON.stringify(r.result)}`
+);
+
+// Test 7 (a note with broken frontmatter still appears in `skipped` and
+// doesn't break search) is already covered above by the "Vault-wide scans
+// tolerate one malformed file" section — search_notes there is asserted to
+// still return valid results and list the bad file in `skipped`, which is
+// the same property this item asks for. Not duplicated here.
+//
+// Test 9 (existing tests, including the ReDoS regression, still pass) is the
+// whole file: everything above this new section is unchanged from before the
+// BM25 rewrite and is asserted to still pass in the same run.
+
 // ── Results ───────────────────────────────────────────────────────────────────
 server.kill();
 await fs.rm(VAULT, { recursive: true, force: true });
