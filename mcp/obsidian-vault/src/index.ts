@@ -266,7 +266,7 @@ async function deleteNote(notePath: string): Promise<object> {
 // ── MCP Server ────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "obsidian-vault", version: "0.3.0" },
+  { name: "obsidian-vault", version: "0.4.0" },
   { capabilities: { tools: {} } }
 );
 

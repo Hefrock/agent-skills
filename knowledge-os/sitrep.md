@@ -396,7 +396,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-teacher` | Shipped, deliberately narrow | `/checkin` only — stateless; narrowing algorithm and portfolio breadth verified against both synthetic cases and real parsed files (`wiki_teacher.py`, 37 tests). `/teach` and `/reflect` were built, self-critiqued, and reverted in the same round — see Recently closed — pending real `/checkin` usage before they come back |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
-| `obsidian-vault` MCP server | Shipped | 10 tools, user-level launch via `~/.claude.json` |
+| `obsidian-vault` MCP server | Shipped | 10 vault tools (real BM25F search, not the earlier flat match-count scorer) + 2 read-only warehouse passage-retrieval tools when `WAREHOUSE_PATH` is set (`search_warehouse`, `read_warehouse_text` — content-hash `doc_id`, code-point offsets, staleness-detectable `passage_hash`), user-level launch via `~/.claude.json`. 74-test suite across two files. Retrieval eval against the real vault still pending (recall@5/MRR, run locally, not yet in this doc) |
 | Stalled-work digest (v3) | Running | Weekly Routine, self-bound session; `list_repos`→`add_repo`→`list_issues`→`PushNotification`; no raw curl (blocked by egress policy for every session) |
 | Stalled-work dashboard | Running | Artifact snapshot, republished to the same URL each run; readable without Claude mobile, a login, or the push having landed |
 

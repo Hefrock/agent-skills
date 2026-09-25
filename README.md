@@ -173,7 +173,7 @@ The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-go
        }
      }
      ```
-3. **Restart Claude Code and verify:** run `/mcp` — expect `obsidian-vault` connected with 10 tools. Full tool reference: [`mcp/obsidian-vault/README.md`](./mcp/obsidian-vault/README.md).
+3. **Restart Claude Code and verify:** run `/mcp` — expect `obsidian-vault` connected with 10 tools (12 if you've also set `WAREHOUSE_PATH` for warehouse passage retrieval — see that server's own README). Full tool reference: [`mcp/obsidian-vault/README.md`](./mcp/obsidian-vault/README.md).
 
 This is a **per-device** setup step — the server is a local process, so a new machine needs its own build and its own `~/.claude.json` entry (with paths for *that* machine), even if it's pointed at the same synced vault.
 
