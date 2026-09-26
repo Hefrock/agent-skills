@@ -331,6 +331,85 @@ class RunEpisodeWiring(unittest.TestCase):
         self.assertFalse(result["qa_result"]["passed"])
         self.assertIsNone(result["episode_audio"])
 
+    # ── --host-style dialogue ─────────────────────────────────────────
+
+    def _fake_synth_dialogue_fn(self, turns, api_key):
+        self.dialogue_calls.append(turns)
+        pcm = b"\x03\x04" * 100
+        return orchestrate.audio_synth._pcm_to_wav(pcm)
+
+    def test_default_host_style_never_calls_synth_dialogue_fn(self):
+        # The whole point of gating this behind a flag: today's default
+        # behavior must be provably untouched.
+        self.dialogue_calls = []
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn,
+            synth_fn=self._fake_synth_fn, synth_dialogue_fn=self._fake_synth_dialogue_fn,
+        )
+        self.assertEqual(self.dialogue_calls, [])
+        for segment in result["script"]["segments"]:
+            self.assertNotIn("turns", segment)
+        self.assertIsNotNone(result["episode_audio"])
+
+    def test_dialogue_host_style_routes_story_segments_through_synth_dialogue_fn(self):
+        self.dialogue_calls = []
+        client = FakeEvidenceClient()
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, client, "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn,
+            synth_fn=self._fake_synth_fn, synth_dialogue_fn=self._fake_synth_dialogue_fn,
+            host_style="dialogue",
+        )
+        self.assertTrue(result["qa_result"]["passed"], result["qa_result"]["checks"])
+        self.assertIsNotNone(result["episode_audio"])
+        story_segments = [s for s in result["script"]["segments"] if s["segment_type"] in {"top_three_item", "quick_hits_item"}]
+        self.assertGreater(len(story_segments), 0)
+        for s in story_segments:
+            self.assertIn("turns", s)
+            self.assertEqual(len(s["turns"]), 2)
+        # every story segment's dialogue call landed in synth_dialogue_fn,
+        # not the plain single-voice synth_fn
+        self.assertEqual(len(self.dialogue_calls), len(story_segments))
+        # connective segments (intro/disclosure/transition/outro) have no
+        # "turns" at all in this build, so they never touch synth_dialogue_fn
+        connective_segments = [s for s in result["script"]["segments"] if s["segment_type"] not in {"top_three_item", "quick_hits_item"}]
+        self.assertGreater(len(connective_segments), 0)
+        for s in connective_segments:
+            self.assertNotIn("turns", s)
+
+    def test_dialogue_cache_key_is_the_flattened_turns_not_plain_text(self):
+        # A dialogue segment's cache entry must be addressable by its own
+        # dialogue_text_for_turns() flattening -- otherwise a second run
+        # with the same story would never hit the cache.
+        self.dialogue_calls = []
+        client = FakeEvidenceClient()
+        with tempfile.TemporaryDirectory() as tmp:
+            result = orchestrate.run_episode(
+                "2026-09-02", self.registry, self.store, client, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn,
+                synth_fn=self._fake_synth_fn, synth_dialogue_fn=self._fake_synth_dialogue_fn,
+                host_style="dialogue", synth_cache_dir=tmp,
+            )
+            story_segment = next(s for s in result["script"]["segments"] if s["segment_type"] in {"top_three_item", "quick_hits_item"})
+            cache_key_text = orchestrate.audio_synth.dialogue_text_for_turns(story_segment["turns"])
+            self.assertIsNotNone(orchestrate.audio_synth.load_cached_segment(tmp, cache_key_text))
+
+            # a second run with the same cache dir must be servable from
+            # cache alone -- synth_dialogue_fn must NOT be called again
+            self.dialogue_calls = []
+
+            def _forbidden_dialogue_fn(turns, api_key):
+                raise AssertionError("synth_dialogue_fn should not be called on a cache hit")
+
+            orchestrate.run_episode(
+                "2026-09-02", self.registry, self.store, client, "fake-api-key",
+                fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn, narrate_fn=self._fake_narrate_fn,
+                synth_fn=self._fake_synth_fn, synth_dialogue_fn=_forbidden_dialogue_fn,
+                host_style="dialogue", synth_cache_dir=tmp,
+            )
+
     def test_a_failing_synth_segment_withholds_the_whole_episode(self):
         client = FakeEvidenceClient()
         calls = {"n": 0}

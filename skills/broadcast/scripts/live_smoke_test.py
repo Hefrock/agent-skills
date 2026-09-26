@@ -240,6 +240,25 @@ else:
 
     check("synthesize_text returns a real WAV clip", _tts)
 
+print("\n── Gemini TTS (multi-speaker, --host-style dialogue) ────────")
+if not api_key:
+    skip("synthesize_dialogue returns a real two-voice WAV clip", "GEMINI_API_KEY not set in environment")
+else:
+    def _dialogue_tts():
+        import wave
+        import io
+        turns = [
+            {"speaker": "A", "kind": "claim", "text": "A new study just came out on this."},
+            {"speaker": "B", "kind": "reactive", "text": "That's a significant one."},
+        ]
+        wav_bytes = audio_synth.synthesize_dialogue(turns, api_key)
+        assert wav_bytes[:4] == b"RIFF", "output does not start with a RIFF/WAV header"
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            assert wf.getnframes() > 0, "WAV clip has zero frames"
+            return f"{wf.getnframes()} frames, {wf.getnchannels()}ch, {wf.getframerate()}Hz, {len(wav_bytes)} bytes"
+
+    check("synthesize_dialogue returns a real two-voice WAV clip", _dialogue_tts)
+
 print(f"\n{'─' * 62}\n  {passed} passed  —  {failed} failed  —  {skipped} skipped")
 if failed > 0:
     sys.exit(1)

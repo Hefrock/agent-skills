@@ -37,6 +37,7 @@ def load(name):
 
 
 evidence_pinning_client = load("evidence_pinning_client")
+narrate = load("narrate")
 qa_gate = load("qa_gate")
 
 
@@ -181,6 +182,46 @@ class QaGateStructuralChecks(unittest.TestCase):
     def test_gate_without_a_client_does_not_include_claims_still_pinned_check(self):
         result = qa_gate.gate(valid_minimal_script())
         self.assertIsNone(next((c for c in result["checks"] if c["check"] == "claims_still_pinned"), None))
+
+    def test_segment_with_no_turns_key_passes_reactive_turns_check_trivially(self):
+        result = qa_gate.gate(valid_minimal_script())
+        self.assertTrue(find(result["checks"], "reactive_turns_within_pool")["passed"])
+
+    def test_reactive_turn_from_the_real_pool_passes(self):
+        segment = make_story_segment()
+        real_phrase = narrate.REACTIVE_TEMPLATES["top_three_item"][0]
+        segment["turns"] = [
+            {"speaker": "A", "kind": "claim", "text": "Some grounded claim."},
+            {"speaker": "B", "kind": "reactive", "text": real_phrase},
+        ]
+        segments = [make_segment("intro"), segment, make_segment("outro")]
+        result = qa_gate.gate(make_script(segments))
+        self.assertTrue(find(result["checks"], "reactive_turns_within_pool")["passed"])
+
+    def test_reactive_turn_not_in_the_pool_fails(self):
+        # A free-generated (or corrupted) reactive turn must never slip
+        # through as if it came from the safe, non-LLM template pool.
+        segment = make_story_segment()
+        segment["turns"] = [
+            {"speaker": "A", "kind": "claim", "text": "Some grounded claim."},
+            {"speaker": "B", "kind": "reactive", "text": "This was never in the approved pool!"},
+        ]
+        segments = [make_segment("intro"), segment, make_segment("outro")]
+        result = qa_gate.gate(make_script(segments))
+        check = find(result["checks"], "reactive_turns_within_pool")
+        self.assertFalse(check["passed"])
+        self.assertIn("This was never in the approved pool!", check["detail"])
+        self.assertFalse(result["passed"])  # a bad reactive turn fails the whole gate
+
+    def test_claim_kind_turns_are_never_checked_against_the_reactive_pool(self):
+        # "kind": "claim" turns are covered by narrate.py's own grounding
+        # check before this point, not by this check -- this check only
+        # ever looks at "reactive"-kind turns.
+        segment = make_story_segment()
+        segment["turns"] = [{"speaker": "A", "kind": "claim", "text": "Anything at all, not in any template pool."}]
+        segments = [make_segment("intro"), segment, make_segment("outro")]
+        result = qa_gate.gate(make_script(segments))
+        self.assertTrue(find(result["checks"], "reactive_turns_within_pool")["passed"])
 
 
 @unittest.skipUnless(

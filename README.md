@@ -96,7 +96,7 @@ agent-skills/
 ├── docs/
 │   └── stalled-work-tracking.md # how the blocked-human / dated-followup convention works
 ├── skills/                     # flat — one folder per skill, no category nesting
-│   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 563-test suite
+│   ├── broadcast/              # daily healthcare AI audio briefing pipeline — scripts/orchestrate.py, 589-test suite
 │   ├── agent-eval/              # rubric-based evals, LLM-as-judge, regression test sets
 │   ├── agent-redteam/           # adversarial case generation, pairs with agent-eval
 │   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 72-test suite

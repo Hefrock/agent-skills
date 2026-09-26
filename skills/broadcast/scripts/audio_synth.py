@@ -67,6 +67,17 @@ import gemini_retry  # noqa: E402
 
 DEFAULT_MODEL = "gemini-2.5-flash-preview-tts"
 DEFAULT_VOICE = "Kore"
+# --host-style dialogue only (see narrate.py's docstring) — Host B's
+# voice. Host B's TEXT is never generated (narrate.REACTIVE_TEMPLATES,
+# not a Gemini call), but it still needs its own synthesized voice,
+# distinct from Host A's, for the two-speaker audio to read as two people.
+DEFAULT_VOICE_B = "Puck"
+# Speaker names declared in synthesize_dialogue()'s multiSpeakerVoiceConfig
+# — must match narrate.DIALOGUE_SPEAKER_A/B exactly, since Gemini's
+# multi-speaker TTS matches the label in the prompt text to the speaker
+# name declared in speakerVoiceConfigs, not by turn position.
+DIALOGUE_SPEAKER_A = "A"
+DIALOGUE_SPEAKER_B = "B"
 PCM_SAMPLE_RATE = 24000
 PCM_SAMPLE_WIDTH = 2  # bytes per sample (16-bit)
 PCM_CHANNELS = 1  # mono — see module docstring; not directly observed in the live response
@@ -257,6 +268,28 @@ def assemble_episode_audio(script: dict, segment_audio: list[bytes], normalize: 
 
 # ── Network wrapper (not used by anything above) ────────────────────────
 
+def _call_tts_endpoint(payload: bytes, api_key: str, model: str, timeout: float, max_attempts: int, backoff_base_seconds: float) -> bytes:
+    """Shared retry/parse logic for both synthesize_text() (single voice)
+    and synthesize_dialogue() (two voices) — same endpoint, same
+    generateContent shape, only the request payload's speechConfig
+    differs between callers. Extracted so the live-confirmed retry policy
+    (see synthesize_text()'s docstring for the full rate-limit history)
+    exists in exactly one place, not duplicated and left to drift."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    for attempt in range(max_attempts):
+        try:
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            inline_data = body["candidates"][0]["content"]["parts"][0]["inlineData"]
+            pcm_bytes = base64.b64decode(inline_data["data"])
+            return _pcm_to_wav(pcm_bytes)
+        except Exception as e:
+            if attempt == max_attempts - 1 or not gemini_retry.is_retryable(e):
+                raise
+            time.sleep(gemini_retry.retry_delay_seconds(e, attempt, backoff_base_seconds))
+
+
 def synthesize_text(
     text: str,
     api_key: str,
@@ -288,7 +321,6 @@ def synthesize_text(
     last attempt if every retry also fails — this doesn't hide failures,
     it just stops treating a transient rate limit as a permanent one on
     the first try."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {
@@ -296,19 +328,65 @@ def synthesize_text(
             "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice_name}}},
         },
     }).encode("utf-8")
+    return _call_tts_endpoint(payload, api_key, model, timeout, max_attempts, backoff_base_seconds)
 
-    for attempt in range(max_attempts):
-        try:
-            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            inline_data = body["candidates"][0]["content"]["parts"][0]["inlineData"]
-            pcm_bytes = base64.b64decode(inline_data["data"])
-            return _pcm_to_wav(pcm_bytes)
-        except Exception as e:
-            if attempt == max_attempts - 1 or not gemini_retry.is_retryable(e):
-                raise
-            time.sleep(gemini_retry.retry_delay_seconds(e, attempt, backoff_base_seconds))
+
+def dialogue_text_for_turns(turns: list[dict]) -> str:
+    """Formats turns (script_gen/narrate.py's {"speaker", "kind", "text"}
+    shape — only "speaker"/"text" matter here) as speaker-labeled lines
+    ('A: ...\\nB: ...') for synthesize_dialogue()'s prompt text — Gemini's
+    multi-speaker TTS reads the speaker label IN the prompt text to decide
+    who says which line; it isn't a separate structured field per line.
+
+    Also doubles as orchestrate.py's audio-cache key for a dialogue
+    segment: a deterministic, order-preserving flattening of turns into
+    one string, fed to audio_synth.load_cached_segment()/
+    save_cached_segment() exactly like any plain segment "text" already
+    is — no change needed to the cache functions themselves."""
+    return "\n".join(f"{turn['speaker']}: {turn['text']}" for turn in turns)
+
+
+def synthesize_dialogue(
+    turns: list[dict],
+    api_key: str,
+    voice_a: str = DEFAULT_VOICE,
+    voice_b: str = DEFAULT_VOICE_B,
+    model: str = DEFAULT_MODEL,
+    timeout: float = 30.0,
+    max_attempts: int = 3,
+    backoff_base_seconds: float = 5.0,
+) -> bytes:
+    """Two-speaker sibling of synthesize_text() — --host-style dialogue
+    only (see narrate.py's docstring for the full design). One
+    generateContent call with speechConfig.multiSpeakerVoiceConfig (up to
+    two named speakers, each its own prebuiltVoiceConfig) instead of a
+    single voiceConfig, producing one combined WAV with both voices
+    reading their assigned lines — confirmed real API shape, not assumed.
+
+    turns' speaker names must match DIALOGUE_SPEAKER_A/B exactly (Gemini
+    matches the label in the prompt text to the speaker name declared in
+    speakerVoiceConfigs, not by turn position/order) — narrate.py's
+    narrate_segment() already produces turns in exactly this shape.
+
+    Shares _call_tts_endpoint()'s retry policy with synthesize_text() —
+    same live-confirmed rate-limit behavior applies here too; this is the
+    same generateContent endpoint with a different speechConfig, not a
+    different endpoint with its own untested failure modes."""
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": dialogue_text_for_turns(turns)}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "multiSpeakerVoiceConfig": {
+                    "speakerVoiceConfigs": [
+                        {"speaker": DIALOGUE_SPEAKER_A, "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice_a}}},
+                        {"speaker": DIALOGUE_SPEAKER_B, "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice_b}}},
+                    ],
+                },
+            },
+        },
+    }).encode("utf-8")
+    return _call_tts_endpoint(payload, api_key, model, timeout, max_attempts, backoff_base_seconds)
 
 
 # ── Segment audio cache (not used by anything above) ────────────────────

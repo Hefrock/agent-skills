@@ -17,6 +17,10 @@ used between pure logic and a thin network/server call:
     the only thing standing between a bug and a published episode,
     especially once a script has been serialized to disk and read back
     in by a later pipeline run rather than passed directly in memory.
+    reactive_turns_within_pool is the same posture applied to --host-style
+    dialogue's Host B turns (see narrate.py's docstring): every "reactive"
+    turn must be a real member of narrate.REACTIVE_TEMPLATES, mechanically
+    verified rather than trusted by its own "reactive" label.
 
   - the optional claims-still-pinned check (only run when a started
     EvidencePinningClient is passed to gate()): re-verifies every story
@@ -35,6 +39,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from evidence_pinning_client import EvidencePinningError  # noqa: E402
+import narrate  # noqa: E402
 
 STORY_SEGMENT_TYPES = {"top_three_item", "quick_hits_item"}
 
@@ -93,6 +98,30 @@ def _check_quick_hits_transition_consistency(segments: list[dict]) -> dict:
     return _check("quick_hits_transition_consistency", passed, detail)
 
 
+def _check_reactive_turns_within_pool(segments: list[dict]) -> dict:
+    """--host-style dialogue only (see narrate.py's docstring) — every
+    "reactive"-kind turn's text must be a real member of
+    narrate.REACTIVE_TEMPLATES for that segment's own segment_type,
+    mechanically verified rather than trusted by its "reactive" label.
+    Same "verify, don't trust the type tag" discipline
+    check_narration_grounded()'s supporting_spans check already uses for
+    "claim" turns. A segment with no "turns" key at all (single-host
+    mode, or a segment that fell back to mechanical text) is trivially
+    skipped — there is nothing to check."""
+    bad = []
+    for s in segments:
+        for turn in s.get("turns") or []:
+            if turn["kind"] != "reactive":
+                continue
+            pool = narrate.REACTIVE_TEMPLATES.get(s["segment_type"], narrate.REACTIVE_TEMPLATES[narrate.DEFAULT_REACTIVE_POOL_KEY])
+            if turn["text"] not in pool:
+                bad.append((s["segment_type"], turn["text"]))
+    passed = not bad
+    return _check(
+        "reactive_turns_within_pool", passed, "" if passed else f"reactive turn(s) not found in the known template pool: {bad}"
+    )
+
+
 def _check_no_excluded_stories_leaked(script: dict) -> dict:
     excluded_ids = {item["canonical_id"] for item in script.get("excluded_no_evidence", [])}
     segment_ids = {s["canonical_id"] for s in script["segments"] if s["canonical_id"] is not None}
@@ -115,6 +144,7 @@ def run_checks(script: dict) -> list[dict]:
         _check_story_segments_grounded(segments),
         _check_no_duplicate_canonical_ids(segments),
         _check_quick_hits_transition_consistency(segments),
+        _check_reactive_turns_within_pool(segments),
         _check_no_excluded_stories_leaked(script),
     ]
 

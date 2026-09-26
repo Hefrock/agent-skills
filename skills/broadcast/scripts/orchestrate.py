@@ -163,6 +163,8 @@ def run_episode(
     embed_fn=dedup_store.embed_text,
     narrate_fn=narrate.generate_narration,
     synth_fn=audio_synth.synthesize_text,
+    synth_dialogue_fn=audio_synth.synthesize_dialogue,
+    host_style: str = "single",
     show_name: str = "Healthcare AI Briefing",
     synth_delay_seconds: float = 0.0,
     enable_narration: bool = True,
@@ -187,16 +189,28 @@ def run_episode(
     one itself, same "caller owns the resource" convention evidence.py
     and qa_gate.py already use.
 
-    fetch_fn/embed_fn/narrate_fn/synth_fn default to the real network-
-    touching functions; tests inject fakes so the full wiring — every
-    stage's real output shape actually feeding the next stage's expected
-    input shape — can be proven without any network call or spawned
-    process. narrate_fn is narrate.py's PER-STORY generate_narration()
-    (the same "inject the network call, not the orchestration around it"
-    level fetch_fn/embed_fn/synth_fn already use) — narrate.narrate_script()
-    itself, the pure orchestration wrapping it, is always called for
-    real, same as audio_synth.assemble_episode_audio() never being
-    injected either.
+    fetch_fn/embed_fn/narrate_fn/synth_fn/synth_dialogue_fn default to the
+    real network-touching functions; tests inject fakes so the full
+    wiring — every stage's real output shape actually feeding the next
+    stage's expected input shape — can be proven without any network call
+    or spawned process. narrate_fn is narrate.py's PER-STORY
+    generate_narration() (the same "inject the network call, not the
+    orchestration around it" level fetch_fn/embed_fn/synth_fn already
+    use) — narrate.narrate_script() itself, the pure orchestration
+    wrapping it, is always called for real, same as audio_synth.
+    assemble_episode_audio() never being injected either.
+
+    host_style ("single" default, or "dialogue" — see narrate.py's
+    docstring for the full design): passed to narrate.narrate_script().
+    In "dialogue" mode, a successfully-narrated story segment additionally
+    carries "turns" (a grounded claim turn plus a template-only reactive
+    turn from Host B — never a second AI-generated voice); the synth loop
+    below routes any segment with turns through synth_dialogue_fn
+    (audio_synth.synthesize_dialogue) instead of synth_fn. A fallback
+    segment (grounding failed, or host_style="single") never carries
+    "turns" and always goes through the exact same single-voice synth_fn
+    path this pipeline has always used — "dialogue" mode never removes
+    that path, only adds a second one alongside it.
 
     enable_narration (default True — this pipeline's whole point,
     decided in conversation, is genuinely AI-generated narration, not a
@@ -354,7 +368,9 @@ def run_episode(
 
     narration_result = None
     if enable_narration:
-        narration_result = narrate.narrate_script(script, api_key, narrate_fn=narrate_fn, success_threshold=narration_success_threshold)
+        narration_result = narrate.narrate_script(
+            script, api_key, narrate_fn=narrate_fn, success_threshold=narration_success_threshold, host_style=host_style,
+        )
         script = narration_result["script"]
 
     qa_result = qa_gate.gate(script, client=evidence_client)
@@ -365,18 +381,22 @@ def run_episode(
         segment_audio = []
         made_a_real_synth_call = False
         for segment in script["segments"]:
-            cached = audio_synth.load_cached_segment(synth_cache_dir, segment["text"]) if synth_cache_dir else None
+            turns = segment.get("turns")
+            is_dialogue = turns is not None and len(turns) > 1
+            cache_text = audio_synth.dialogue_text_for_turns(turns) if is_dialogue else segment["text"]
+
+            cached = audio_synth.load_cached_segment(synth_cache_dir, cache_text) if synth_cache_dir else None
             if cached is not None:
                 segment_audio.append(cached)
                 continue
             if made_a_real_synth_call and synth_delay_seconds > 0:
                 time.sleep(synth_delay_seconds)
             try:
-                wav = synth_fn(segment["text"], api_key)
+                wav = synth_dialogue_fn(turns, api_key) if is_dialogue else synth_fn(segment["text"], api_key)
                 segment_audio.append(wav)
                 made_a_real_synth_call = True
                 if synth_cache_dir:
-                    audio_synth.save_cached_segment(synth_cache_dir, segment["text"], wav)
+                    audio_synth.save_cached_segment(synth_cache_dir, cache_text, wav)
             except Exception as e:
                 made_a_real_synth_call = True
                 synth_failed.append({"segment_type": segment["segment_type"], "canonical_id": segment["canonical_id"], "error": f"{type(e).__name__}: {e}"})
@@ -491,6 +511,15 @@ def main() -> int:
         "--quick-hits-count", type=int, default=rank.DEFAULT_QUICK_HITS_COUNT,
         help=f"How many additional stories to select for quick hits (default: {rank.DEFAULT_QUICK_HITS_COUNT}). See --top-three-count.",
     )
+    parser.add_argument(
+        "--host-style", choices=["single", "dialogue"], default="single",
+        help="'single' (default): today's one-narrator episode, unchanged. 'dialogue': every successfully-narrated story "
+        "segment gets a second, Host-B interjection alongside Host A's grounded narration, synthesized as one two-voice "
+        "clip. Host B's words are NEVER Gemini-generated — picked from a small fixed pool (narrate.REACTIVE_TEMPLATES) — "
+        "so this adds no new hallucination surface to the grounding discipline --no-narration/narrate.py already "
+        "enforce; it only changes how the audio sounds. Adds a small TTS cost (a few extra spoken seconds per story), "
+        "not a new class of Gemini call.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -529,6 +558,7 @@ def main() -> int:
             normalize_audio=args.normalize_audio, inter_segment_silence_ms=args.inter_segment_silence_ms,
             synth_cache_dir=synth_cache_dir,
             top_three_count=args.top_three_count, quick_hits_count=args.quick_hits_count,
+            host_style=args.host_style,
         )
 
     dedup_store.save_store(result["store"], store_path)
