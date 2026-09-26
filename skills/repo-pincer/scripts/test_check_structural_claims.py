@@ -360,6 +360,48 @@ class Cli(unittest.TestCase):
         proc = run_script("--claims-file", readme, "--skills-dir", skills_dir, "--fail-on-drift")
         self.assertEqual(proc.returncode, 0)
 
+    # ── Zero-claims-found target mismatch — field feedback from a real run
+    # against Hefrock/dotfiles (a repo with no relationship to this repo's
+    # own tree-block convention): "0 checked, no discrepancies" reads
+    # identically to a real clean pass unless the two are told apart
+    # explicitly. ────────────────────────────────────────────────────────
+
+    def test_a_file_with_no_test_count_claims_at_all_is_not_reported_as_a_clean_pass(self):
+        path = self.make_md_file("# Some other repo's README\n\nNo tree-block, no test-count claims here at all.\n")
+        proc = run_script("--claims-file", path, "--skills-dir", REPO_ROOT + "/skills")
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("0 test-count claims found", proc.stdout)
+        # Must NOT print the ordinary "Confirmed: 0" / "No discrepancies
+        # found" pairing -- that phrasing is exactly what reads as a real,
+        # clean, verified pass when nothing was actually checked.
+        self.assertNotIn("Confirmed:", proc.stdout)
+        self.assertNotIn("No discrepancies found", proc.stdout)
+        self.assertIn("doesn't apply to this target", proc.stdout)
+
+    def test_zero_claims_found_json_flag_lets_a_script_consumer_tell_the_cases_apart(self):
+        path = self.make_md_file("Nothing to see here.\n")
+        proc = run_script("--claims-file", path, "--skills-dir", REPO_ROOT + "/skills", "--json")
+        data = json.loads(proc.stdout)
+        self.assertTrue(data["zero_claims_found"])
+        self.assertEqual(data["claims_checked"], 0)
+
+    def test_real_confirmed_claim_still_sets_zero_claims_found_false_in_json(self):
+        # The new fields must not blur the ordinary N>0 case -- a real
+        # checked-and-confirmed claim is still exactly that, not conflated
+        # with the "nothing to check here" case.
+        path = self.make_md_file("├── broadcast/   # 5-test suite")
+        proc = run_script("--claims-file", path, "--skills-dir", REPO_ROOT + "/skills", "--json")
+        data = json.loads(proc.stdout)
+        self.assertFalse(data["zero_claims_found"])
+        self.assertEqual(data["claims_checked"], 1)
+
+    def test_fail_on_drift_does_not_treat_zero_claims_found_as_a_failure(self):
+        # A target mismatch is a "this check doesn't apply" result, not a
+        # regression -- --fail-on-drift must not gate on it.
+        path = self.make_md_file("Nothing to see here.\n")
+        proc = run_script("--claims-file", path, "--skills-dir", REPO_ROOT + "/skills", "--fail-on-drift")
+        self.assertEqual(proc.returncode, 0)
+
     def test_against_this_repos_real_current_readme(self):
         # Empirical, not just fixture-based: the real README.md, checked
         # against the real skills/ directory, right now. As of this test

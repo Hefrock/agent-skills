@@ -1,11 +1,30 @@
 ---
 name: repo-pincer
-description: Reverse-engineers a codebase by reconciling what it claims to do against what it actually does. Runs two independent passes — top-down from docs/README/manifests/API surface, bottom-up from entry points through the actual implementation — then classifies every claim as Confirmed, Drift (was true, isn't anymore), Aspirational (documented but never built), or Silent (implemented but undocumented). The discrepancy list is the deliverable, not either summary alone. Use this when onboarding onto an unfamiliar codebase, auditing whether documentation matches implementation, evaluating a dependency or vendor repo before committing to it, or when a long-lived project's docs and code have drifted apart. Triggers on "reverse engineer this repo," "does the documentation match the code," "audit this codebase," "onboard me onto this project," or "find where the docs and code disagree." Runs standalone — no MCP or wiki setup required. If an obsidian-vault MCP server is connected, offers to compile its output into Sources/raw/ for wiki-operator's /source command to pick up.
+description: Reverse-engineers a codebase by reconciling what it claims to do against what it actually does. Runs two independent passes — top-down from docs/README/manifests/API surface, bottom-up from entry points through the actual implementation — then classifies every claim as Confirmed, Drift (was true, isn't anymore), Aspirational (documented but never built), or Silent (implemented but undocumented). The discrepancy list is the deliverable, not either summary alone. Use this when onboarding onto an unfamiliar codebase, auditing whether documentation matches implementation, evaluating a dependency or vendor repo before committing to it, or when a long-lived project's docs and code have drifted apart. Triggers on "reverse engineer this repo," "does the documentation match the code," "audit this codebase," "onboard me onto this project," or "find where the docs and code disagree." The two-pass methodology is domain-general and works on any codebase, confirmed against a real, unrelated target; the one mechanical accelerant (Pass 2 step 0, a test-count-claim checker) is tuned specifically to this repo's own conventions and commonly finds nothing to check on a different repo — a real, expected result, not a failed check. Runs standalone — no MCP or wiki setup required. If an obsidian-vault MCP server is connected, offers to compile its output into Sources/raw/ for wiki-operator's /source command to pick up.
 ---
 
 # Repo Pincer
 
 A system's real behavior is not what it claims about itself — it's the intersection of what it claims and what it does. Most code review reads one direction (docs, or code) and stops. This methodology reads both independently and closes them like a pincer: the discrepancies between the two passes are the actual finding.
+
+**The methodology is domain-general; the one mechanical accelerant is not — confirmed
+against a real, external target (a NixOS dotfiles flake repo, no relationship to this
+repo's own conventions).** The two-pass discipline, the explicit mandate to hunt Silent
+findings as their own direction rather than only verifying existing claims, and the
+outcome-anchored severity rubric below all transferred cleanly and produced real, fixed
+findings an unstructured "read the docs and check what looks off" pass had already missed.
+`check_structural_claims.py` (Pass 2 step 0) did not transfer the same way: it's tuned to
+this repo's own test-count-claim tree-block convention, and reporting "0 claims found" on
+an unrelated target is a real, expected result — not a failed check, and not evidence the
+target's docs are clean (see that step's own trust-boundary note and SKILL.md's "What's
+NOT built here"). If you find yourself wanting this pattern — a narrow, cheap, mechanical
+check run before any conversational judgment — for a *different* domain (a different kind
+of drift entirely, not doc-vs-code), that instinct is usually right about the *shape* being
+worth reusing, but wrong to reach for *this script*: build a new, narrowly-scoped checker
+for that domain instead of trying to stretch this one, and weigh its ongoing maintenance
+cost against how often the problem it'd catch actually recurs — a same-day one-line fix
+recurring rarely may not justify new permanent tooling with its own blind spots and
+staleness risk, even when the "cheap mechanical check first" shape is exactly right.
 
 ## How this works
 
@@ -139,7 +158,7 @@ executing them, at least until they've been read.
 
 ## /pincer [path or repo] [--depth quick|standard|thorough]
 
-Default scope is a single skill/module/directory, not the whole repo — widen only if asked, since a full pass on a large repo in one shot is rarely what's useful.
+Default scope is a single skill/module/directory, not the whole repo — widen only if asked, since a full pass on a large repo in one shot is rarely what's useful. This default applies when a specific path/skill/module is named or otherwise obvious from context. **A bare, unqualified target with no path named at all — "run repo-pincer on this repo," "audit this repo," "reverse engineer this repo" — has no single module to default to, and is a real, common way people ask for this without meaning to override anything.** Treat that phrasing as an explicit repo-wide request (confirmed in practice: this is exactly how one real invocation was phrased, and it resolved to scanning every top-level doc, not one module), using the breadth strategy below — not as license to silently pick one module and scope down without saying so.
 
 Depth controls how far Pass 2 traces *within one target*:
 - `quick` — top-level README + entry points only, no call-graph tracing
@@ -195,7 +214,13 @@ If no vault is connected, present the same structure directly in the conversatio
   share one line, tree-block style (`├── name/  # ... N-test suite`). An honest limit,
   not really a meaningful one in practice — a different repo phrases these claims
   differently regardless, so a checker built for one repo's convention was never going to
-  be zero-effort to point at another one.
+  be zero-effort to point at another one. **On a target that doesn't use this convention at
+  all, the script reports "0 test-count claims found" with an explicit note that this means
+  the check doesn't apply here — not "0 checked, no discrepancies," which would read
+  identically to a real clean pass.** Confirmed as a real, live ambiguity on a first run
+  against an external target (a NixOS dotfiles repo) before this distinction existed; both
+  the text output and the JSON output's `zero_claims_found`/`claims_checked` fields make the
+  two cases distinguishable now. `--fail-on-drift` does not gate on this case either way.
 - **No semantic or behavioral checking whatsoever.** Never touches Silent findings or
   whether code still does what it claims to do — that stays Pass 2's conversational job,
   unchanged. This script only accelerates the narrow, exact-number slice of it.
@@ -242,6 +267,11 @@ If no vault is connected, present the same structure directly in the conversatio
   decide whether the finding still holds, was fixed, or needs a new fingerprint entirely
   (e.g. a Drift finding that got fixed and is now Confirmed should be re-`upsert`ed with
   the same fingerprint but a new verdict, not treated as resolved by omission).
+- **The ledger's cross-run mechanics are untested in the wild.** The first real external-target
+  run (see the domain-general note above) declined to use it ("skip the ledger, the PR is
+  enough") — a reasonable call for a one-off audit, but it means `check`'s `unchanged`/
+  `changed`/`missing_source` classification has real unit-test coverage only, not yet a real
+  second-run confirmation against an actual evolving target. Untested, not known-broken.
 
 ## Output discipline
 
