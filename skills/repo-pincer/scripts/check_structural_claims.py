@@ -238,9 +238,29 @@ def check_claims(claims: list[dict], skills_dir: str) -> dict:
     }
 
 
-def print_report(report: dict, total_claims: int, json_out: bool) -> None:
+def print_report(report: dict, total_claims: int, json_out: bool, claims_file: str) -> None:
     if json_out:
         print(json.dumps(report, indent=2))
+        return
+
+    if total_claims == 0:
+        # Field feedback (Hefrock/dotfiles run, a target with no relationship
+        # to this repo's own conventions): this script's normal "0 checked, no
+        # discrepancies" output is visually indistinguishable from "ran a real
+        # check and everything's clean" -- a target that simply doesn't use
+        # this repo's tree-block "N-test suite" convention (a different test
+        # framework, a different claim phrasing, or genuinely no such claims)
+        # would print exactly the same reassuring-looking result as a target
+        # that does use it and passed. Those are semantically different
+        # outcomes -- one means "verified, nothing wrong", the other means
+        # "this mechanical check doesn't apply here, no verification happened
+        # at all" -- so they get visibly different messages, not just a
+        # "0 checked" number a reader has to already know how to interpret.
+        print(f"check_structural_claims: 0 test-count claims found in {claims_file}.")
+        print("  This means this script's tree-block convention (see SKILL.md's \"What's NOT built")
+        print("  here\") wasn't found here -- a different test framework, a different claim")
+        print("  phrasing, or genuinely no such claims -- NOT that claims were found and confirmed")
+        print("  clean. Treat this as: this mechanical check doesn't apply to this target. Not as a passing result.")
         return
 
     print(f"check_structural_claims: {total_claims} test-count claim(s) checked.")
@@ -306,7 +326,13 @@ def main() -> int:
 
     claims = extract_test_count_claims(markdown_text)
     report = check_claims(claims, args.skills_dir)
-    print_report(report, len(claims), args.json)
+    # Always present in JSON output too (not just the text path's special-cased
+    # message below) -- a script consuming --json needs to be able to tell
+    # "0 claims found, this check doesn't apply here" apart from "N claims
+    # found, all confirmed" without re-deriving it from list lengths itself.
+    report["claims_checked"] = len(claims)
+    report["zero_claims_found"] = len(claims) == 0
+    print_report(report, len(claims), args.json, args.claims_file)
 
     if args.fail_on_drift and (report["drift"] or report["errored"]):
         return 1

@@ -439,6 +439,53 @@ class InferenceAttackerComplianceGate(unittest.TestCase):
         return path
 
 
+class InferenceAttackerMustDeclareExternalApiFlag(unittest.TestCase):
+    """Found running repo-pincer's claim-verification pass alongside an adversarial
+    (security-review-posture) read of the SAME code: get_attacker()'s gate is correctly
+    enforced for any attacker that sets calls_external_api = True, but nothing stopped a
+    future attacker from forgetting to set it at all and silently inheriting the base
+    class's False -- which would defeat Tier 1's compliance gate for that attacker with
+    no test failure, since InferenceAttackerComplianceGate above only ever exercises
+    attackers that already declare the flag one way or the other. __init_subclass__
+    closes this by making the declaration itself required, not just correct-when-present."""
+
+    def test_subclass_that_forgets_the_flag_raises_at_class_definition_time(self):
+        with self.assertRaises(TypeError) as ctx:
+            class ForgetfulAttacker(ia.InferenceAttacker):
+                name = "forgetful-v0"
+                # deliberately NOT setting calls_external_api
+
+                def infer(self, note_text):
+                    return {"guess": None, "confidence": 0.0, "rationale": ""}
+        self.assertIn("calls_external_api", str(ctx.exception))
+        self.assertIn("ForgetfulAttacker", str(ctx.exception))
+
+    def test_subclass_that_explicitly_declares_false_is_fine(self):
+        class ExplicitlySafeAttacker(ia.InferenceAttacker):
+            name = "explicitly-safe-v0"
+            calls_external_api = False
+
+            def infer(self, note_text):
+                return {"guess": None, "confidence": 0.0, "rationale": ""}
+        self.assertFalse(ExplicitlySafeAttacker.calls_external_api)
+
+    def test_subclass_that_explicitly_declares_true_is_fine(self):
+        class ExplicitlyExternalAttacker(ia.InferenceAttacker):
+            name = "explicitly-external-v0"
+            calls_external_api = True
+
+            def infer(self, note_text):
+                return {"guess": None, "confidence": 0.0, "rationale": ""}
+        self.assertTrue(ExplicitlyExternalAttacker.calls_external_api)
+
+    def test_bundled_baseline_still_declares_explicitly_not_by_accident(self):
+        # A regression guard for the fix itself: SignatureMatchAttacker must declare
+        # calls_external_api in its OWN class body, not rely on inheriting it -- this
+        # would have failed before this fix's second half (adding the explicit
+        # declaration to SignatureMatchAttacker) landed alongside __init_subclass__.
+        self.assertIn("calls_external_api", ia.SignatureMatchAttacker.__dict__)
+
+
 class BootstrapPrimitives(unittest.TestCase):
     """bootstrap.py in isolation: correctness on hand-computable cases, not the harness."""
 

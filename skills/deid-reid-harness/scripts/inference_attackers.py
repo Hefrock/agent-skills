@@ -49,8 +49,38 @@ class InferenceAttacker:
     name = "base"
     # True on any subclass that calls a third-party API to grade real data -- see the
     # compliance-gate note above. Every attacker MUST set this explicitly; there is no
-    # safe default to assume for a subclass this base class has never seen.
+    # safe default to assume for a subclass this base class has never seen. This base
+    # class's own False is NOT a default a subclass may silently inherit -- see
+    # __init_subclass__ below, which enforces that at class-definition time, not just in
+    # a comment someone has to remember to follow.
     calls_external_api = False
+
+    def __init_subclass__(cls, **kwargs):
+        """Fails loudly at class-definition time (import time) if a subclass doesn't
+        explicitly redeclare calls_external_api in its OWN class body -- 'calls_external_api'
+        in cls.__dict__ is False for a subclass that only inherits the base's value, even
+        though attribute access (cls.calls_external_api) would silently return it.
+
+        Found as a real, live gap while running repo-pincer + an adversarial read
+        together against this exact module: get_attacker()'s gate is correctly enforced
+        for any attacker that sets calls_external_api = True, but nothing stopped a
+        FUTURE attacker (e.g. the real LLM attacker this file's own docstring calls the
+        next step) from forgetting to set it at all -- which would silently inherit
+        False from this base class and defeat the Tier 1 compliance gate for that
+        attacker specifically, with no test failure, since every existing test either
+        checks the bundled model-independent baseline (correctly False) or an
+        explicitly-True fake (see test_harness.py's InferenceAttackerComplianceGate).
+        A true-or-false default was never going to be safe here -- only a required,
+        explicit declaration is, since silence is exactly the failure mode this exists
+        to catch."""
+        super().__init_subclass__(**kwargs)
+        if "calls_external_api" not in cls.__dict__:
+            raise TypeError(
+                f"{cls.__name__} must explicitly set calls_external_api = True or False in its "
+                f"own class body -- see InferenceAttacker's compliance-gate note. Inheriting this "
+                f"base class's default silently would defeat the Tier 1 compliance gate (issue "
+                f"#126) for any attacker that forgets to declare it."
+            )
 
     def infer(self, note_text: str) -> dict:
         raise NotImplementedError
@@ -66,6 +96,7 @@ class SignatureMatchAttacker(InferenceAttacker):
     match and the attacker abstains — which is what makes its score < 100%.
     """
     name = "signature-match-v0"
+    calls_external_api = False  # explicit, not inherited -- see __init_subclass__ above
 
     DIAGNOSIS_KEYWORDS = {
         "community-acquired pneumonia": ["infiltrate", "productive cough", "crackles", "pleuritic"],
