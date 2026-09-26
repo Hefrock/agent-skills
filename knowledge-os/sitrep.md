@@ -1,9 +1,29 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-08-29_
+_Last updated: 2026-09-26_
 
 ## Recently closed
 
+- **First real retrieval-eval run against a live vault, closing the gap
+  `mcp/obsidian-vault`'s Phase 3 PR left open.** 20 hand-written queries
+  against `/home/user/Obsidian/Life`: recall@5 0.950 (19/20), MRR 0.932 —
+  strong top-of-list precision for real, hand-written queries against
+  real note content. The one miss: a query built from five body-oriented
+  keywords ("de-identification re-identification adversarial harness
+  hipaa") found `Knowledge/AI/deid-reid-harness.md` at rank 7, not top-5.
+  Leading hypothesis, not yet confirmed: the note's title/H1 likely uses
+  the abbreviated slug form ("deid-reid-harness"), not the spelled-out
+  terms the query used — if so, BM25F's title boost (5x, the field this
+  scorer leans on most) contributes nothing for any of those five query
+  terms, leaving the match to compete on body-only term frequency alone,
+  further diluted if "adversarial"/"harness" appear in other notes too
+  (lower IDF) and this note is long enough for length normalization
+  (`b=0.75`) to suppress its body-term scores. Not acted on with n=1 —
+  worth revisiting only if a second query shows the same pattern. This is
+  a first baseline, not a before/after comparison: no pre-BM25F build was
+  run against the same queries, so this number doesn't yet show whether
+  the rewrite improved real-world recall, only what recall looks like
+  today.
 - **`obsidian-vault` MCP: vault-wide scans (`search_notes`, `list_notes`,
   `query_frontmatter`, `list_links`) no longer abort on one malformed
   file.** All four loop over every vault file, and previously threw the
@@ -396,7 +416,7 @@ things actually stand" doc, separate from `constitution.md` (the rules) and
 | `wiki-teacher` | Shipped, deliberately narrow | `/checkin` only — stateless; narrowing algorithm and portfolio breadth verified against both synthetic cases and real parsed files (`wiki_teacher.py`, 37 tests). `/teach` and `/reflect` were built, self-critiqued, and reverted in the same round — see Recently closed — pending real `/checkin` usage before they come back |
 | `wiki-warehouse` | Shipped | `/ingest`, `/warehouse-audit` (two-half: warehouse `bin/audit.py` + MCP pointer check) |
 | `knowledge-warehouse` repo | Shipped | `intake.py`, `audit.py`, 7-test suite, private, content-hash join |
-| `obsidian-vault` MCP server | Shipped | 10 vault tools (real BM25F search, not the earlier flat match-count scorer) + 2 read-only warehouse passage-retrieval tools when `WAREHOUSE_PATH` is set (`search_warehouse`, `read_warehouse_text` — content-hash `doc_id`, code-point offsets, staleness-detectable `passage_hash`), user-level launch via `~/.claude.json`. 74-test suite across two files. Retrieval eval against the real vault still pending (recall@5/MRR, run locally, not yet in this doc) |
+| `obsidian-vault` MCP server | Shipped | 10 vault tools (real BM25F search, not the earlier flat match-count scorer) + 2 read-only warehouse passage-retrieval tools when `WAREHOUSE_PATH` is set (`search_warehouse`, `read_warehouse_text` — content-hash `doc_id`, code-point offsets, staleness-detectable `passage_hash`), user-level launch via `~/.claude.json`. 74-test suite across two files. Retrieval eval run for the first time against a real vault (20 hand-written queries, `/home/user/Obsidian/Life`): recall@5 0.950 (19/20), MRR 0.932 — see Recently closed for the one miss and its leading hypothesis. This is a first baseline, not a before/after comparison (no pre-BM25F run exists to diff against yet) |
 | Stalled-work digest (v3) | Running | Weekly Routine, self-bound session; `list_repos`→`add_repo`→`list_issues`→`PushNotification`; no raw curl (blocked by egress policy for every session) |
 | Stalled-work dashboard | Running | Artifact snapshot, republished to the same URL each run; readable without Claude mobile, a login, or the push having landed |
 
