@@ -6,15 +6,32 @@
     "source_refs": [
       {
         "file": "skills/agent-eval/scripts/calibrate_judge.py",
-        "hash": "a34805f94bcd079f452d51256603367f81480ef897787159da3104a4e56cba45"
+        "hash": "a96c3534d210dae6b0ff494b437417fd10414de280c3d246fccd5c2cbdbf32db"
       },
       {
         "file": "skills/agent-eval/SKILL.md",
-        "hash": "219f5f0ee1e81d5ce8b47f56d9242663b588b8168621259af1837634803431a0"
+        "hash": "23af463a2c9c6db2f6e8438b60a84a7cfcbd7dae9f562ed0640dbcd1661039fd"
       }
     ],
     "last_verified_commit": null,
-    "notes": "SKILL.md step 5 documents --update-log but never mentions --action (overrides the auto-generated 'Action taken' log text). Real, working, discoverable via --help; just not in the prose. Low severity: an operator who never learns of it still gets the same log line (the auto-generated default), just with less control over its wording."
+    "notes": "Re-verified after track_findings.py's check flagged both files as changed since last recorded. Still real: SKILL.md's step 5 documents --update-log only; --action remains undocumented in prose (though calibrate_judge.py's own docstring now discusses it more, that's not the same as SKILL.md mentioning it). Not fixed by whatever changed these files -- re-confirmed, not resolved. Low severity unchanged: an operator who never learns of it still gets the same log line, just with less control over its wording."
+  },
+  {
+    "fingerprint": "deid-reid-harness:confirmed:external-api-flag-required",
+    "verdict": "confirmed",
+    "title": "Every InferenceAttacker subclass must explicitly declare calls_external_api (enforced, not just documented)",
+    "source_refs": [
+      {
+        "file": "skills/deid-reid-harness/scripts/inference_attackers.py",
+        "hash": "4d9eb8f6e9de8ce49b61696947ce4a89bb096c6ff00e4bd38a06e0b695d65ca4"
+      },
+      {
+        "file": "skills/deid-reid-harness/scripts/test_harness.py",
+        "hash": "0984d3379b29a3f645565136e27948546f97f833c222657072589833b4070371"
+      }
+    ],
+    "last_verified_commit": "19dc717",
+    "notes": "Found as a real Silent gap via repo-pincer's claim-verification pass run alongside an adversarial (security-review-posture) read of the same code: get_attacker()'s compliance gate (issue #126, Tier 1) was correctly enforced for any attacker that declared calls_external_api, but a future attacker that forgot to declare it at all would silently inherit the base class's False and defeat the gate with no test failure -- every existing test exercised an attacker that already declared the flag one way or the other. Fixed via InferenceAttacker.__init_subclass__, which now raises TypeError at class-definition time if a subclass omits the declaration; SignatureMatchAttacker updated to declare it explicitly rather than inherit it. Re-derive if either file changes -- confirm the __init_subclass__ enforcement and its test coverage are both still present, not just that the files still compile."
   },
   {
     "fingerprint": "privacy-threat-oracle:drift:pairing-section-vocabulary-wording-missed",
