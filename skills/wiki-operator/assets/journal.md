@@ -11,6 +11,10 @@ updated: YYYY-MM-DD
 
 <!-- Session notes, context, and observations. Dates and specifics live here, not in Knowledge/. -->
 
+## Housekeeping
+
+<!-- Wiki mechanics: cross-links added, frontmatter/status changes, fixes, cleanup, map updates. Keeps "What I learned" scoped to actual learning instead of drowning it in maintenance trail. -->
+
 ## Open questions
 
 <!-- Things that came up and aren't resolved yet -->
