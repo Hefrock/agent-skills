@@ -49,6 +49,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | Skill | What it does |
 |---|---|
 | [`broadcast`](./skills/broadcast) | Produces a daily healthcare-AI news audio briefing: pulls from eleven registered sources, dedupes and ranks stories, pins every claim to its source through a real evidence-pinning MCP server, writes a script, synthesizes audio, and publishes a podcast feed + vault note. Requires `GEMINI_API_KEY` and a locally-built evidence-pinning-mcp server. |
+| [`fiction-workshop`](./skills/fiction-workshop) | Runs a 17-persona LLM workflow for drafting and critiquing a novel — ideation, planning, drafting, critique, publishing, post-publication — through 6 tool-scoped subagents (`/plan`, `/draft`, `/critique`, `/publish`, `/check`). Critique and utility personas always run in a fresh, isolated context so their judgments don't anchor on each other or the drafting conversation. **Status: skeleton**, untested against a real manuscript. |
 
 Most knowledge-management and privacy-vault skills require the `obsidian-vault` MCP server — see [Wiki system](#wiki-system) below for setup. Full flag-by-flag documentation for any skill lives in its own `SKILL.md`, not here.
 
