@@ -28,7 +28,7 @@ into `Knowledge/` concept pages still happens exactly as before. Think of it as 
 step that runs *before* that: **research run → ledger (this skill) → synthesis
 (wiki-synthesizer) → concept pages**.
 
-## Hard limitation — read this before using the skill
+## What's NOT built here
 
 `deep-research` is a hosted skill; its internal `Workflow` script and cache are not
 inspectable or editable from here. This skill cannot reach into that run's internal

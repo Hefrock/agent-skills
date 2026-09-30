@@ -123,7 +123,7 @@ every occurrence needs its own inline `privacy-linter: ignore` marker. A path-le
 suppression mechanism for `check_vault_privacy.py` specifically (its own ignore file, or
 reading `.privacy-linter-ignore` itself) is a reasonable follow-up, not built here.
 
-## What's NOT covered here
+## What's NOT built here
 
 - **Metadata (EXIF GPS, embedded document properties) in attached images/files.**
   `check_vault_privacy.py` only walks `.md` notes — a photo pasted into a journal entry

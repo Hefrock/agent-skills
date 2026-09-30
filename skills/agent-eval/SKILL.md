@@ -119,3 +119,20 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 - If the user hasn't defined success criteria and won't, don't silently invent a rubric and present results as objective — flag that the rubric is your best guess at their intent.
 - Keep judge prompts in `references/llm-judge-prompt.md` versioned alongside the eval set, not rewritten ad hoc each run. Consistency between runs is what makes before/after comparisons valid.
 - Report adversarial pass rates separately from correctness pass rates — never blend the two into a single aggregate.
+
+## Files
+
+| Path | What it is |
+|---|---|
+| `scripts/score_eval.py` | The scorer — rubric/LLM-judge scoring, regression gates, bootstrap CIs, BH-corrected significance testing |
+| `scripts/run_judge.py` | LLM-as-judge runner against `references/llm-judge-prompt.md` |
+| `scripts/run_pairwise.py` | Pairwise comparison runner (two prompts/models/outputs) |
+| `scripts/calibrate_judge.py` | Checks judge scores against `examples/calibration_human_scores.jsonl` |
+| `scripts/bootstrap_stats.py` | Bootstrap CI + BH-corrected significance test implementation, shared by `score_eval.py` |
+| `scripts/jsonl_io.py` | Shared JSONL read/write helpers used across the other scripts |
+| `scripts/test_*.py` | Unit test suite (stdlib unittest), one file per script above |
+| `references/llm-judge-prompt.md` | Versioned judge prompt — keep changes here, not ad hoc per run |
+| `references/trajectory-eval.md` | Scoring an agent's tool-use trajectory, not just final output |
+| `references/multi-turn-eval.md` | Multi-turn conversation eval conventions |
+| `references/pairwise-comparison.md` | Pairwise comparison methodology |
+| `examples/` | Worked baseline/regressed/cost-regressed result sets, a trajectory example, and calibration data — `examples/README.md` walks through the statistical-confidence case in detail |
