@@ -16,8 +16,12 @@ This repo follows the open [Agent Skills standard](https://agentskills.io) — e
 4. **Register it for Claude Code installs.** Add an entry to `.claude-plugin/marketplace.json`:
    - To make it independently installable, add a new object to `plugins`.
    - To bundle it with an existing plugin instead, add its path to that plugin's `skills` array.
-5. **Add a row to the table in `README.md`.**
-6. **Test it** by pointing Claude Code or claude.ai at the folder and confirming it triggers on the example prompts you wrote.
+5. **Adding custom subagents alongside a skill (optional).** If the skill needs a dedicated `.claude/agents`-style subagent (e.g. for context isolation a skill's own instructions can't enforce on their own), add an `agents/*.md` folder next to the skill and register it in `marketplace.json` too — but two things are easy to get wrong here:
+   - The `agents` field only accepts a list of individual `.md` file paths. It does **not** accept a directory, unlike `skills`.
+   - Every plugin entry in this repo's `marketplace.json` sets `"source": "./skills"`, which makes the shared top-level `skills/` folder each plugin's *root* for path resolution — that's why `"skills": ["./your-skill-name"]` is written relative to `./skills`, not to the skill's own folder. `agents` paths follow the same rule: `"agents": ["./your-skill-name/agents/some-agent.md"]`, listed explicitly, one per file.
+   - **Inside an agent's `.md` body, never hardcode a path like `skills/your-skill-name/references/foo.md`.** That only resolves when Claude Code is running directly inside this cloned repo — it breaks for anyone who actually installs the plugin, since an installed plugin doesn't live at a stable `skills/your-skill-name/...` path relative to any working directory. Use `${CLAUDE_PLUGIN_ROOT}/references/foo.md` instead — Claude Code substitutes it with the real install path at runtime, in skill, command, *and* agent content. `fiction-workshop`'s agent files shipped with the hardcoded form and had to be fixed after the fact — see its `SKILL.md` history for the concrete example.
+6. **Add a row to the table in `README.md`.**
+7. **Test it** by pointing Claude Code or claude.ai at the folder and confirming it triggers on the example prompts you wrote.
 
 ## Editing an existing skill's content
 
