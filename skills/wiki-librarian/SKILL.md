@@ -41,7 +41,10 @@ Scoped to `Knowledge/` (plus `Sources/` and `Projects/` on a full audit) on
 purpose — system files are exempt from Law 7 per the constitution's "Scope of
 Laws 6, 7, and 8": `Maps/_context.md`, `Maps/_ask_log.md`, `Maps/_gaps.md`, and
 `System/`. Having no inbound links is their correct state. Do not "fix" this
-check by widening it to the whole vault.
+check by widening it to the whole vault. `Fiction/` is excluded from this walk
+for the same reason, by a separate constitution clause ("Fiction is out of
+scope for Laws 2, 3, 6, 7, and 8") — a chapter's link count says nothing about
+whether the manuscript is any good. Don't widen the walk to include it either.
 
 ### Check 3 — Stale notes
 
@@ -64,7 +67,7 @@ check by widening it to the whole vault.
 
 ### Check 6 — Schema gaps
 
-1. Find notes missing any required frontmatter field (`type`, `status`, `confidence`, `updated`).
+1. Find notes missing any required frontmatter field (`type`, `status`, `confidence`, `updated`). Scoped to `Knowledge/`, `Sources/`, `Projects/` — `Fiction/` uses its own schema (`type`, `status`, `updated`, plus `chapter_number`/`pov_character` where relevant, no `confidence` field) per the constitution's Fiction exemption, and System/`Maps/_*` files are exempt as already noted above.
 2. Find notes with `confidence: low` that lack a `## Open questions` section.
 3. Find notes with `status: mature` that link to fewer than two other pages (shouldn't be mature yet). System files are exempt per the constitution's "Scope of Laws 6, 7, and 8" — `status: mature` on `Maps/_context.md` or similar means "stable," not "well-connected"; don't flag them here.
 4. Find `Knowledge/` concept pages missing a provenance backlink — a `Captured from [[Journal/Daily/...]]` or `Source: [[Sources/.../...]]` line (constitution Law 8). Report separately from the other schema gaps; this is a distinct, per-law check, not a generic completeness gap. System files are exempt, same scope clause.

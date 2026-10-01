@@ -50,6 +50,8 @@ Output a compliance table: law, pass/fail, and the specific pages violating it. 
 
 **Laws 6, 7, and 8 exempt system files** — `Maps/_context.md`, `Maps/_ask_log.md`, `Maps/_gaps.md`, and `System/` (see the constitution's "Scope of Laws 6, 7, and 8"). Never report these as island, provenance, or premature-mature violations: they are machine-maintained, read by path rather than by wikilink, have no prompting journal entry, and `status: mature` on one means "stable" rather than "well-connected" — so a flag against them can never be resolved. Take scope from the constitution, not from a law's headline sentence read in isolation.
 
+**Laws 2, 3, 6, 7, and 8 exempt `Fiction/`** — for the opposite reason: not machine-maintained infrastructure, but not epistemic content at all (see the constitution's "Fiction is out of scope for Laws 2, 3, 6, 7, and 8"). A chapter is invented by design (Law 2 doesn't apply), isn't a claim with a confidence level (Law 3), and its link count says nothing about manuscript quality (Laws 6/7/8's connectivity half). Never report a `Fiction/` file against any of these five laws.
+
 **Law 10 (distill, don't dump)** is checked via a body-length heuristic on notes carrying a `doc_id` (`wiki-librarian`'s Check 6.5, reference implementation in `skills/wiki-librarian/scripts/check_vault.py`) — a threshold, not a semantic judgment of whether a note is genuinely distilled, so treat a `pass` here as "no obvious dump detected," not certainty. A note that pads a real dump with commentary to stay under the character limit would slip through; that's a real limitation of a purely mechanical check, not something to paper over.
 
 ### Phase 3 — Health score
@@ -60,7 +62,7 @@ Compute six sub-metrics, then roll them into one transparent score. Five come fr
 |---|---|---|
 | Connectedness | % of `Knowledge/` pages with ≥2 links | 0.20 |
 | Maturity | mature ÷ (mature + draft + stale) — `paused`/`complete` projects excluded entirely, not counted against it | 0.15 |
-| Freshness | % of pages updated within 90 days | 0.10 |
+| Freshness | % of `Knowledge/` pages updated within 90 days | 0.10 |
 | Provenance | % of concept pages with a provenance backlink (Law 8) | 0.20 |
 | Resolution | % of `Knowledge/` concept pages with zero open questions | 0.15 |
 | Warehouse integrity | 1 − (corrupt + missing + dangling + 0.5×drifted) ÷ total warehouse-linked docs | 0.20 |
@@ -75,7 +77,7 @@ Record in `Maps/_context.md` under `## Health` with the date, so the trajectory 
 
 ### Phase 4 — Knowledge-gap queue
 
-Make the wiki notice what it does not know. Aggregate every `## Open questions` entry across the vault plus every entry in `Maps/_ask_log.md` (written exclusively by `wiki-operator`'s `/ask` — governor reads it, never writes it) into `Maps/_gaps.md`, ranked by how many pages reference or depend on each gap. This is the vault's to-learn queue — the input that tells you where to point the next learning session.
+Make the wiki notice what it does not know. Aggregate every `## Open questions` entry across the vault (never `Fiction/` — an "Open decisions" or "Still open" line there is an authorial choice pending, not a knowledge gap, even on the rare page where the heading text might otherwise match) plus every entry in `Maps/_ask_log.md` (written exclusively by `wiki-operator`'s `/ask` — governor reads it, never writes it) into `Maps/_gaps.md`, ranked by how many pages reference or depend on each gap. This is the vault's to-learn queue — the input that tells you where to point the next learning session.
 
 ### Phase 5 — Governance report + hot cache
 
