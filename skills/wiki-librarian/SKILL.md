@@ -72,6 +72,7 @@ whether the manuscript is any good. Don't widen the walk to include it either.
 3. Find notes with `status: mature` that link to fewer than two other pages (shouldn't be mature yet). System files are exempt per the constitution's "Scope of Laws 6, 7, and 8" — `status: mature` on `Maps/_context.md` or similar means "stable," not "well-connected"; don't flag them here.
 4. Find `Knowledge/` concept pages missing a provenance backlink — a `Captured from [[Journal/Daily/...]]` or `Source: [[Sources/.../...]]` line (constitution Law 8). Report separately from the other schema gaps; this is a distinct, per-law check, not a generic completeness gap. System files are exempt, same scope clause.
 5. Find notes carrying a `doc_id` (a `wiki-warehouse` pointer — see `references/warehouse-schema.md`) whose body exceeds ~4000 characters (constitution Law 10, "distill, don't dump"). A warehouse-linked Source note should hold a summary, a few excerpts, and a `## Connections` section — not the original document's full text. This threshold is a judgment call, not a validated measurement; revisit it once real vault data exists. Report separately, same as provenance.
+6. Find notes with `confidence: high` whose `verification` field (set by `wiki-operator`, see its SKILL.md note schema) is `single-source`, `name-match`, `unverified`, or absent — or whose `verification` is `vendor`/`multi-source` but `verified_against` is empty, i.e. the citation tier is claimed with nothing actually cited. This is a `wiki-operator` integrity rule, not a numbered constitution law — report it separately from the Law 8 provenance-backlink check above; the two are unrelated despite the similar-sounding name. This is the exact shape of the "Hermes 4 35B-A3B" incident: a claim that read as settled but was never corroborated against source, and sat unflagged for six weeks because nothing audited it on a cadence. Flag for re-verification — don't silently downgrade `confidence` without surfacing it.
 
 ### Fix pass
 
@@ -94,6 +95,7 @@ Append to today's journal:
 - Contradictions flagged:
 - Schema gaps fixed:
 - Provenance gaps found / fixed:
+- Verification gaps found / fixed:
 ```
 
 Update `Maps/_context.md` after fixes are applied.

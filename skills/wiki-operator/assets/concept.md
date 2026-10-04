@@ -2,6 +2,8 @@
 type: concept
 status: draft
 confidence: medium  # accurate=high; uncertain/incomplete=low — not about writing quality
+verification: single-source  # vendor | multi-source | single-source | name-match | unverified — gates confidence, see SKILL.md
+verified_against:  # URL(s)/source name — required if verification is vendor or multi-source
 updated: YYYY-MM-DD
 ---
 

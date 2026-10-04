@@ -42,8 +42,10 @@ At the beginning of any wiki session, read `Maps/_context.md` first if it exists
 2. **One canonical page per concept.** If two pages cover the same idea, merge them — preserve both sets of details, do not truncate either.
 3. **Prefer durable over ephemeral.** Extract durable knowledge from journals into `Knowledge/`. Leave dates and session context in the journal; promote only the insight.
 4. **Preserve uncertainty.** Mark low-confidence claims with `confidence: low` in frontmatter. Never guess and present it as fact.
-5. **Keep explanations compositional.** One clear sentence beats a dense paragraph. Link to related concepts instead of re-explaining them inline.
-6. **The wiki evolves, it does not reset.** Each update improves an existing page. Orphaned content is either upgraded or merged — not abandoned.
+5. **Gate confidence on verification, not plausibility.** `confidence: high` requires `verification: vendor` (the claim traces to the vendor/author's own docs) or `verification: multi-source` (≥2 independent sources agree — not two listings of the same registry). A single registry hit, however plausible-sounding, is `verification: single-source` and caps at `confidence: medium` until corroborated.
+6. **Flag identity claims resting on a name match.** If what establishes *who made this* or *what this is* is the name/label matching something familiar — not the source's own stated lineage or taxonomy — tag it `verification: name-match` regardless of how confident the prose sounds, cap `confidence` at `medium`, and add an `## Open Questions` line naming the specific identity claim as unverified. A name that reads as official (a familiar project name, a vendor-style version string) is exactly the shape of claim most likely to be a reskin, fork, or community rebrand wearing a borrowed name.
+7. **Keep explanations compositional.** One clear sentence beats a dense paragraph. Link to related concepts instead of re-explaining them inline.
+8. **The wiki evolves, it does not reset.** Each update improves an existing page. Orphaned content is either upgraded or merged — not abandoned.
 
 ## Note schema
 
@@ -53,6 +55,8 @@ Every note must carry this frontmatter:
 type: concept | journal | source | map | project
 status: mature | draft | stale
 confidence: high | medium | low  # accurate=high; uncertain/incomplete=low — not about writing quality
+verification: vendor | multi-source | single-source | name-match | unverified
+verified_against:  # required when verification is vendor or multi-source — see below
 updated: YYYY-MM-DD
 ```
 
@@ -61,6 +65,14 @@ updated: YYYY-MM-DD
 - `status: draft` — new or incomplete. Default for anything just created.
 - `status: stale` — hasn't been updated and has no incoming links. Flag, don't delete.
 - `confidence` is about accuracy, not polish. Any `low` page must have an `## Open Questions` section.
+- `verification` records *how* a claim was verified, and gates what `confidence` it's allowed to carry:
+  - `vendor` — traced to the vendor/author's own docs, announcement, or site. Only tier that freely supports `confidence: high`.
+  - `multi-source` — ≥2 independently-sourced references agree (not two listings pulled from the same registry/search). Also supports `confidence: high`.
+  - `single-source` — one source only. Caps `confidence` at `medium` until corroborated.
+  - `name-match` — the claim's identity (who made this, what lineage it belongs to) rests on the name/label matching something familiar, not on the source's own stated taxonomy. Caps `confidence` at `medium` *regardless of how certain the writing sounds*, and requires an `## Open Questions` line naming the unverified identity claim — same requirement as `confidence: low`, because this is where reskins, forks, and community rebrands wearing a borrowed vendor name slip through.
+  - `unverified` — not checked at all. Caps `confidence` at `medium`, same as `single-source`.
+  - Omitting `verification` on an existing older page is fine (don't retrofit on sight) — but any *new* page or *edit* that touches a factual/identity claim should set it.
+- `verified_against` is the citation artifact backing `vendor` or `multi-source`: the actual URL(s) or a short quoted source name (e.g. `verified_against: "huggingface.co/NousResearch, nousresearch.com/hermes4"`) — not a restatement of the claim itself. **Required whenever `verification` is `vendor` or `multi-source`** — a bare enum value with nothing behind it is a self-reported tag, not evidence, and reproduces the exact failure this field exists to prevent (asserting confidence without anything to point back to). Leave empty for `single-source`, `name-match`, or `unverified` — the enum already says the evidence is thin, no citation to fabricate.
 
 **`type: project` additionally supports** (added for `wiki-teacher`):
 ```yaml
@@ -100,8 +112,9 @@ Process new information into the wiki.
 1. Search the vault for existing pages on the topic.
 2. If a concept page exists: retrieve it, update the explanation, add new context, add any missing links.
 3. If no page exists: create one using `assets/concept.md`, set `status: draft`.
-4. Append a brief entry to today's journal (`Journal/Daily/YYYY-MM-DD.md`) noting what was learned and linking to the updated concept page(s). **If the journal page doesn't exist yet, create it first** with `write_note` from `assets/journal.md` (so it starts with proper frontmatter), *then* `append_note` the entry — `append_note` refuses to silently create a frontmatter-less file, by design.
-5. Update the relevant map page in `Maps/` if the concept is new to that area.
+4. Before writing any factual or identity claim (what something is, who made it, what it's built on), set `verification` per the rules above, and let it gate `confidence` — don't default to `confidence: high` because the claim sounds settled or came from a single plausible-looking search result. If claiming `vendor` or `multi-source`, fill in `verified_against` with the actual URL(s)/source name checked — if there's nothing to put there, the tier is lower than you think. If the claim's identity rests on a name/label matching something familiar rather than the source's own stated lineage, this is a `name-match` case: cap at `medium` and log the specific unverified part under `## Open Questions`.
+5. Append a brief entry to today's journal (`Journal/Daily/YYYY-MM-DD.md`) noting what was learned and linking to the updated concept page(s). **If the journal page doesn't exist yet, create it first** with `write_note` from `assets/journal.md` (so it starts with proper frontmatter), *then* `append_note` the entry — `append_note` refuses to silently create a frontmatter-less file, by design.
+6. Update the relevant map page in `Maps/` if the concept is new to that area.
 
 ### /update [page or concept]
 Improve a specific page.
@@ -164,9 +177,10 @@ Log a paper, book, video, or article to the vault.
 2. Create a compiled page in the appropriate `Sources/` subfolder (e.g. `Sources/Papers/title.md`) using `assets/source.md`.
 3. Fill in author, link/DOI, and today's read date.
 4. Summarize the core argument in one paragraph.
-5. Link to any concept pages in `Knowledge/` the source references — create stubs with `status: draft` for concepts that don't exist yet.
-6. If the source relates to an active project, add a backlink in `Projects/[project].md`.
-7. Delete or archive the raw file once the compiled page is complete.
+5. Set `verification`: `vendor` if this source *is* the vendor/author's own publication; otherwise `single-source` (or `multi-source` if it corroborates an existing page's claim from a different origin) — gate `confidence` accordingly. If the source is a registry/marketplace listing (package index, model hub, app store) rather than an authored publication, treat its naming/attribution as `name-match` verification, not `vendor`, until the actual publisher is confirmed. For `vendor`/`multi-source`, set `verified_against` to the link/DOI already captured in step 3 (or the additional corroborating link, for `multi-source`) — don't leave it blank while claiming the higher tier.
+6. Link to any concept pages in `Knowledge/` the source references — create stubs with `status: draft` for concepts that don't exist yet.
+7. If the source relates to an active project, add a backlink in `Projects/[project].md`.
+8. Delete or archive the raw file once the compiled page is complete.
 
 ### /clean
 Merge duplicates and consolidate structure.
@@ -180,10 +194,11 @@ Audit structural integrity of the vault. Run before any major compile session.
 1. **Broken links** — find wikilinks pointing to pages that don't exist. List them with their source note.
 2. **Orphan pages** — find notes with no inbound links and no outbound links to other wiki pages.
 3. **Stale notes** — query `status: stale` and notes with `updated:` older than 90 days.
-4. **Missing open questions** — find notes with `confidence: low` that lack a `## Open Questions` section.
-5. **Contradictions** — flag pairs of pages that make conflicting claims about the same concept (e.g., opposite definitions, incompatible properties).
-6. Present findings as a prioritized list. Do not fix anything automatically — confirm with the user which issues to address.
-7. After fixes are applied, update `Maps/_context.md` to reflect current vault state.
+4. **Missing open questions** — find notes with `confidence: low`, or `verification: name-match`, that lack a `## Open Questions` section.
+5. **Confidence/verification mismatch** — find notes with `confidence: high` whose `verification` is `single-source`, `name-match`, `unverified`, or absent entirely; *also* find notes with `verification: vendor` or `multi-source` that have no `verified_against` citation — a self-reported tier with nothing backing it is the same gap wearing a disguise. These are exactly the shape of the "Hermes 4 35B-A3B" error (a claim that looked settled but was never actually corroborated against source) — flag for re-verification, don't just silently downgrade.
+6. **Contradictions** — flag pairs of pages that make conflicting claims about the same concept (e.g., opposite definitions, incompatible properties).
+7. Present findings as a prioritized list. Do not fix anything automatically — confirm with the user which issues to address.
+8. After fixes are applied, update `Maps/_context.md` to reflect current vault state.
 
 ## Output discipline
 
