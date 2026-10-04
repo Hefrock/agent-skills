@@ -49,15 +49,15 @@ linter`'s deferred stylometric detection. See "What's NOT built here."
 ## How this works
 
 ```bash
-python scripts/fingerprint.py --file draft.md
-python scripts/fingerprint.py --file draft.md --reference known_writing.md
-python scripts/fingerprint.py --file draft.md --reference ~/vault/Journal/
-python scripts/fingerprint.py --text -
-python scripts/fingerprint.py --file draft.md --reference known.md --json
-python scripts/fingerprint.py --file draft.md --reference known.md --emit-findings
-python scripts/fingerprint.py --file draft.md --reference known.md --log-dir ~/.style-obfuscator-log
-python scripts/fingerprint.py --file draft.md --show-phrase-text
-python scripts/fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --reference known_writing.md
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --reference ~/vault/Journal/
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --text -
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --reference known.md --json
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --reference known.md --emit-findings
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --reference known.md --log-dir ~/.style-obfuscator-log
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --show-phrase-text
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/
 ```
 
 1. **Fingerprint the draft.** Reports word/sentence/paragraph counts, mean sentence
@@ -119,7 +119,7 @@ and reports the **aggregation gap** — how much higher the pooled corpus scores
 its own highest-scoring individual document:
 
 ```bash
-python scripts/fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --corpus ~/pseudonymous_drafts/ --reference ~/vault/
 # --- Aggregation gap (12 document(s) pooled) ---
 # Pooled corpus similarity: 78.0%
 # Highest individual document: 55.0% (posts/2026-03-14-thoughts.md)
@@ -149,7 +149,7 @@ into the Finding's `reason` when the gap is notable.
 
 ```bash
 # Build a reference from everything already attributed to you:
-python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
+python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
 # High similarity on em_dash_per_1k, fw_but_per_1k, contraction_per_1k?
 # Those are the specific things to vary before posting pseudonymously.
 ```
@@ -195,7 +195,7 @@ python scripts/fingerprint.py --file pseudonymous_draft.md --reference ~/vault/
   `{leak_class: "stylometric", ...}` Finding in `scan_diff.py`'s own JSON shape, so it
   pipes straight into `--from-linter-json` exactly like a `privacy-linter` scan does:
   ```bash
-  python scripts/fingerprint.py --file draft.md --reference ~/vault/ --emit-findings | \
+  python ${CLAUDE_PLUGIN_ROOT}/scripts/fingerprint.py --file draft.md --reference ~/vault/ --emit-findings | \
     python ../privacy-threat-oracle/scripts/oracle.py \
       --source-compartment personal --target-compartment public_professional \
       --target-exposure public_internet --from-linter-json -
