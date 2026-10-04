@@ -22,7 +22,7 @@ Read this whole file before running anything live — several of the operational
 ## Running one episode
 
 ```bash
-python skills/broadcast/scripts/orchestrate.py --data-dir ~/.broadcast-data \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrate.py --data-dir ~/.broadcast-data \
   [--date YYYY-MM-DD]                    # default: today
   [--max-results-per-source N]           # default: 10 — keep low for a quick/cheap test run
   [--synth-delay-seconds N]              # default: 6.0 — pacing between TTS calls, see risks below
@@ -88,13 +88,13 @@ This workflow **does not run `distribute.py`** — publishing needs a real `--ba
 
 That rolling, multi-day view is `source_health_report.py`:
 ```bash
-python skills/broadcast/scripts/source_health_report.py --data-dir ~/.broadcast-data [--days N]  # default: 30
+python ${CLAUDE_PLUGIN_ROOT}/scripts/source_health_report.py --data-dir ~/.broadcast-data [--days N]  # default: 30
 ```
 Sums `source_utilization` across every `episodes/<date>/report.json` in the window, prints a table sorted by pooled `selection_rate` (most-starved first), and separately flags any registered source with *zero* candidates anywhere in the whole window — the clearest "worth asking a human about" signal it can produce. Same discipline as the field it aggregates: nothing here is a QA gate, and it can't tell a genuinely-starved source apart from one that's just legitimately quiet that month — it's a diagnostic to prompt a question, not a verdict. Read-only, standalone, never called automatically.
 
 `qa_checks` has the same rolling-view gap `source_utilization` had before `source_health_report.py` — one run's pass/fail is a snapshot, not a trend. `qa_gate_history.py` closes it differently: instead of reimplementing pass-rate/regression logic a third time, it flattens `qa_checks` across a window into [`skills/agent-eval/`](../agent-eval/SKILL.md)'s own JSONL schema (one row per episode/check pair, `category` = check name) and hands off to that skill's already-tested `score_eval.py` for the actual aggregation, regressions, and CI gate:
 ```bash
-python skills/broadcast/scripts/qa_gate_history.py --data-dir ~/.broadcast-data --out qa_results.jsonl [--days N]
+python ${CLAUDE_PLUGIN_ROOT}/scripts/qa_gate_history.py --data-dir ~/.broadcast-data --out qa_results.jsonl [--days N]
 python skills/agent-eval/scripts/score_eval.py qa_results.jsonl --fail-under 0.9
 python skills/agent-eval/scripts/score_eval.py qa_results.jsonl --baseline last_weeks_qa_results.jsonl --fail-on-regression
 ```
@@ -141,7 +141,7 @@ Work through `report.json` in this order — nearly every failure traces to one 
 ## Publishing an episode
 
 ```bash
-python skills/broadcast/scripts/distribute.py --data-dir ~/.broadcast-data --date YYYY-MM-DD \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/distribute.py --data-dir ~/.broadcast-data --date YYYY-MM-DD \
   --publish-dir <dir> --base-url <public-url> --feed-link <url> \
   [--feed-title "..."] [--feed-description "..."] [--feed-author "..."] \
   [--itunes-category "..."]        # default: Technology
@@ -167,14 +167,14 @@ Every source lives in `config/sources.json`, validated at load time by `source_r
 - **Adding a query-based or fixed-endpoint source** (like `pubmed`/`arxiv`/`regulations_gov`/`fda_maude`, or `medrxiv`/`fda_guidance`) needs real code, not just config: a new `fetch_*()` function in `ingest.py` (see those seven functions for the two existing patterns) *and* a new dispatch branch in `orchestrate.py`'s `_fetch_for_source()` keyed on the source's `"key"`. Without both, that source raises `ValueError` at ingest time. `fda_maude` is a good example of the discipline this section otherwise only describes for RSS sources: it's registered but its `query_note` says plainly it's NOT yet live-verified — documented field names aren't the same as a confirmed real response, the same lesson `healthcare_it_news` taught the hard way.
 - **Removing a source:** delete its entry from `"sources"` — nothing else references sources by a fixed list, `ingest_all()` just iterates whatever's currently in the registry.
 - **Tuning relevance scoring:** `authority_floor` (0–1) and `half_life_days` (>0) are set per-*category*, not per-source (see `source_registry.py`'s docstring for what they control — a higher floor and longer half-life age a story more slowly). Every category and query in `config/sources.json` already carries a `*_note` field marking it as "a working default, not a validated measurement" — change these against real episode output, not intuition, and update the note to record why.
-- **After any change**, run `python skills/broadcast/scripts/live_smoke_test.py` — it's cheap (real ingest + embedding calls, no TTS or narration spend) and will confirm the new or changed source actually returns real items before it's trusted in a full, expensive episode run.
+- **After any change**, run `python ${CLAUDE_PLUGIN_ROOT}/scripts/live_smoke_test.py` — it's cheap (real ingest + embedding calls, no TTS or narration spend) and will confirm the new or changed source actually returns real items before it's trusted in a full, expensive episode run.
 
 ## Verifying a code change to this pipeline
 
 Every module in `scripts/` has a matching `test_*.py`, all stdlib `unittest`, no network calls (network-touching functions like `synthesize_text()` or `generate_narration()` are injectable and faked in tests — see any `test_orchestrate.py` `RunEpisodeWiring` test for the pattern). Run the full suite before trusting any change:
 
 ```bash
-for f in skills/broadcast/scripts/test_*.py; do python3 "$f"; done
+for f in ${CLAUDE_PLUGIN_ROOT}/scripts/test_*.py; do python3 "$f"; done
 ```
 
 `test_evidence.py`, `test_evidence_pinning_client.py`, and `test_qa_gate.py` will report their evidence-pinning-mcp-server-dependent tests as **skipped**, not failed, if that server isn't built yet — a suite full of `OK (skipped=N)` can look deceptively clean. Build it first to actually exercise those tests for real:
@@ -192,7 +192,7 @@ Four different stores live under `--data-dir`, each retained (or deliberately no
 - **`dedup_store.json`**'s rolling-window entries are already pruned automatically on every `orchestrate.py` run (`dedup_store.prune_old_entries()`, wired in via `rank.py`, default 14-day window) — no action needed here, this one never grows unbounded.
 - **`episodes/<date>/`** (the actual per-episode script/audio output) is *not* pruned automatically — a human may not have run `distribute.py` against a given episode yet, may want it kept as their own archive, or may be actively debugging it, so silent automatic deletion felt like the wrong default here. Use `prune_episodes.py` explicitly instead:
   ```bash
-  python skills/broadcast/scripts/prune_episodes.py --data-dir ~/.broadcast-data [--retention-days N]  # default: 90
+  python ${CLAUDE_PLUGIN_ROOT}/scripts/prune_episodes.py --data-dir ~/.broadcast-data [--retention-days N]  # default: 90
   ```
   Dry-run by default — it only *prints* what would be deleted and changes nothing on disk. Pass `--apply` to actually remove stale episode directories.
 - **`evidence_store/`** (evidence-pinning-mcp's own state) is deliberately never pruned by anything in this pipeline — it's an append-only provenance log by design (see `mcp/evidence-pinning/README.md`), meant to keep a claim's full history queryable indefinitely. Pruning it would defeat its actual purpose, not just free disk space.
