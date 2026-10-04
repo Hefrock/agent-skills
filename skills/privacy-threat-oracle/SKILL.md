@@ -20,14 +20,14 @@ hasn't been made — nothing in this repo produces it yet), this project's core 
 doesn't have the same wall: v1 evaluates *already-structured* facts about a
 proposed action (which compartment, which exposure, which content classes) against a
 fixed rule table — not raw disclosure content run past an external model. See
-`references/decision-rubric.md` for why the rule table is a ranked ordering rather than
+`${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md` for why the rule table is a ranked ordering rather than
 a weighted scoring function (the source project's own Open Question #2), and why
 structured-only input (not free text) is the deliberate v1 scope (Open Question #3).
 
 ## How this works
 
 ```bash
-python scripts/oracle.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/oracle.py \
   --source-compartment personal --target-compartment public_professional \
   --target-exposure public_internet --content-class direct_pii
 ```
@@ -35,34 +35,34 @@ python scripts/oracle.py \
 1. **Compartment violation check** — does the target compartment fall outside what the
    source compartment may reference? All three compartments (`public_professional`,
    `personal`, `sensitive_research`) only reference themselves, per
-   `references/threat-model.json` — full mutual isolation is the confirmed policy, not
-   a v1 placeholder (see `references/decision-rubric.md`'s Step 1).
+   `${CLAUDE_PLUGIN_ROOT}/references/threat-model.json` — full mutual isolation is the confirmed policy, not
+   a v1 placeholder (see `${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md`'s Step 1).
 2. **Exposed adversaries** — resolved from `--target-exposure` via the same file's
    `target_exposure_map` (e.g. `public_internet` reaches data brokers, criminals,
    employer, corporations, civil discovery, state actors, and autonomous adversarial AI
    agents — automated tools that scrape and correlate public content across
    compartments at machine scale, without needing a human to bother). Any exposed adversary
    flagged `out_of_scope` in `threat-model.json` (currently just the state actor — see
-   `references/decision-rubric.md`'s "Out-of-scope adversaries" section) still counts
+   `${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md`'s "Out-of-scope adversaries" section) still counts
    toward `adversary_cost_tier` and the recommendation like any other adversary, but is
    also surfaced separately in `out_of_scope_adversaries_exposed` and noted in `reason`
    — a flag this tool can't meaningfully help you defend against, called out rather than
    silently folded into the same bucket as one you can.
 3. **Sensitivity tier** — the highest tier among `--content-class` values present
    (`direct_pii`/`secret` = high, `metadata`/`inference_cue`/`stylometric` = medium).
-4. **Recommendation** — the rule table in `references/decision-rubric.md`, applied top
+4. **Recommendation** — the rule table in `${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md`, applied top
    to bottom: compartment violation + high sensitivity → `decline`; compartment
    violation alone → `proceed_with_modification`; high sensitivity reaching a
    high-cost-to-defend adversary → `decline`; and so on down to a clean `proceed`.
 5. **Reversibility** — `--reversible` downgrades the recommendation one step (`decline`
    → `proceed_with_modification`, `proceed_with_modification` → `proceed`; never skips
    straight to an unqualified `proceed` on a compartment-violation-plus-high-sensitivity
-   case — see `references/decision-rubric.md`'s Step 4), modeling that a retractable
+   case — see `${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md`'s Step 4), modeling that a retractable
    action carries genuinely lower cost.
 6. **Plug in privacy-linter directly** instead of naming content classes by hand:
    ```bash
    python ../privacy-linter/scripts/scan_diff.py --file draft_post.txt --json | \
-     python scripts/oracle.py --source-compartment personal --target-compartment personal \
+     python ${CLAUDE_PLUGIN_ROOT}/scripts/oracle.py --source-compartment personal --target-compartment personal \
        --target-exposure public_internet --from-linter-json -
    ```
    This is the "wire oracle to Pre-Disclosure Linter for severity context" integration
@@ -93,7 +93,7 @@ python scripts/oracle.py \
 This exits 0 by default — `decline` is the rule table's most severe label, not an
 automatically enforced block. `--block-on {proceed_with_modification,decline}` exits 1
 instead, for a caller that wants the exit code to reflect the verdict (mirrors
-`privacy-linter`'s own `--block-on`). See `references/decision-rubric.md`'s closing
+`privacy-linter`'s own `--block-on`). See `${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md`'s closing
 note for why this is opt-in rather than a default-behavior change: nothing invokes
 `oracle.py` unattended today, unlike `privacy-linter`'s git hook.
 
@@ -104,14 +104,14 @@ note for why this is opt-in rather than a default-behavior change: nothing invok
   fields this script needs is a judgment call, not pattern-matching. Claude can do that
   translation conversationally before calling the script — a reasonable division of
   labor — but the script itself only accepts already-structured input. Not a silent
-  scope cut: see `references/decision-rubric.md`'s Inputs section for the reasoning.
+  scope cut: see `${CLAUDE_PLUGIN_ROOT}/references/decision-rubric.md`'s Inputs section for the reasoning.
 - **A calibration/validation pass against real expert judgment** (source project's Open
   Question #5). The rule table is reasoned from the vault's existing threat-modeling
   concept pages, not yet tested against real proposed-action scenarios.
 - **Anything that actually calls `oracle.py` unattended.** `--block-on` (see above) only
   matters once some scripted or automated context invokes this and checks its exit
   code — none does yet, unlike `privacy-linter`'s git hook.
-- **Live editing of the vault's threat model.** `references/threat-model.json` is the
+- **Live editing of the vault's threat model.** `${CLAUDE_PLUGIN_ROOT}/references/threat-model.json` is the
   executable copy of the adversary/compartment schema already documented in
   `Knowledge/AI/privacy-threat-modeling.md` and the project page; keeping the two in
   sync by hand is the current state, the same relationship `privacy-linter`'s
