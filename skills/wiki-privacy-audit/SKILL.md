@@ -143,6 +143,27 @@ reading `.privacy-linter-ignore` itself) is a reasonable follow-up, not built he
   target. Not addressed by this skill; see `privacy-linter/references/leak-taxonomy.md`
   for why building it today would mean either a local model (real setup work, not done)
   or an external LLM API (the exact disclosure this project exists to avoid).
+- **A verified cross-plugin install path to `privacy-linter`.** `check_vault_privacy.py`
+  locates `scan_diff.py` by walking up from its own `__file__` to a sibling
+  `privacy-linter/scripts/` directory (`os.path.join(HERE, "..", "..", "privacy-linter",
+  "scripts", "scan_diff.py")`) — correct in this repo's own layout, and correct if a
+  marketplace is added from a local directory (Claude Code reads relative-path plugins
+  in place, per the plugins/marketplace docs). **Not confirmed for the documented
+  primary install path** (`/plugin install X@hefrock-agent-skills`, a GitHub-hosted
+  marketplace): each plugin very likely installs to its own separate, isolated
+  location with no relationship to its siblings, which would break this lookup
+  entirely for anyone who installs `wiki-privacy-audit` and `privacy-linter` as two
+  independent plugins rather than cloning this repo. Claude Code's plugin docs
+  describe symlinks as the mechanism for sharing files across plugins in the same
+  marketplace (dereferenced and copied into the referencing plugin's own install at
+  install time) — a plausible fix, but its behavior for a GitHub-hosted marketplace
+  specifically is not stated in the docs, only implied. Deliberately not built on that
+  inference alone (premortem 2026-10-04): the real fix is only one file's worth of
+  problem, and committing to an unverified mechanism risks spending effort on
+  something that still doesn't work, discoverable only by an actual failed install far
+  from this session. Revisit if a real marketplace install of both plugins is ever
+  actually confirmed broken — a real failure is a better design input than an inferred
+  one.
 
 ## Pairing
 
