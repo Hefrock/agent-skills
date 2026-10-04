@@ -1,6 +1,6 @@
 ---
 name: issue-reconciler
-description: Finds GitHub issues that are actually already resolved but were never closed — either because a merged PR said "Closes #N" and the auto-close didn't fire, or because the thing the issue asked for now exists in the repo (a skill got built, a bug got fixed) without anyone ever linking the PR that did it. Two passes, not one: a deterministic scan (scripts/find_closing_references.py) for explicit-but-failed closing keywords, then a judgment pass over what's left for thematic matches the mechanical scan structurally can't catch. Never closes an issue without presenting the evidence and getting confirmation first. Deliberately excludes issues that self-identify as intentionally open (a "[blocked-human]" title prefix, or a "Status: deferred/blocked" section) — those are tracked on purpose, not stale. Use when the user wants to clean up a stale or growing issue backlog, asks "which of my issues are actually done," "check if any issues are already resolved," "close issues that got fixed," or wants their tracker kept honest without manually cross-checking every issue against every PR. Triggers on "check my issues," "reconcile issues," "clean up the issue tracker," "issue-reconciler," and the script find_closing_references.py.
+description: Finds GitHub issues that are actually already resolved but were never closed — either because a merged PR said "Closes #N" and the auto-close didn't fire, or because the thing the issue asked for now exists in the repo (a skill got built, a bug got fixed) without anyone ever linking the PR that did it. Two passes, not one: a deterministic scan (${CLAUDE_PLUGIN_ROOT}/scripts/find_closing_references.py) for explicit-but-failed closing keywords, then a judgment pass over what's left for thematic matches the mechanical scan structurally can't catch. Never closes an issue without presenting the evidence and getting confirmation first. Deliberately excludes issues that self-identify as intentionally open (a "[blocked-human]" title prefix, or a "Status: deferred/blocked" section) — those are tracked on purpose, not stale. Use when the user wants to clean up a stale or growing issue backlog, asks "which of my issues are actually done," "check if any issues are already resolved," "close issues that got fixed," or wants their tracker kept honest without manually cross-checking every issue against every PR. Triggers on "check my issues," "reconcile issues," "clean up the issue tracker," "issue-reconciler," and the script find_closing_references.py.
 ---
 
 # Issue Reconciler
@@ -12,7 +12,7 @@ say really happened.
 
 ## Why this is two passes, not one
 
-**Pass 1 (mechanical, `scripts/find_closing_references.py`)** catches the unambiguous
+**Pass 1 (mechanical, `${CLAUDE_PLUGIN_ROOT}/scripts/find_closing_references.py`)** catches the unambiguous
 case: a merged PR's body used GitHub's own closing-keyword syntax ("Closes #6", "Fixes
 #12", "Resolves #3") and the issue is nonetheless still open. That's not a judgment
 call — GitHub's auto-close didn't fire (the keyword was added after merge, a squash
@@ -35,7 +35,7 @@ ask against actual repo state, catches it.
 ```bash
 gh issue list --state open --json number,title,body,createdAt,labels > issues.json
 gh pr list --state merged --json number,title,body,mergedAt > merged_prs.json
-python scripts/find_closing_references.py --issues issues.json --prs merged_prs.json
+python ${CLAUDE_PLUGIN_ROOT}/scripts/find_closing_references.py --issues issues.json --prs merged_prs.json
 ```
 
 (No GitHub API client lives in this skill — it consumes JSON that whatever GitHub
