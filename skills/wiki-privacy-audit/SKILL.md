@@ -16,7 +16,7 @@ note in the vault instead.
 Two schemes for the same problem drift apart the moment one gets updated and the other
 doesn't — the exact failure this repo's own `qa_gate_history.py` and `deid-reid-
 harness`'s `score_inference.py` docstrings warn about for their own cross-skill calls.
-`scripts/check_vault_privacy.py` shells out to `privacy-linter/scripts/scan_diff.py
+`${CLAUDE_PLUGIN_ROOT}/scripts/check_vault_privacy.py` shells out to `privacy-linter/scripts/scan_diff.py
 --file <note> --json` per note and aggregates the results — `privacy-linter` stays the
 single source of truth for what counts as PII or a secret, and a future improvement
 there (a new secret pattern, a fixed false positive) applies here automatically, with
@@ -39,8 +39,8 @@ write the audit-log entry back into the vault afterward.
    `wiki-librarian`'s near-duplicate/contradiction checks, there's no judgment step that
    needs Claude reasoning over MCP-fetched content one note at a time:
    ```bash
-   python scripts/check_vault_privacy.py /path/to/vault
-   python scripts/check_vault_privacy.py /path/to/vault --json
+   python ${CLAUDE_PLUGIN_ROOT}/scripts/check_vault_privacy.py /path/to/vault
+   python ${CLAUDE_PLUGIN_ROOT}/scripts/check_vault_privacy.py /path/to/vault --json
    ```
    Walks every `.md` note (skipping `.obsidian/`, `.trash/`, `.git/`, matching `wiki-
    librarian`'s own `check_vault.py` file-discovery convention) and reports findings in
@@ -66,13 +66,13 @@ write the audit-log entry back into the vault afterward.
 5. **Gate it if this is being run unattended** (e.g. a scheduled check rather than an
    interactive session):
    ```bash
-   python scripts/check_vault_privacy.py /path/to/vault --block-on high
+   python ${CLAUDE_PLUGIN_ROOT}/scripts/check_vault_privacy.py /path/to/vault --block-on high
    ```
    Same `--block-on`/severity-threshold convention as `scan_diff.py` itself.
 
 ## Running unattended, on an actual schedule
 
-Steps 1–2 above (scan and gate) need no MCP or Claude session at all — `scripts/
+Steps 1–2 above (scan and gate) need no MCP or Claude session at all — `${CLAUDE_PLUGIN_ROOT}/scripts/
 cron_check.sh /path/to/vault [/path/to/log/file] [retention-days]` wraps
 `check_vault_privacy.py --block-on high --json` for exactly this: a plain OS-level
 scheduler invocation. It logs one compact JSON line per run (findings only — labels
@@ -84,7 +84,7 @@ regardless of findings — the log/notification carry the signal, not the schedu
 own success/failure bookkeeping.
 
 Every run also prunes log lines older than `retention-days` (default 90) via
-`scripts/prune_log.py`, automatically and with no confirmation needed — unlike
+`${CLAUDE_PLUGIN_ROOT}/scripts/prune_log.py`, automatically and with no confirmation needed — unlike
 `broadcast`'s `prune_episodes.py`, this log holds zero PII/secret text, so it's
 disposable telemetry, not something a human might want to keep. This runs
 unattended on a schedule, so there's nobody around to clean it up manually; without
@@ -100,7 +100,7 @@ Three ways to actually schedule it, pick per machine:
 
 - **systemd user timer** (any systemd-based Linux, including NixOS) — the idiomatic
   choice on most non-macOS boxes. On NixOS with home-manager specifically, see
-  `references/nixos-home-manager-handoff.md` — a self-contained handoff written for
+  `${CLAUDE_PLUGIN_ROOT}/references/nixos-home-manager-handoff.md` — a self-contained handoff written for
   a *separate* Claude Code session running in your NixOS config repo, since that
   session has no access to this one or this repo.
 - **launchd** (macOS) — a `LaunchAgent` plist with a `StartCalendarInterval`, loaded
