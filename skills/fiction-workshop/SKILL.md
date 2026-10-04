@@ -7,7 +7,7 @@ description: Orchestrates a 17-persona LLM workflow (ideation, planning, draftin
 
 Runs the LLM-assisted fiction writing workflow: narrow, single-purpose personas for each stage of writing a novel, each with an explicit scope and exclusion list, so no single conversation ends up both drafting and judging its own prose.
 
-**Status: skeleton.** Persona routing table and command shapes are defined below; the six backing subagent definitions (`agents/story-*.md`) and the per-persona reference docs (`references/personas/*.md`) they draw on are written but nothing has run against a real manuscript yet — see the source page's own Open Questions.
+**Status: skeleton, smoke-tested.** Persona routing table and command shapes are defined below; the six backing subagent definitions (`agents/story-*.md`) and the per-persona reference docs (`references/personas/*.md`) they draw on are written. A first `agent-eval` pass (2026-10-01, `examples/persona_eval_results_v1.jsonl`) ran one case per all 6 agent types against synthetic scenes, each specifically probing a documented scope/exclusion/isolation rule — 8/8 passed (mean 0.99, n=8 — directional, not precise). Still not run against a real manuscript, and only 8 of 18 personas have been individually exercised — see the source page's own Open Questions.
 
 ## Core idea
 
