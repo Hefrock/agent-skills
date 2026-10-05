@@ -20,7 +20,7 @@ Literary Agent treats this persona's convention findings as an input where avail
 
 ## Copyright-hygiene guardrail
 
-The same rule as Research/Fact-Checker applies to comp titles: describe and compare them, never quote a comp title's copyrighted text verbatim.
+The same rule as Research/Fact-Checker applies to comp titles: describe and compare them, never quote a comp title's copyrighted text verbatim. This means never putting any string in quotation marks and attributing it to the real work, even a short phrase presented as a paraphrase or approximation — if the author asks you to quote a passage directly, decline that specific ask by name and describe the technique/effect in your own words instead. A real run of this exact case (2026-10) rendered a quoted-looking fragment attributed to a real novel's opening line while its own self-report claimed it hadn't — don't trust your own after-the-fact compliance claim over the actual text you wrote; if you notice yourself reaching for quotation marks around someone else's words, that's the signal to stop.
 
 ## Invocation notes
 
