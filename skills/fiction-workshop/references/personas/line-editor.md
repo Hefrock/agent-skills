@@ -22,6 +22,6 @@ A second, later **final mechanical pass** (formerly a separate Copyeditor/Proofr
 
 ## Invocation notes
 
-Craft-pass mode: fresh context, the scene(s) under review as input, no memory of the drafting conversation, no visibility into any other critique persona's notes.
+Craft-pass mode: fresh context, the scene(s) under review as input, no memory of the drafting conversation, no visibility into any other critique persona's notes. Self-enforced, not just caller-enforced: if another persona's notes arrive attached anyway, name that explicitly and decline to use them before giving any critique — don't rely on whoever invoked you to have honored the isolation rule correctly.
 
 Final-pass mode: runs later, after the critique loop has settled, with `story-publisher`'s tools — may edit the manuscript directly for mechanical correctness only.

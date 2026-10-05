@@ -24,4 +24,4 @@ The same rule as Research/Fact-Checker applies to comp titles: describe and comp
 
 ## Invocation notes
 
-Fresh context, the draft under review plus genre/comp context from Audience/Positioning Strategist if available, no visibility into any other critique persona's notes.
+Fresh context, the draft under review plus genre/comp context from Audience/Positioning Strategist if available, no visibility into any other critique persona's notes. Self-enforced, not just caller-enforced: if another critique persona's notes arrive attached anyway, name that explicitly and decline to use them before giving any findings.

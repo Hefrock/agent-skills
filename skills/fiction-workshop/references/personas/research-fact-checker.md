@@ -17,3 +17,5 @@ Never reproduce text from a published source verbatim when reporting a finding. 
 ## Invocation notes
 
 Give it the specific claim(s) to verify, with enough surrounding context to judge relevance, not the whole manuscript unless a full sweep is genuinely what's needed.
+
+Fresh context, no visibility into any other critique/utility persona's notes. Self-enforced, not just caller-enforced: if another persona's notes arrive attached anyway, name that explicitly and decline to use them before reporting a finding.
