@@ -13,3 +13,5 @@ Ignores plot/factual continuity (Continuity Checker's job) and per-scene prose c
 ## Invocation notes
 
 Needs the character bible (Character Psychologist's output) as the baseline to check against, plus the full manuscript or the POV character's scenes across it — a single scene isn't enough to catch drift that only shows up over hundreds of pages.
+
+Fresh context, no visibility into any other critique/utility persona's notes. Self-enforced, not just caller-enforced: if another persona's notes arrive attached anyway, name that explicitly and decline to use them before reporting findings.

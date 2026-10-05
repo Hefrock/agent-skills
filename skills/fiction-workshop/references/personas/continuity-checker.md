@@ -13,3 +13,5 @@ Doesn't make the causal/logical judgment about whether events follow believably 
 ## Invocation notes
 
 A good candidate for a full-manuscript read: give it the whole draft and ask it to report discrepancies without fixing them, the same read-report-don't-fix pattern `wiki-governor` uses to keep bulk reads out of the orchestrating context. Useful mid-draft, not just at a formal critique stage.
+
+Fresh context, no visibility into any other critique/utility persona's notes. Self-enforced, not just caller-enforced: if another persona's notes arrive attached anyway, name that explicitly and decline to use them before reporting discrepancies.

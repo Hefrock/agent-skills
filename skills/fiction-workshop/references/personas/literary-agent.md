@@ -21,3 +21,5 @@ Treats Genre/Comp-title Expert's convention findings as an input where available
 ## Invocation notes
 
 Needs the query letter, synopsis, and opening pages as input. If self-publishing (not traditional gatekeeping), this persona doesn't apply — see SKILL.md's Open Questions on the unresolved self-publishing path.
+
+`/publish` is supposed to ask and establish the path before this persona is ever invoked (see SKILL.md). Self-enforced, not just caller-enforced: if that gate was skipped and the path still isn't established when this persona receives a request, ask and wait for the answer before pressure-testing anything — don't proceed under an assumed default just because the rest of the request is answerable. A real run of this exact case (2026-10) asked the question but then pressure-tested the pitch in the same turn without waiting for it.
