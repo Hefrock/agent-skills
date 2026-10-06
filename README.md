@@ -49,7 +49,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | Skill | What it does |
 |---|---|
 | [`broadcast`](./skills/broadcast) | Produces a daily healthcare-AI news audio briefing: pulls from eleven registered sources, dedupes and ranks stories, pins every claim to its source through a real evidence-pinning MCP server, writes a script, synthesizes audio, and publishes a podcast feed + vault note. Requires `GEMINI_API_KEY` and a locally-built evidence-pinning-mcp server. |
-| [`fiction-workshop`](./skills/fiction-workshop) | Runs a 17-persona LLM workflow for drafting and critiquing a novel — ideation, planning, drafting, critique, publishing, post-publication — through 6 tool-scoped subagents (`/plan`, `/draft`, `/critique`, `/publish`, `/check`). Critique and utility personas always run in a fresh, isolated context so their judgments don't anchor on each other or the drafting conversation. **Status: skeleton**, untested against a real manuscript. |
+| [`fiction-workshop`](./skills/fiction-workshop) | Runs a 17-persona LLM workflow for drafting and critiquing a novel — ideation, planning, drafting, critique, publishing, post-publication — through 6 tool-scoped subagents (`/plan`, `/draft`, `/critique`, `/publish`, `/check`). Critique and utility personas always run in a fresh, isolated context so their judgments don't anchor on each other or the drafting conversation. **Status: skeleton, smoke-tested** against documented per-persona scenarios — still untested against a real manuscript. |
 
 Most knowledge-management and privacy-vault skills require the `obsidian-vault` MCP server — see [Wiki system](#wiki-system) below for setup. Full flag-by-flag documentation for any skill lives in its own `SKILL.md`, not here.
 
@@ -113,7 +113,8 @@ agent-skills/
 │   ├── wiki-teacher/            # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
 │   ├── wiki-warehouse/          # raw-document cold storage (external repo) + vault pointers
 │   ├── wiki-privacy-audit/      # vault-wide PII/secret audit — reuses privacy-linter's scanner
-│   └── research-ledger/         # deep-research claim ledger, warehoused ahead of synthesis
+│   ├── research-ledger/         # deep-research claim ledger, warehoused ahead of synthesis
+│   └── fiction-workshop/        # 17-persona novel-writing workflow via agents/*.md subagents, doc-only
 ├── mcp/
 │   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
