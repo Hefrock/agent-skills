@@ -35,6 +35,11 @@ update` included. This repo shipped a real governance-scope fix (Laws 6/7/8)
 that sat live on `main` for two days without reaching an installed vault,
 purely because this step was skipped — see `knowledge-os/sitrep.md`.
 
+After bumping `metadata.version`, tag the commit that ships it:
+`git tag vX.Y.Z && git push origin vX.Y.Z`. Without a tag, nothing durably
+records which commit shipped which marketplace version — `v0.20.0` itself
+was retroactively tagged for this reason once the gap was noticed.
+
 ## Keep it portable
 
 - Don't assume Claude Code-only mechanics in the instructions unless the skill is genuinely Claude-specific. The plain `SKILL.md` + `scripts/`/`references/`/`assets/` structure works unmodified across every platform that supports the standard (Codex, Gemini CLI, Cursor, GitHub Copilot, and others).
