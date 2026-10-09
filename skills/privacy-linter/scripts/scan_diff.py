@@ -423,7 +423,9 @@ def _read_exif_gps(full_path):
 # --- Git integration -------------------------------------------------------------------
 
 def _run(cmd, cwd=None):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+    )
 
 
 def get_repo_root(cwd=None):

@@ -540,6 +540,21 @@ class CliGitStagedMode(unittest.TestCase):
         self.assertIn("aws_access_key", proc.stdout)
         self.assertIn("[class: secret]", proc.stdout)
 
+    def test_non_utf8_staged_file_does_not_crash_scan(self):
+        # A Latin-1-encoded file (invalid UTF-8 byte sequence) staged alongside a
+        # PII-bearing file. The git-diff path previously decoded subprocess output
+        # with strict UTF-8 and raised an uncaught UnicodeDecodeError here, aborting
+        # the whole scan and silently losing every other file's findings too.
+        full = os.path.join(self.repo, "legacy.txt")
+        with open(full, "wb") as f:
+            f.write(b"caf\xe9 notes\n")
+        self._write("notes.txt", "contact: jane.doe@example.com\n")
+        self._git("add", "-A")
+        proc = run_script(cwd=self.repo)
+        self.assertEqual(proc.returncode, 0)  # advisory by default, not a crash
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("email", proc.stdout)
+
     def test_ignored_path_suppresses_finding(self):
         self._write(".privacy-linter-ignore", "fixtures/*\n")
         self._write("fixtures/sample.txt", "jane.doe@example.com\n")
