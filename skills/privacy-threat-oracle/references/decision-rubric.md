@@ -109,3 +109,28 @@ the exit code to reflect the verdict — but unlike `privacy-linter`'s git hook,
 invokes `oracle.py` unattended today, so there's no default behavior this flips: the
 flag is opt-in capability, not a posture change. It only does something once some
 scripted or automated context actually calls `oracle.py` and checks its exit code.
+
+## LINDDUN cross-reference (reference only — nothing here is implemented)
+
+[LINDDUN](https://linddun.org) (KU Leuven) is a privacy threat-modeling framework with
+seven categories. It models a *system's* data flows (what a controller's design lets go
+wrong for data subjects), while this oracle evaluates one person's *disclosure decision*
+against adversaries, so the method (DFD analysis, GO/PRO/MAESTRO variants) doesn't
+transfer. Only the category list is useful, as a vocabulary and a gap check:
+
+| LINDDUN category | Where it lives here |
+|---|---|
+| Identifiability | `direct_pii` content class |
+| Disclosure of information | `secret` and `direct_pii` content classes |
+| Linkability | Step 1 compartment-violation rule, plus the `stylometric` class |
+| Detectability | Partly `metadata`. No model for an account or compartment being discoverable at all — a known gap. |
+| Non-repudiation | Not modeled (signed commits/authorship are a stretch). |
+| Unawareness | Not applicable — concerns data subjects not knowing what a controller does. |
+| Non-compliance | Not applicable — concerns regulatory processing. |
+
+Possible follow-ups, deliberately not built (revisit only if needed twice):
+
+- A `linddun` tag per content class/rule in the output, as reporting vocabulary only.
+- A `privacy-linter` check for identifiers (handle, email, username) reused across
+  compartments — the most common real route to Linkability. Blocked on the vault having
+  per-compartment identifier data; no note carries a compartment field yet.
