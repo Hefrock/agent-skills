@@ -125,7 +125,6 @@ agent-skills/
 │   ├── constitution.md         # 10 laws Claude follows when operating the wiki
 │   ├── architecture.md         # component map, data flow, note lifecycle
 │   └── sitrep.md               # living status + gap analysis for the wiki system
-├── templates/                  # note templates copied into vault by setup-vault.sh
 │   ├── concept.md
 │   ├── journal.md
 │   ├── source.md
@@ -186,7 +185,7 @@ The operating layer lives in this repo:
 | `knowledge-os/constitution.md` | 10 non-negotiable rules Claude follows when operating the wiki |
 | `knowledge-os/architecture.md` | Component map, data flow, and note lifecycle reference |
 | `knowledge-os/sitrep.md` | Living status + gap analysis for the wiki system — what's shipped, what's untested, what's next |
-| `templates/` | Note templates (concept, journal, source, map) — copied into `System/templates/` in your vault by `setup-vault.sh` |
+| `skills/wiki-operator/assets/` | Note templates (concept, source, project, journal, map) — the single source of truth; copied into `Templates/` in your vault by `setup-vault.sh`, along with `knowledge-os/page-standard.md` into `System/` |
 
 ## License
 

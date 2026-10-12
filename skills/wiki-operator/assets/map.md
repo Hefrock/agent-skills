@@ -1,29 +1,39 @@
 ---
 type: map
-status: mature
+status: draft
 confidence: high  # accurate=high; uncertain/incomplete=low — not about writing quality
 updated: YYYY-MM-DD
 ---
 
-# [Area] — Index
+# {{title}}
 
-Navigation page for `Knowledge/[Area]/`. Keep in sync with the pages under that folder.
+## In plain language
+
+<!-- What this area covers and how to use this page, in 2–3 sentences. -->
 
 ## Core concepts
 
-<!-- Foundational pages; understand these before the advanced ones -->
-- [[]]
+<!-- Foundational pages; read these before the advanced ones. One line each saying what the page is for. -->
+- [[]] — 
 
 ## Advanced concepts
 
-<!-- Build on the core -->
-- [[]]
+- [[]] — 
 
 ## Sources
 
-<!-- Papers, books, and videos filed under Sources/ that relate to this area -->
-- [[]]
+<!-- Papers, books and code filed under Sources/ for this area. -->
+- [[]] — 
+
+## Active projects
+
+- [[]] — 
 
 ## Open questions in this area
 
 - 
+
+## Sources for this map
+
+- Created or last revised after [[Journal/Daily/YYYY-MM-DD]]
+- Claims about code or repos: link the commit they were checked against.

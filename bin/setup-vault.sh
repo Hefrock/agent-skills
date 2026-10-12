@@ -9,7 +9,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 CONTEXT_TEMPLATE="$REPO_ROOT/skills/wiki-operator/assets/context.md"
-TEMPLATES_SRC="$REPO_ROOT/templates"
+TEMPLATES_SRC="$REPO_ROOT/skills/wiki-operator/assets"
+PAGE_STANDARD_SRC="$REPO_ROOT/knowledge-os/page-standard.md"
 CONSTITUTION_SRC="$REPO_ROOT/knowledge-os/constitution.md"
 
 # ── Arg check ─────────────────────────────────────────────────────────────────
@@ -42,11 +43,12 @@ mkdir -p "$VAULT/Sources/Books"
 mkdir -p "$VAULT/Sources/Videos"
 mkdir -p "$VAULT/Maps"
 mkdir -p "$VAULT/Projects"
-mkdir -p "$VAULT/System/templates"
+mkdir -p "$VAULT/System"
+mkdir -p "$VAULT/Templates"
 echo "  OK  Knowledge/{AI,Systems,Math,Engineering}"
 echo "  OK  Journal/Daily"
 echo "  OK  Sources/{raw,Papers,Books,Videos}"
-echo "  OK  Maps   Projects   System/templates"
+echo "  OK  Maps   Projects   System   Templates"
 
 # ── Hot cache ─────────────────────────────────────────────────────────────────
 echo ""
@@ -81,17 +83,31 @@ else
 fi
 
 echo ""
-echo "→ System/templates/"
-for tmpl in concept journal source map; do
+echo "→ System/page-standard.md"
+PAGE_STANDARD_DEST="$VAULT/System/page-standard.md"
+if [[ -f "$PAGE_STANDARD_DEST" ]]; then
+  echo "  SKIP  already exists"
+elif [[ ! -f "$PAGE_STANDARD_SRC" ]]; then
+  echo "  WARN  page standard not found: $PAGE_STANDARD_SRC" >&2
+else
+  cp "$PAGE_STANDARD_SRC" "$PAGE_STANDARD_DEST"
+  echo "  OK  created"
+fi
+
+echo ""
+echo "→ Templates/"
+for tmpl in concept source project journal map; do
+  # Capitalize the first letter portably (macOS ships bash 3.2, which lacks ${var^}).
+  NAME="$(printf '%s' "${tmpl:0:1}" | tr '[:lower:]' '[:upper:]')${tmpl:1}"
   SRC="$TEMPLATES_SRC/$tmpl.md"
-  DEST="$VAULT/System/templates/$tmpl.md"
+  DEST="$VAULT/Templates/$NAME.md"
   if [[ -f "$DEST" ]]; then
-    echo "  SKIP  $tmpl.md already exists"
+    echo "  SKIP  $NAME.md already exists"
   elif [[ ! -f "$SRC" ]]; then
     echo "  WARN  template not found: $SRC" >&2
   else
     cp "$SRC" "$DEST"
-    echo "  OK  $tmpl.md"
+    echo "  OK  $NAME.md"
   fi
 done
 
@@ -124,6 +140,8 @@ This vault is structured for a Karpathy-style personal knowledge system operated
 | `Maps/` | Index and overview pages |
 | `Maps/_context.md` | Hot cache — Claude reads this first each session to orient quickly |
 | `Projects/` | Active project notes |
+| `Templates/` | Page templates (concept, source, project, journal, map) — copy one when creating a page. See `System/page-standard.md` for the format and provenance conventions. |
+| `System/` | `constitution.md` (the rules) and `page-standard.md` (the format guide) |
 | `.trash/` | Deleted notes (recoverable). Created automatically by delete_note. |
 
 ## Note schema
