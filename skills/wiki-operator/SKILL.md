@@ -38,6 +38,8 @@ At the beginning of any wiki session, read `Maps/_context.md` first if it exists
 
 ## Principles
 
+These are the working rules for this skill. The vault's `System/constitution.md` is the authoritative statement of the wiki's laws (and `System/page-standard.md` of page format and provenance); if anything here disagrees with either, they win.
+
 1. **Search before write.** Always search the vault before creating anything. If a relevant page exists, update it — do not create a duplicate.
 2. **One canonical page per concept.** If two pages cover the same idea, merge them — preserve both sets of details, do not truncate either.
 3. **Prefer durable over ephemeral.** Extract durable knowledge from journals into `Knowledge/`. Leave dates and session context in the journal; promote only the insight.
