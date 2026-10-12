@@ -55,6 +55,22 @@ Audit tools must exclude these paths from all three checks. Hand-authored
 `Maps/` pages (an area index like `Maps/AI.md`) are ordinary notes and remain
 in scope for all three.
 
+### Templates are scaffolding — out of scope for Laws 2, 3, 6, 7, and 8
+
+`Templates/` holds the page templates the wiki skills and Obsidian copy from,
+plus any portfolio templates — scaffolding, not knowledge claims. Its notes carry
+placeholder values on purpose (`updated: YYYY-MM-DD`, empty `[[]]` links,
+`[[Journal/Daily/YYYY-MM-DD]]`) and frontmatter that mimics a real page's
+(`type: project`, `type: concept`, and so on). It is exempt for a third reason,
+distinct from system files and `Fiction/`: it is neither machine-regenerated
+infrastructure nor creative content, but a pattern to copy.
+
+Audit tools must exclude `Templates/` from orphan, provenance, schema and
+broken-link checks and from all vault-health computations. Any retrieval **by
+`type`** must also be scoped to the folder that holds that type's live notes
+(for example `Projects/` for `type: project`), because a template's frontmatter
+would otherwise match and be treated as a real note.
+
 ### 9. One run, one log
 After any synthesis or audit session, append a compact summary to today's journal. This creates a permanent record of what changed and why.
 

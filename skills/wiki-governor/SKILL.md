@@ -52,6 +52,8 @@ Output a compliance table: law, pass/fail, and the specific pages violating it. 
 
 **Laws 2, 3, 6, 7, and 8 exempt `Fiction/`** — for the opposite reason: not machine-maintained infrastructure, but not epistemic content at all (see the constitution's "Fiction is out of scope for Laws 2, 3, 6, 7, and 8"). A chapter is invented by design (Law 2 doesn't apply), isn't a claim with a confidence level (Law 3), and its link count says nothing about manuscript quality (Laws 6/7/8's connectivity half). Never report a `Fiction/` file against any of these five laws.
 
+**Laws 2, 3, 6, 7, and 8 exempt `Templates/`** — scaffolding, not knowledge: placeholders like `updated: YYYY-MM-DD` and `[[Journal/Daily/YYYY-MM-DD]]` are intentional (see the constitution's "Templates are scaffolding" clause). Never report a `Templates/` file against these laws, count it in a health denominator, or let a `type:`-based retrieval pick it up as a real note.
+
 **Law 10 (distill, don't dump)** is checked via a body-length heuristic on notes carrying a `doc_id` (`wiki-librarian`'s Check 6.5, reference implementation in `skills/wiki-librarian/scripts/check_vault.py`) — a threshold, not a semantic judgment of whether a note is genuinely distilled, so treat a `pass` here as "no obvious dump detected," not certainty. A note that pads a real dump with commentary to stay under the character limit would slip through; that's a real limitation of a purely mechanical check, not something to paper over.
 
 ### Phase 3 — Health score
