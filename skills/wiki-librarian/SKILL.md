@@ -44,7 +44,7 @@ Laws 6, 7, and 8": `Maps/_context.md`, `Maps/_ask_log.md`, `Maps/_gaps.md`, and
 check by widening it to the whole vault. `Fiction/` is excluded from this walk
 for the same reason, by a separate constitution clause ("Fiction is out of
 scope for Laws 2, 3, 6, 7, and 8") — a chapter's link count says nothing about
-whether the manuscript is any good. Don't widen the walk to include it either.
+whether the manuscript is any good. Don't widen the walk to include it either. `Templates/` is excluded too (scaffolding with placeholder links and values by design; see the constitution's "Templates are scaffolding" clause).
 
 ### Check 3 — Stale notes
 

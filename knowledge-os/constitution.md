@@ -55,6 +55,46 @@ Audit tools must exclude these paths from all three checks. Hand-authored
 `Maps/` pages (an area index like `Maps/AI.md`) are ordinary notes and remain
 in scope for all three.
 
+### Fiction is out of scope for Laws 2, 3, 6, 7, and 8
+
+`Fiction/` holds creative manuscript content (chapters, series bibles,
+character profiles) — not knowledge claims. It is exempt from the same laws as
+system files above, but for the opposite reason: system files are exempt
+because they are machine-maintained infrastructure with nothing to connect;
+`Fiction/` is exempt because it isn't epistemic content at all.
+
+- **Law 2 (distill, don't invent)** doesn't apply — fiction is invented by
+  design, not a claim to be verified against source material.
+- **Law 3 (preserve uncertainty / confidence levels)** doesn't apply — a
+  chapter isn't a claim with a truth value.
+- **Law 6's connectivity half, Law 7 (no islands), and Law 8 (provenance)**
+  don't apply the way they do for `Knowledge/` — a chapter's link count and
+  inbound/outbound graph position say nothing about whether the manuscript is
+  any good. Provenance here means which Claude Docs artifact a file was
+  migrated from, tracked via `source_doc`/`source_rev` frontmatter and a
+  `## Sources` line, not a journal-entry backlink.
+
+Audit tools must exclude `Fiction/` from all vault-health computations
+(`wiki-governor`'s Maturity/Resolution/Connectedness percentages,
+`wiki-librarian`'s orphan/provenance checks) the same way they already exclude
+`System/` — for a different diagnosis, same practical rule.
+
+### Templates are scaffolding — out of scope for Laws 2, 3, 6, 7, and 8
+
+`Templates/` holds the page templates the wiki skills and Obsidian copy from,
+plus any portfolio templates — scaffolding, not knowledge claims. Its notes carry
+placeholder values on purpose (`updated: YYYY-MM-DD`, empty `[[]]` links,
+`[[Journal/Daily/YYYY-MM-DD]]`) and frontmatter that mimics a real page's
+(`type: project`, `type: concept`, and so on). It is exempt for a third reason,
+distinct from system files and `Fiction/`: it is neither machine-regenerated
+infrastructure nor creative content, but a pattern to copy.
+
+Audit tools must exclude `Templates/` from orphan, provenance, schema and
+broken-link checks and from all vault-health computations. Any retrieval **by
+`type`** must also be scoped to the folder that holds that type's live notes
+(for example `Projects/` for `type: project`), because a template's frontmatter
+would otherwise match and be treated as a real note.
+
 ### 9. One run, one log
 After any synthesis or audit session, append a compact summary to today's journal. This creates a permanent record of what changed and why.
 
