@@ -15,9 +15,12 @@ between runs.
 
 Pure functions plus one disk writer. stdlib only."""
 
+import html
 import json
 import os
+import re
 import sys
+from urllib.parse import quote, urlsplit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -78,8 +81,31 @@ def build_archive_entries(rank_result: dict, pinned: dict, registry: dict, run_d
     return entries
 
 
-def _escape_link_text(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("[", r"\[").replace("]", r"\]")
+# Everything rendered below came from a third-party feed, so none of it is
+# trusted: collapse to one line (no line-start constructs from embedded
+# newlines), HTML-escape, backslash-escape inline markdown, and neutralize a
+# leading block marker. The JSON archive keeps the raw text; only this
+# rendering is escaped.
+_INLINE_MD = re.compile(r"([\\`*_\[\]~|])")
+_LEADING_BLOCK = re.compile(r"^(\s*)([#>+\-=]|\d+[.)])")
+
+
+def _oneline(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+def _escape_md(text: str) -> str:
+    escaped = _INLINE_MD.sub(r"\\\1", html.escape(_oneline(text), quote=False))
+    return _LEADING_BLOCK.sub(lambda m: m.group(1) + "\\" + m.group(2), escaped)
+
+
+def _safe_url(url: str) -> str | None:
+    """http(s) only; parentheses, spaces and angle brackets percent-encoded so
+    the URL cannot terminate the markdown link early."""
+    candidate = str(url).strip()
+    if urlsplit(candidate).scheme.lower() not in ("http", "https"):
+        return None
+    return quote(candidate, safe="%:/?#[]@!$&'*+,;=-._~")
 
 
 def render_markdown(entries: list[dict], run_date: str, show_name: str = "Healthcare AI Briefing") -> str:
@@ -99,12 +125,14 @@ def render_markdown(entries: list[dict], run_date: str, show_name: str = "Health
             continue
         lines += [f"## {heading}", ""]
         for e in group_entries:
+            headline = _escape_md(e["headline"])
+            url = _safe_url(e["url"])
             lines += [
-                f"### [{_escape_link_text(e['headline'])}]({e['url']})",
+                f"### [{headline}]({url})" if url else f"### {headline}",
                 "",
-                e["summary"],
+                _escape_md(e["summary"]),
                 "",
-                f"- **Source:** {e['source_name']} ({e['category']}), published {e['published_date']}",
+                f"- **Source:** {_escape_md(e['source_name'])} ({e['category']}), published {e['published_date']}",
                 f"- **Claim ID:** {e['claim_id']}",
             ]
             if "doi" in e:

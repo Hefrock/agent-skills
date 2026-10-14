@@ -175,11 +175,15 @@ HEDGE_MARKERS = [
     "are expected", "suggests", "suggest", "believes", "believe",
     "preliminary", "some experts", "potentially", "likely", "unclear",
     "unconfirmed", "estimated", "unlikely",
+    # inflected/related forms the old substring match caught via "suggest",
+    # "believe", "estimate"; a word-boundary match needs them listed
+    "suggested", "suggesting", "believed", "believing", "estimate", "estimates",
+    "maybe", "perhaps",
 ]
 # Word-boundary match, not substring: bare "may" must not fire on "Mayo",
 # "mayor", or "dismay" (a dropped hedge was passing as preserved because the
 # narration happened to contain such a word).
-_HEDGE_RE = re.compile(r"\b(?:" + "|".join(re.escape(m) for m in HEDGE_MARKERS) + r")\b")
+_HEDGE_RE = re.compile(r"\b(?:" + "|".join(r"\s+".join(re.escape(w) for w in m.split()) for m in HEDGE_MARKERS) + r")\b")
 
 
 def _normalize_for_span_match(text: str) -> str:

@@ -23,14 +23,14 @@ export function claimsToFlagOnRetraction<T extends ClaimLike>(claims: T[], retra
 // The character class has to allow "." and "()" because real DOIs contain them
 // (e.g. 10.1016/S0140-6736(97)11096-0), which means a greedy match also swallows
 // trailing sentence punctuation or the ")" closing a parenthetical around a URL.
-// Strip trailing . , ; : always, and a trailing ")" only when it is unbalanced.
+// Strip trailing . , ; : / always, and a trailing ")" only when it is unbalanced.
 const DOI_PATTERN = /10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/;
 
 function trimDoi(raw: string): string {
   let doi = raw;
   for (;;) {
     const last = doi[doi.length - 1];
-    if (last === "." || last === "," || last === ";" || last === ":") {
+    if (last === "." || last === "," || last === ";" || last === ":" || last === "/") {
       doi = doi.slice(0, -1);
     } else if (last === ")" && (doi.match(/\)/g) ?? []).length > (doi.match(/\(/g) ?? []).length) {
       doi = doi.slice(0, -1);
@@ -65,9 +65,10 @@ export function claimConflict(
   sourceIds: string[],
   excerpt: string
 ): string | null {
-  const a = [...existing.source_ids].sort().join("|");
-  const b = [...sourceIds].sort().join("|");
-  if (a !== b) return `source_ids differ from the already-pinned claim (${existing.source_ids.join(", ")})`;
-  if (existing.excerpt !== excerpt) return "excerpt differs from the already-pinned claim";
+  const ids = (list: string[]) => [...new Set(list)].sort().join("|");
+  if (ids(existing.source_ids) !== ids(sourceIds)) {
+    return `source_ids differ from the already-pinned claim (${existing.source_ids.join(", ")})`;
+  }
+  if (existing.excerpt.trim() !== excerpt.trim()) return "excerpt differs from the already-pinned claim";
   return null;
 }

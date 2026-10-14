@@ -53,6 +53,7 @@ check("trailing comma/semicolon stripped", extractDoi("(10.1000/abc;") === "10.1
 check("unbalanced trailing ')' stripped", extractDoi("(see https://doi.org/10.1000/abc)") === "10.1000/abc");
 check("balanced parentheses inside a DOI are kept", extractDoi("https://doi.org/10.1016/S0140-6736(97)11096-0") === "10.1016/S0140-6736(97)11096-0");
 check("a DOI that legitimately ends in a balanced ')' is kept", extractDoi("10.1002/(SICI)1097-0258") === "10.1002/(SICI)1097-0258");
+check("trailing slash is not part of the DOI", extractDoi("https://doi.org/10.1000/abc/") === "10.1000/abc");
 check("no DOI in the text returns null", extractDoi("https://example.com/news/story") === null);
 
 console.log("\n── resolveSourceStatus (retracted is sticky) ─────────────────");
@@ -72,6 +73,9 @@ check("identical repeat is not a conflict", claimConflict(existing, ["doi:a", "p
 check("source order does not matter", claimConflict(existing, ["pmid:1", "doi:a"], "same excerpt") === null);
 check("different sources is a conflict", typeof claimConflict(existing, ["doi:b"], "same excerpt") === "string");
 check("different excerpt is a conflict", typeof claimConflict(existing, ["doi:a", "pmid:1"], "other excerpt") === "string");
+
+check("duplicate source ids are not a conflict with the deduped list", claimConflict({ source_ids: ["a"], excerpt: "e" }, ["a", "a"], "e") === null);
+check("surrounding whitespace in the excerpt is not a conflict", claimConflict({ source_ids: ["a"], excerpt: "e" }, ["a"], "  e\n") === null);
 
 console.log(`\n${"─".repeat(62)}\n  ${passed + failed} tests  —  ${passed} passed  —  ${failed} failed`);
 if (failed > 0) process.exit(1);

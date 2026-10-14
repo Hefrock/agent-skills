@@ -339,7 +339,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "pin_claim",
-      description: "Register a claim (an assertion a script draft makes) against one or more already-registered sources, with the excerpt that backs it. Idempotent per (run_id, text). Fails if any source_id hasn't been registered — an unsourced claim can't be pinned.",
+      description: "Register a claim (an assertion a script draft makes) against one or more already-registered sources, with the excerpt that backs it. Idempotent per (run_id, text): an identical repeat returns the existing claim, but a repeat with different source_ids or excerpt errors with a conflict instead of silently keeping the old ones. Fails if any source_id hasn't been registered — an unsourced claim can't be pinned.",
       inputSchema: {
         type: "object",
         properties: {

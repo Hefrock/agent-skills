@@ -73,6 +73,72 @@ class CheckClaimTurn(unittest.TestCase):
         self.assertGreaterEqual(len(wg.check_turn(t, PACK)["reasons"]), 2)
 
 
+class CheckClaimTurnBypasses(unittest.TestCase):
+    """Cases found by independent review that the first version passed."""
+
+    def test_cross_story_fact_in_text_fails_even_with_a_real_span(self):
+        t = claim_turn(text="Hospital B banned it and it may cost $9M, 40%.", spans=("alerts fell by 40 percent",))
+        result = wg.check_turn(t, PACK)
+        self.assertFalse(result["passed"])
+
+    def test_number_not_in_cited_story_fails(self):
+        t = claim_turn(text="Alerts fell by 90 percent in two hospitals.")
+        result = wg.check_turn(t, PACK)
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("number" in r for r in result["reasons"]))
+
+    def test_number_formatting_differences_are_not_false_failures(self):
+        pack = {"c9": entry("c9", "Study", "Enrolled 1,200 patients; effect was 12.5 percent.")}
+        t = claim_turn(claim_id="c9", text="It enrolled 1200 patients and the effect was 12.5 percent.", spans=("enrolled 1,200 patients",))
+        self.assertTrue(wg.check_turn(t, pack)["passed"], wg.check_turn(t, pack)["reasons"])
+
+    def test_capitalized_name_not_in_cited_story_fails(self):
+        t = claim_turn(text="Alerts fell in two hospitals, Mayo Clinic said.")
+        result = wg.check_turn(t, PACK)
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("name" in r or "entit" in r for r in result["reasons"]))
+
+    def test_single_letter_capital_cannot_smuggle_in_a_different_hospital(self):
+        pack = {"c5": entry("c5", "Hospital A deploys AI triage", "The pilot reduced waits.")}
+        t = claim_turn(claim_id="c5", text="Hospital B deploys AI triage.", spans=("hospital a deploys ai triage",))
+        self.assertFalse(wg.check_turn(t, pack)["passed"])
+
+    def test_empty_and_trivial_spans_fail(self):
+        for span in ("", " ", ".", "a", "alerts fell"):
+            self.assertFalse(wg.check_turn(claim_turn(spans=(span,)), PACK)["passed"], repr(span))
+
+    def test_spans_must_be_a_list_of_strings(self):
+        for bad in ("alerts fell by 40 percent", None, 5, [None], [["alerts fell by 40 percent"]]):
+            t = claim_turn()
+            t["supporting_spans"] = bad
+            result = wg.check_turn(t, PACK)
+            self.assertFalse(result["passed"], repr(bad))
+
+    def test_malformed_claim_id_fails_instead_of_crashing(self):
+        for bad in (["c1"], {"a": 1}, 7):
+            t = claim_turn()
+            t["claim_id"] = bad
+            self.assertFalse(wg.check_turn(t, PACK)["passed"], repr(bad))
+
+    def test_malformed_turn_fields_fail_instead_of_crashing(self):
+        for t in ({}, {"kind": "claim"}, {"kind": "claim", "text": None, "speaker": "A"}, {"kind": ["claim"], "speaker": "A", "text": "x"}):
+            self.assertFalse(wg.check_turn(t, PACK)["passed"], repr(t))
+
+    def test_negation_not_in_cited_story_fails(self):
+        t = claim_turn(text="Alerts did not fall by 40 percent in two hospitals.")
+        self.assertFalse(wg.check_turn(t, PACK)["passed"])
+
+    def test_dropped_negation_fails(self):
+        pack = {"c7": entry("c7", "Trial result", "The drug did not reduce mortality in the trial.")}
+        t = claim_turn(claim_id="c7", text="The drug reduced mortality in the trial.", spans=("did not reduce mortality",))
+        self.assertFalse(wg.check_turn(t, pack)["passed"])
+
+    def test_preserved_negation_passes(self):
+        pack = {"c7": entry("c7", "Trial result", "The drug did not reduce mortality in the trial.")}
+        t = claim_turn(claim_id="c7", text="The drug did not reduce mortality in the trial.", spans=("did not reduce mortality",))
+        self.assertTrue(wg.check_turn(t, pack)["passed"], wg.check_turn(t, pack)["reasons"])
+
+
 class CheckFixedTurns(unittest.TestCase):
     def test_reactive_turn_from_the_pool_passes(self):
         phrase = narrate.REACTIVE_TEMPLATES["top_three_item"][0]

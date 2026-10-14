@@ -5,6 +5,7 @@ one disk writer, all stdlib unittest, no network."""
 import copy
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -130,6 +131,47 @@ class RenderMarkdown(unittest.TestCase):
         md = archive.render_markdown([], "2026-09-08")
         self.assertIn("No stories", md)
         self.assertNotIn("Top stories", md)
+
+
+class RenderMarkdownHostileInput(unittest.TestCase):
+    """Headlines, summaries and URLs come from third-party feeds."""
+
+    def _render(self, **overrides):
+        e = {
+            "rank_group": "top_three", "headline": "Plain", "summary": "Plain summary.", "url": "https://x.org/a",
+            "published_date": "2026-01-01", "source_name": "Src", "category": "cat", "claim_id": "k1",
+        }
+        e.update(overrides)
+        return archive.render_markdown([e], "2026-01-01")
+
+    def test_newline_in_headline_cannot_start_a_new_heading(self):
+        md = self._render(headline="Big news\n# Evil")
+        self.assertNotIn("\n# Evil", md)
+        self.assertIn("### [Big news # Evil]", md)
+
+    def test_summary_cannot_inject_headings_html_or_links(self):
+        md = self._render(summary="x\n# Injected <img onerror=1> [y](javascript:alert(1))")
+        self.assertNotIn("\n# Injected", md)
+        self.assertNotIn("<img", md)
+        # an escaped "\\]" is literal text, not link syntax
+        self.assertIsNone(re.search(r"(?<!\\)\]\(javascript:", md))
+
+    def test_summary_text_is_still_readable(self):
+        md = self._render(summary="Alerts fell by 40% (p < 0.05).")
+        self.assertIn("Alerts fell by 40%", md)
+
+    def test_url_with_parens_or_spaces_cannot_break_the_link(self):
+        md = self._render(url="https://x.org/a(b)c d")
+        self.assertIn("](https://x.org/a%28b%29c%20d)", md)
+
+    def test_non_http_url_is_not_linked(self):
+        md = self._render(url="javascript:alert(1)")
+        self.assertNotIn("](javascript:", md)
+        self.assertIn("### Plain", md)
+
+    def test_source_name_and_category_are_escaped(self):
+        md = self._render(source_name="A <b>bold</b> *name*", category="c_at")
+        self.assertNotIn("<b>", md)
 
 
 class WriteArchive(unittest.TestCase):

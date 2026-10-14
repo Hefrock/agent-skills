@@ -79,6 +79,8 @@ Until that variable is set, every scheduled firing shows as **skipped** in the A
 
 **`--data-dir` persistence in this workflow is best-effort, not durable.** GitHub Actions runners are ephemeral, so `dedup_store.json`/`evidence_store` continuity across scheduled runs depends on `actions/cache` (a rolling per-run-id cache key with a prefix restore, since a cache entry can't be overwritten once created) — GitHub evicts unused cache entries after roughly 7 days and caps total repo cache size at 10GB. A real durable `--data-dir` most likely belongs in whatever repo ends up hosting distribution (see "No real hosting" below) once that exists.
 
+This workflow also **does not upload or retain `<data-dir>/archive/`**: only `episodes/**` is uploaded as an artifact, so the text archive survives only as long as the best-effort `--data-dir` cache does. It does not pass `--text-only` either, so it still spends narration and TTS quota.
+
 This workflow **does not run `distribute.py`** — publishing needs a real `--base-url` a hosting target actually serves, which doesn't exist yet. It only produces the episode; wiring in real publishing is a follow-up once hosting is decided.
 
 ## Reading the result — what "success" actually looks like
@@ -146,7 +148,7 @@ Work through `report.json` in this order — nearly every failure traces to one 
 
 ## Weekly show (designed, partly built)
 
-A 10-12 minute two-host weekly show built from the week's archive entries is designed in `references/weekly-show-design.md` (decisions, the review that corrected the first draft, what is still unverified). What exists so far: the archive writer and `--text-only` above, and `weekly_grounding.py`, the per-turn grounding contract. A script is a list of turns; a `claim` turn must cite one `claim_id` from the week pack, quote a verbatim span from that story, and keep the story's hedges; `reactive` and `link` turns must come from fixed hand-written sets, so a fact cannot cross from one story to another. It does not check that numbers or names in a paraphrase match the source. The week-pack builder, the weekly generator and chunked two-voice synthesis are not built.
+A 10-12 minute two-host weekly show built from the week's archive entries is designed in `references/weekly-show-design.md` (decisions, the review that corrected the first draft, what is still unverified). What exists so far: the archive writer and `--text-only` above, and `weekly_grounding.py`, the per-turn grounding contract. A script is a list of turns; a `claim` turn must cite one `claim_id` from the week pack, quote a verbatim span from that story, and keep the story's hedges; `reactive` and `link` turns must come from fixed hand-written sets, so the only way a fact enters is through a claim turn. Each claim turn is checked against its one cited story: a 3+ word verbatim span, every number and every non-sentence-initial capitalized name present in that story, hedges kept, negation neither added nor dropped. That bounds where facts can come from; it does not prove wording is faithful (a reversed comparison using the story's own words, spelled-out numbers and lowercase entities all pass), so a passing script is not a verified one. The week-pack builder, the weekly generator and chunked two-voice synthesis are not built.
 
 ## Publishing an episode
 

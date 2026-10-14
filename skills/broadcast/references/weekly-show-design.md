@@ -18,7 +18,7 @@ A daily text archive plus a weekly two-host audio show built from it. This file 
 | Hedge matching on word boundaries (`narrate.py`) | Built, tested |
 | DOI extraction, sticky `retracted`, `pin_claim` conflict (`mcp/evidence-pinning`) | Built, tested. Sticky status is wired in `index.ts` but covered end to end only by a pure-function test |
 | `--text-only`, `call_counts`, archive writer | Built, tested, and run once against the real evidence server with fake ingest |
-| Per-turn grounding contract (`weekly_grounding.py`) | Built, tested. Not yet called by anything |
+| Per-turn grounding contract (`weekly_grounding.py`) | Built, tested, hardened after an independent review found it bypassable. Not yet called by anything |
 | Week-pack builder, weekly generator, chunked two-voice synthesis | Not built |
 
 ## What the first design got wrong (independent review, verified)
@@ -47,8 +47,17 @@ A daily text archive plus a weekly two-host audio show built from it. This file 
 | Scheduled daily job | Two manual daily runs succeed and network access is open |
 | Claude-vs-Gemini comparison | Gemini's weekly text fails review twice |
 | File lock in the evidence server | Two processes overlap |
-| Number/entity check in the grounding contract | A paraphrase with a wrong figure passes the span check |
 
 ## Dropped
 
 Firecrawl coverage enrichment, "also reported by" clustering, an LLM relevance gate and LLM ranking, a coverage-first summary prompt (there is no full text to cover), a text cache, an audit job that opens issues, and server-side substring verification of excerpts.
+
+## Behavior changes to know about
+
+- `pin_claim` with the same `(run_id, text)` but different sources or excerpt now errors (it used to return the old claim and drop the new inputs). In the Python pipeline that means re-running the same date after a feed changed a story's summary records that story under `pinned.failed` and leaves it out of the script. Surrounding whitespace in the excerpt and duplicate source ids are ignored.
+- Hedge detection is word-boundary matching with listed inflections (`suggested`, `believed`, `estimates`, `maybe`, ...). A hedge form not in `narrate.HEDGE_MARKERS` is not detected; add it there.
+- `call_counts.embed` is one per ingested item. It does not include retries inside the embedding call, so it is a lower bound on quota used.
+
+## Known gaps in the grounding contract
+
+Passes that should not: a reversed comparison written in the story's own words, spelled-out numbers, lowercase entities, a paraphrase that merges two true statements into a false one. Treat a passing script as "facts are bounded to the cited story", not as verified. A model-judged or human second pass is the next layer if the first weeks show it is needed.
