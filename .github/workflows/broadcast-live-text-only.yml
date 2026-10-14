@@ -1,0 +1,186 @@
+name: broadcast live text-only check
+
+# MANUAL ONLY (workflow_dispatch). Exists to answer questions that can only be
+# answered with real network access, which the dev sandbox does not have:
+#
+#   1. Does every registered source return items right now? (--dry-run; no
+#      Gemini calls, so it runs even without GEMINI_API_KEY.)
+#   2. How many Gemini calls does one real day cost, and does the key cope?
+#      (--text-only: embeddings are the ONLY Gemini calls; no narration, no
+#      TTS. report.json's call_counts is printed to the run summary.)
+#   3. Does the evidence server's Crossref retraction classifier agree with
+#      Crossref's real response for a known-retracted paper (Wakefield 1998)?
+#
+# Deliberately separate from broadcast-live-smoke-test.yml and
+# broadcast-scheduled.yml: both of those run a full episode (narration + TTS),
+# and workflow_dispatch can't pick one job, which is how this project has
+# burned Gemini TTS quota before. This workflow can never reach TTS.
+#
+# Needs the repository secret GEMINI_API_KEY for step 2 only; without it the
+# dry run and the Crossref check still run and the summary says what was
+# skipped. REGULATIONS_GOV_API_KEY is optional (see SKILL.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_results_per_source:
+        description: "Items per query-based source (RSS feeds are uncapped). Keep small for a first run."
+        default: "3"
+        type: string
+      check_crossref:
+        description: "Also check the Crossref retraction classifier against the Wakefield 1998 DOI"
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  live-text-only:
+    name: dry run, text-only run, Crossref check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MAX_RESULTS: ${{ inputs.max_results_per_source }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mcp/evidence-pinning/package-lock.json
+
+      - name: Build evidence-pinning-mcp (orchestrate.py spawns it as a real subprocess)
+        working-directory: mcp/evidence-pinning
+        run: |
+          npm ci
+          npm run build
+
+      - name: Validate inputs and set paths
+        run: |
+          # the runner context is not available in job-level env, so set the path here
+          echo "DATA_DIR=$RUNNER_TEMP/broadcast-data" >> "$GITHUB_ENV"
+          case "$MAX_RESULTS" in
+            ''|*[!0-9]*) echo "max_results_per_source must be a whole number, got: '$MAX_RESULTS'"; exit 1 ;;
+          esac
+
+      - name: Dry run (live ingest only; makes no Gemini calls)
+        run: |
+          mkdir -p "$DATA_DIR" "$RUNNER_TEMP/out"
+          python skills/broadcast/scripts/orchestrate.py --data-dir "$DATA_DIR/dry" --dry-run \
+            --text-only --max-results-per-source "$MAX_RESULTS" | tee "$RUNNER_TEMP/out/dry-run.json"
+
+      - name: Is GEMINI_API_KEY available?
+        id: key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then echo "has_key=true" >> "$GITHUB_OUTPUT"; else echo "has_key=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Text-only run (embeddings are the only Gemini calls)
+        id: textonly
+        if: steps.key.outputs.has_key == 'true'
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REGULATIONS_GOV_API_KEY: ${{ secrets.REGULATIONS_GOV_API_KEY }}
+        run: |
+          python skills/broadcast/scripts/orchestrate.py --data-dir "$DATA_DIR/run" --text-only \
+            --max-results-per-source "$MAX_RESULTS"
+
+      - name: Crossref retraction classifier vs. a known-retracted paper
+        id: crossref
+        if: inputs.check_crossref
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          import { classifyCrossrefWork } from "./mcp/evidence-pinning/dist/decay.js";
+
+          const doi = "10.1016/S0140-6736(97)11096-0"; // Wakefield et al. 1998, retracted 2010
+          const res = await fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
+            headers: { "User-Agent": "agent-skills-broadcast-live-check (github.com/Hefrock/agent-skills)" },
+          });
+          const lines = ["## Crossref retraction check", ""];
+          if (!res.ok) {
+            lines.push(`Crossref returned HTTP ${res.status}; nothing to compare.`);
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            process.exit(1);
+          }
+          const json = await res.json();
+          const m = json.message ?? {};
+          const verdict = classifyCrossrefWork(json);
+          lines.push(
+            `DOI \`${doi}\` (retracted in 2010). The classifier returned **${verdict.status}** (${verdict.detail}).`,
+            "",
+            "| Crossref field | value |",
+            "|---|---|",
+            `| \`update-to\` | \`${JSON.stringify(m["update-to"] ?? null)}\` |`,
+            `| \`updated-by\` | \`${JSON.stringify(m["updated-by"] ?? null)}\` |`,
+            `| \`relation\` | \`${JSON.stringify(m.relation ?? null)}\` |`,
+            "",
+            verdict.status === "retracted"
+              ? "Classifier agrees with Crossref for this paper."
+              : "**Classifier did NOT report this known-retracted paper as retracted.** Read the fields above before trusting check_source_decay.",
+          );
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/out/crossref.json`, JSON.stringify({ doi, verdict, update_to: m["update-to"] ?? null, updated_by: m["updated-by"] ?? null, relation: m.relation ?? null }, null, 2));
+          if (verdict.status !== "retracted") process.exit(1);
+          JS
+
+      - name: Summarize
+        if: always()
+        env:
+          HAS_KEY: ${{ steps.key.outputs.has_key }}
+          TEXTONLY_OUTCOME: ${{ steps.textonly.outcome }}
+        run: |
+          python3 - <<'PY'
+          import glob, json, os
+
+          out = []
+          dry_path = os.path.join(os.environ["RUNNER_TEMP"], "out", "dry-run.json")
+          if os.path.exists(dry_path):
+              dry = json.load(open(dry_path))
+              out += ["## Dry run (live ingest)", "",
+                      f"- Items ingested: **{dry['items_ingested']}**",
+                      f"- Embedding calls a real run would make: **{dry['embed_calls_estimate']}**",
+                      f"- Sources that failed: **{len(dry['ingest_failed'])}**"]
+              out += [f"  - `{f['source_key']}`: {f['error']}" for f in dry["ingest_failed"]]
+              out.append("")
+
+          if os.environ["HAS_KEY"] != "true":
+              out += ["## Text-only run", "", "Skipped: the repository secret `GEMINI_API_KEY` is not set. "
+                      "Add it under Settings, Secrets and variables, Actions, then run this workflow again.", ""]
+          else:
+              out += ["## Text-only run", "", f"Step outcome: **{os.environ['TEXTONLY_OUTCOME']}**", ""]
+              for path in sorted(glob.glob(os.path.join(os.environ["DATA_DIR"], "run", "episodes", "*", "report.json"))):
+                  r = json.load(open(path))
+                  c = r["call_counts"]
+                  out += [f"- QA passed: **{r['qa_passed']}**; archive entries: **{r['archive_entry_count']}**",
+                          f"- Gemini calls: embed **{c['embed']}**, narrate **{c['narrate']}**, synth **{c['synth']}** (cache hits {c['synth_cache_hits']})",
+                          f"- Ingest failures: {len(r['ingest_failed'])}; embedding failures: {len(r['embed_failed'])}; "
+                          f"pinned: {r['pinned_count']}, skipped (no summary): {r['pinned_skipped_no_summary_count']}",
+                          "- Counts are logical calls, not HTTP attempts: retries are not included, so quota used is at least this.", ""]
+                  if r["embed_failed"]:
+                      out += ["Embedding failures (first 3):"] + [f"  - {f['error']}" for f in r["embed_failed"][:3]] + [""]
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("\n".join(out) + "\n")
+          PY
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broadcast-live-text-only-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/out/**
+            ${{ runner.temp }}/broadcast-data/run/archive/**
+            ${{ runner.temp }}/broadcast-data/run/episodes/**/report.json
+          retention-days: 14
+          if-no-files-found: warn
