@@ -14,7 +14,7 @@ import {
   checkPmidStatus,
   checkUrlReachable,
 } from "./decay.js";
-import { claimsToFlagOnRetraction, type ClaimStatus } from "./logic.js";
+import { claimsToFlagOnRetraction, claimConflict, extractDoi, resolveSourceStatus, type ClaimStatus } from "./logic.js";
 
 const STORE_PATH: string = process.env.EVIDENCE_STORE_PATH ?? (() => {
   console.error("EVIDENCE_STORE_PATH environment variable is required");
@@ -126,17 +126,16 @@ async function getProvenanceFor(targetType: string, targetId: string): Promise<P
 
 // ── Source-id canonicalization ───────────────────────────────────────────────
 
-const DOI_RE = /10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/;
 const PMID_URL_RE = /pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i;
 
 function canonicalizeSourceId(url: string, idHint?: string): { source_id: string; id_type: SourceIdType } {
   if (idHint) {
     const [type, value] = idHint.includes(":") ? idHint.split(/:(.+)/) : [null, null];
-    if (type === "doi" && value) return { source_id: `doi:${value.toLowerCase()}`, id_type: "doi" };
+    if (type === "doi" && value) return { source_id: `doi:${(extractDoi(value) ?? value).toLowerCase()}`, id_type: "doi" };
     if (type === "pmid" && value) return { source_id: `pmid:${value}`, id_type: "pmid" };
   }
-  const doiMatch = url.match(DOI_RE);
-  if (doiMatch) return { source_id: `doi:${doiMatch[0].toLowerCase()}`, id_type: "doi" };
+  const doi = extractDoi(url);
+  if (doi) return { source_id: `doi:${doi.toLowerCase()}`, id_type: "doi" };
   const pmidMatch = url.match(PMID_URL_RE);
   if (pmidMatch) return { source_id: `pmid:${pmidMatch[1]}`, id_type: "pmid" };
   const hash = crypto.createHash("sha256").update(url).digest("hex").slice(0, 16);
@@ -181,6 +180,11 @@ async function pinClaim(runId: string, text: string, sourceIds: string[], excerp
   const claimId = crypto.createHash("sha256").update(`${runId}|${text}`).digest("hex").slice(0, 16);
   const claims = await loadClaims();
   if (claims[claimId]) {
+    const conflict = claimConflict(claims[claimId], sourceIds, excerpt);
+    if (conflict) {
+      await appendProvenance({ target_type: "claim", target_id: claimId, stage: "evidence_pin", action: "conflict", detail: conflict });
+      throw new Error(`pin_claim conflict for an already-pinned claim ${claimId}: ${conflict}`);
+    }
     await appendProvenance({ target_type: "claim", target_id: claimId, stage: "evidence_pin", action: "already_pinned" });
     return { claim_id: claimId, is_new: false, status: claims[claimId].status };
   }
@@ -238,7 +242,11 @@ async function checkSourceDecay(sourceId: string): Promise<object> {
     source.id_type === "pmid" ? await checkPmidStatus(sourceId.slice("pmid:".length)) :
     await checkUrlReachable(source.url);
 
-  source.status = result.status;
+  const effectiveStatus = resolveSourceStatus(previousStatus, result.status);
+  const detail = effectiveStatus !== result.status
+    ? `${result.detail} (observed ${result.status}; status stays ${effectiveStatus}, retraction is not auto-cleared)`
+    : result.detail;
+  source.status = effectiveStatus;
   source.last_checked_at = new Date().toISOString();
   source.check_count += 1;
   await saveSources(sources);
@@ -247,19 +255,19 @@ async function checkSourceDecay(sourceId: string): Promise<object> {
     target_id: sourceId,
     stage: "decay_check",
     action: "checked",
-    detail: result.detail,
+    detail,
   });
 
   let flaggedClaims: string[] = [];
-  if (previousStatus !== result.status) {
+  if (previousStatus !== effectiveStatus) {
     await appendProvenance({
       target_type: "source",
       target_id: sourceId,
       stage: "decay_check",
       action: "status_changed",
-      detail: `${previousStatus} -> ${result.status}`,
+      detail: `${previousStatus} -> ${effectiveStatus}`,
     });
-    if (result.status === "retracted") {
+    if (effectiveStatus === "retracted") {
       const claims = await loadClaims();
       const affected = claimsToFlagOnRetraction(Object.values(claims), sourceId);
       for (const claim of affected) {
@@ -278,7 +286,7 @@ async function checkSourceDecay(sourceId: string): Promise<object> {
     }
   }
 
-  return { source_id: sourceId, previous_status: previousStatus, status: result.status, detail: result.detail, flagged_claims: flaggedClaims };
+  return { source_id: sourceId, previous_status: previousStatus, status: effectiveStatus, detail, flagged_claims: flaggedClaims };
 }
 
 async function getProvenance(targetType: string, targetId: string): Promise<object> {
@@ -331,7 +339,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "pin_claim",
-      description: "Register a claim (an assertion a script draft makes) against one or more already-registered sources, with the excerpt that backs it. Idempotent per (run_id, text). Fails if any source_id hasn't been registered — an unsourced claim can't be pinned.",
+      description: "Register a claim (an assertion a script draft makes) against one or more already-registered sources, with the excerpt that backs it. Idempotent per (run_id, text): an identical repeat returns the existing claim, but a repeat with different source_ids or excerpt errors with a conflict instead of silently keeping the old ones. Fails if any source_id hasn't been registered — an unsourced claim can't be pinned.",
       inputSchema: {
         type: "object",
         properties: {

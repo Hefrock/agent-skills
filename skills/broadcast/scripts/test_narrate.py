@@ -44,6 +44,34 @@ class HasHedgeMarker(unittest.TestCase):
     def test_no_hedge_marker_present(self):
         self.assertFalse(narrate._has_hedge_marker("The agency approved the new rule today."))
 
+    def test_hedge_word_inside_another_word_is_not_a_hedge(self):
+        # "may" is a hedge; "Mayo", "mayor", "dismay" are not
+        self.assertFalse(narrate._has_hedge_marker("Mayo Clinic reports the device reduces readmissions."))
+        self.assertFalse(narrate._has_hedge_marker("The mayor was dismayed."))
+
+    def test_dropped_hedge_not_masked_by_word_containing_marker(self):
+        source = "The device may reduce readmissions according to the sponsor."
+        narration = "Mayo Clinic reports the device reduces readmissions."
+        result = narrate.check_narration_grounded(narration, ["the device may reduce readmissions"], source)
+        self.assertFalse(result["passed"])
+        self.assertTrue(any("hedging" in r for r in result["reasons"]))
+
+    def test_inflected_hedge_verbs_still_count_as_hedges(self):
+        # the old substring match caught these via "suggest"/"believe"/"estimate"
+        for text in (
+            "The study suggested a benefit.", "Researchers are suggesting a link.", "It was believed to help.",
+            "Costs are estimated at $2M.", "Estimates vary by site.", "Maybe so.", "Perhaps it works.",
+        ):
+            self.assertTrue(narrate._has_hedge_marker(text), text)
+
+    def test_multi_word_hedges_match_across_whitespace_and_newlines(self):
+        self.assertTrue(narrate._has_hedge_marker("Rates are  expected to rise."))
+        self.assertTrue(narrate._has_hedge_marker("Rates are\nexpected to rise."))
+        self.assertTrue(narrate._has_hedge_marker("According\nto the agency, yes."))
+
+    def test_unlikely_still_counts_as_a_hedge(self):
+        self.assertTrue(narrate._has_hedge_marker("The effect is unlikely to persist."))
+
 
 class SpanIsGrounded(unittest.TestCase):
     def test_exact_substring_is_grounded(self):

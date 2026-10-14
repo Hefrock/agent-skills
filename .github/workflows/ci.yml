@@ -331,3 +331,9 @@ jobs:
 
       - name: broadcast — qa_gate_history.py regression suite (real temp dirs, stdlib unittest)
         run: python skills/broadcast/scripts/test_qa_gate_history.py
+
+      - name: broadcast — archive.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_archive.py
+
+      - name: broadcast — weekly_grounding.py regression suite (stdlib unittest)
+        run: python skills/broadcast/scripts/test_weekly_grounding.py

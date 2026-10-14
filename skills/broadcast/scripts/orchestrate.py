@@ -54,6 +54,7 @@ import script_gen  # noqa: E402
 import narrate  # noqa: E402
 import qa_gate  # noqa: E402
 import audio_synth  # noqa: E402
+import archive  # noqa: E402
 
 DEFAULT_MAX_RESULTS_PER_SOURCE = 10
 # 6s (~10 calls/minute) is deliberately conservative, not a guess: a 2s
@@ -175,6 +176,7 @@ def run_episode(
     synth_cache_dir: str | None = None,
     top_three_count: int = rank.DEFAULT_TOP_THREE_COUNT,
     quick_hits_count: int = rank.DEFAULT_QUICK_HITS_COUNT,
+    text_only: bool = False,
 ) -> dict:
     """The full pipeline for one day's episode, wired end to end: ingest
     -> embed -> rank -> pin evidence -> generate script -> narrate (best-
@@ -333,7 +335,22 @@ def run_episode(
     live-motivated need: this pipeline's default-sized episode (10
     selected stories, 14 synth calls) has twice failed to complete in one
     pass against Gemini TTS's free-tier rate limit — a smaller episode is
-    the free lever to pull before reaching for paid quota."""
+    the free lever to pull before reaching for paid quota.
+
+    text_only (default False): produce the day's text archive and stop —
+    no narration and no audio synthesis, so the only Gemini calls are the
+    per-item embeddings. Ingest, ranking, evidence pinning, script
+    generation and the QA gate all still run (the gate's invariants and the
+    claim_ids the archive carries depend on them); narration_result is None
+    and episode_audio is None. This is the daily run in the daily-text /
+    weekly-audio design: audio is a weekly step built from these archives.
+
+    Every non-dry run also returns archive_entries (archive.py — the
+    source's own headline/summary, never narrated text) and call_counts:
+    LOGICAL Gemini calls this run made — embed, narrate, synth, plus
+    synth_cache_hits that avoided a call. These are not HTTP attempts: a
+    429 retry inside gemini_retry-backed calls is not counted here, so they
+    are a lower bound on quota actually consumed."""
     ingest_result = ingest_all(registry, max_results_per_source, fetch_fn)
 
     if dry_run:
@@ -345,13 +362,13 @@ def run_episode(
             "ingest_failed": ingest_result["failed"],
             "items_ingested": items_ingested,
             "embed_calls_estimate": items_ingested,
-            "narration_calls_estimate_max": max_selected_stories,
+            "narration_calls_estimate_max": 0 if text_only else max_selected_stories,
             # +4: intro/disclosure/quick_hits_transition/outro — the fixed
             # connective segments every real script can carry (quick_hits_
             # transition is skipped when there are zero quick hits, so this
             # over-counts by at most 1 in that edge case; a small, stated,
             # deliberate overestimate, not a precision claim).
-            "synth_calls_estimate_max": max_selected_stories + 4,
+            "synth_calls_estimate_max": 0 if text_only else max_selected_stories + 4,
         }
 
     embed_result = embed_items(ingest_result["items"], api_key, embed_fn)
@@ -367,7 +384,7 @@ def run_episode(
     script = script_gen.generate_script(rank_result, pinned, registry, run_date, show_name=show_name)
 
     narration_result = None
-    if enable_narration:
+    if enable_narration and not text_only:
         narration_result = narrate.narrate_script(
             script, api_key, narrate_fn=narrate_fn, success_threshold=narration_success_threshold, host_style=host_style,
         )
@@ -377,7 +394,9 @@ def run_episode(
 
     episode_audio = None
     synth_failed = []
-    if qa_result["passed"]:
+    synth_calls = 0
+    synth_cache_hits = 0
+    if qa_result["passed"] and not text_only:
         segment_audio = []
         made_a_real_synth_call = False
         for segment in script["segments"]:
@@ -388,9 +407,11 @@ def run_episode(
             cached = audio_synth.load_cached_segment(synth_cache_dir, cache_text) if synth_cache_dir else None
             if cached is not None:
                 segment_audio.append(cached)
+                synth_cache_hits += 1
                 continue
             if made_a_real_synth_call and synth_delay_seconds > 0:
                 time.sleep(synth_delay_seconds)
+            synth_calls += 1
             try:
                 wav = synth_dialogue_fn(turns, api_key) if is_dialogue else synth_fn(segment["text"], api_key)
                 segment_audio.append(wav)
@@ -405,8 +426,19 @@ def run_episode(
                 script, segment_audio, normalize=normalize_audio, inter_segment_silence_ms=inter_segment_silence_ms,
             )
 
+    archive_entries = archive.build_archive_entries(rank_result, pinned, registry, run_date)
+
     return {
         "run_date": run_date,
+        "text_only": text_only,
+        "archive_entries": archive_entries,
+        "call_counts": {
+            # embed_items() makes exactly one embed_fn call per ingested item
+            "embed": len(ingest_result["items"]),
+            "narrate": narration_result["narration_attempted"] if narration_result else 0,
+            "synth": synth_calls,
+            "synth_cache_hits": synth_cache_hits,
+        },
         "ingest_failed": ingest_result["failed"],
         "embed_failed": embed_result["failed"],
         "rank_result": rank_result,
@@ -443,6 +475,9 @@ def _report_json(result: dict) -> dict:
     narration = result["narration_result"]
     return {
         "run_date": result["run_date"],
+        "text_only": result["text_only"],
+        "call_counts": result["call_counts"],
+        "archive_entry_count": len(result["archive_entries"]),
         "ingest_failed": result["ingest_failed"],
         "embed_failed": result["embed_failed"],
         "top_three_count": len(result["rank_result"]["top_three"]),
@@ -512,6 +547,12 @@ def main() -> int:
         help=f"How many additional stories to select for quick hits (default: {rank.DEFAULT_QUICK_HITS_COUNT}). See --top-three-count.",
     )
     parser.add_argument(
+        "--text-only", action="store_true",
+        help="Produce the day's text archive only: no narration and no audio synthesis, so the only Gemini calls are "
+        "the per-item embeddings. Ingest, ranking, evidence pinning, script generation and the QA gate still run. "
+        "The archive is written to <data-dir>/archive/<date>.{json,md} on every real run, with or without this flag.",
+    )
+    parser.add_argument(
         "--host-style", choices=["single", "dialogue"], default="single",
         help="'single' (default): today's one-narrator episode, unchanged. 'dialogue': every successfully-narrated story "
         "segment gets a second, Host-B interjection alongside Host A's grounded narration, synthesized as one two-voice "
@@ -544,6 +585,7 @@ def main() -> int:
             args.date, registry, store, None, api_key,
             max_results_per_source=args.max_results_per_source, dry_run=True,
             top_three_count=args.top_three_count, quick_hits_count=args.quick_hits_count,
+            text_only=args.text_only,
         )
         print(json.dumps(result, indent=2))
         return 0
@@ -558,7 +600,7 @@ def main() -> int:
             normalize_audio=args.normalize_audio, inter_segment_silence_ms=args.inter_segment_silence_ms,
             synth_cache_dir=synth_cache_dir,
             top_three_count=args.top_three_count, quick_hits_count=args.quick_hits_count,
-            host_style=args.host_style,
+            host_style=args.host_style, text_only=args.text_only,
         )
 
     dedup_store.save_store(result["store"], store_path)
@@ -577,11 +619,19 @@ def main() -> int:
     with open(os.path.join(episode_dir, "script.json"), "w", encoding="utf-8") as f:
         json.dump(result["script"], f, indent=2)
 
+    archive.write_archive(
+        result["archive_entries"],
+        archive.render_markdown(result["archive_entries"], args.date, show_name=result["script"]["show_name"]),
+        os.path.join(args.data_dir, "archive"), args.date,
+    )
+
     if result["episode_audio"] is not None:
         with open(os.path.join(episode_dir, "episode.wav"), "wb") as f:
             f.write(result["episode_audio"]["full_episode_wav"])
 
     print(json.dumps(report, indent=2))
+    if args.text_only:
+        return 0 if report["qa_passed"] else 1
     return 0 if report["episode_produced"] else 1
 
 

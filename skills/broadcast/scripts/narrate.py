@@ -107,6 +107,7 @@ stdlib only, matching this repo's other reference tooling."""
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -173,8 +174,16 @@ HEDGE_MARKERS = [
     "may", "might", "could", "reportedly", "according to", "is expected",
     "are expected", "suggests", "suggest", "believes", "believe",
     "preliminary", "some experts", "potentially", "likely", "unclear",
-    "unconfirmed", "estimated",
+    "unconfirmed", "estimated", "unlikely",
+    # inflected/related forms the old substring match caught via "suggest",
+    # "believe", "estimate"; a word-boundary match needs them listed
+    "suggested", "suggesting", "believed", "believing", "estimate", "estimates",
+    "maybe", "perhaps",
 ]
+# Word-boundary match, not substring: bare "may" must not fire on "Mayo",
+# "mayor", or "dismay" (a dropped hedge was passing as preserved because the
+# narration happened to contain such a word).
+_HEDGE_RE = re.compile(r"\b(?:" + "|".join(r"\s+".join(re.escape(w) for w in m.split()) for m in HEDGE_MARKERS) + r")\b")
 
 
 def _normalize_for_span_match(text: str) -> str:
@@ -186,8 +195,7 @@ def _span_is_grounded(span: str, source_text: str) -> bool:
 
 
 def _has_hedge_marker(text: str) -> bool:
-    lowered = text.lower()
-    return any(marker in lowered for marker in HEDGE_MARKERS)
+    return _HEDGE_RE.search(text.lower()) is not None
 
 
 def check_narration_grounded(

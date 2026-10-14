@@ -119,6 +119,9 @@ r = await tool("pin_claim", { run_id: "run1", text: "X reduces Y by 40%", source
 d = parse(r);
 check("re-pinning the same (run_id, text) is idempotent", d.is_new === false && d.claim_id === claimId);
 
+r = await tool("pin_claim", { run_id: "run1", text: "X reduces Y by 40%", source_ids: [doiSourceId], excerpt: "A DIFFERENT excerpt." });
+check("pin_claim repeat with a different excerpt errors instead of silently keeping the old one", r.result?.isError === true && /conflict/i.test(JSON.stringify(parse(r))));
+
 r = await tool("pin_claim", { run_id: "run1", text: "Z improves W", source_ids: [doiSourceId, pmidSourceId], excerpt: "..." });
 d = parse(r);
 check("a claim can cite multiple sources", d.is_new === true);
