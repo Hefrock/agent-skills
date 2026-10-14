@@ -18,7 +18,7 @@
     "industry_press": {
       "authority_floor": 0.4,
       "half_life_days": 3,
-      "note": "STAT News, Fierce Healthcare, Healthcare IT News. Same treatment as preprint — timely but not authoritative on its own; a claim from here should usually be corroborated, not cited standalone."
+      "note": "STAT News, Fierce Healthcare, HIT Consultant. Same treatment as preprint — timely but not authoritative on its own; a claim from here should usually be corroborated, not cited standalone."
     }
   },
   "sources": [
