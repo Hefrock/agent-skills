@@ -25,6 +25,7 @@ import array
 import hashlib
 import importlib.util
 import io
+import json
 import os
 import sys
 import tempfile
@@ -706,6 +707,124 @@ class ReportJson(RunEpisodeWiring):
         self.assertEqual(report["source_utilization"], orchestrate.rank.summarize_source_utilization(result["rank_result"]))
 
 
+class TextOnlyAndCallCounts(RunEpisodeWiring):
+    """--text-only: the daily run that produces the archive and spends no
+    narration or TTS quota (only the per-item embeddings). Plus call_counts,
+    which exist because the Gemini key's real limits are unmeasured: every
+    prior quota failure was diagnosed without knowing how many calls a run
+    actually made."""
+
+    def _forbidden(self, *args, **kwargs):
+        raise AssertionError("text-only mode must not call narration or synthesis")
+
+    def _run(self, **kwargs):
+        client = FakeEvidenceClient()
+        defaults = dict(
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._fake_embed_fn,
+            narrate_fn=self._fake_narrate_fn, synth_fn=self._fake_synth_fn,
+        )
+        defaults.update(kwargs)
+        return orchestrate.run_episode("2026-09-02", self.registry, self.store, client, "fake-api-key", **defaults)
+
+    def test_text_only_never_calls_narrate_or_synth_and_produces_no_audio(self):
+        result = self._run(text_only=True, narrate_fn=self._forbidden, synth_fn=self._forbidden, synth_dialogue_fn=self._forbidden)
+        self.assertIsNone(result["episode_audio"])
+        self.assertIsNone(result["narration_result"])
+        self.assertEqual(result["synth_failed"], [])
+        self.assertTrue(result["qa_result"]["passed"], result["qa_result"]["checks"])
+
+    def test_text_only_still_pins_evidence_and_builds_the_archive(self):
+        result = self._run(text_only=True)
+        self.assertGreater(len(result["archive_entries"]), 0)
+        pinned_claims = {e["claim_id"] for e in result["pinned"]["pinned"]}
+        self.assertEqual({e["claim_id"] for e in result["archive_entries"]}, pinned_claims)
+
+    def test_archive_text_is_the_ingested_summary_even_when_narration_ran(self):
+        result = self._run()
+        self.assertIsNotNone(result["narration_result"])
+        for entry in result["archive_entries"]:
+            self.assertEqual(entry["summary"], "A real summary.")
+
+    def test_call_counts_for_a_full_run(self):
+        result = self._run()
+        counts = result["call_counts"]
+        self.assertEqual(counts["embed"], 2)  # one per ingested item (pubmed + stat_news)
+        self.assertEqual(counts["narrate"], result["narration_result"]["narration_attempted"])
+        self.assertEqual(counts["synth"], len(result["script"]["segments"]))
+        self.assertEqual(counts["synth_cache_hits"], 0)
+
+    def test_call_counts_for_text_only_run_have_no_narration_or_tts(self):
+        counts = self._run(text_only=True)["call_counts"]
+        self.assertEqual(counts, {"embed": 2, "narrate": 0, "synth": 0, "synth_cache_hits": 0})
+
+    def test_call_counts_separate_cache_hits_from_real_synth_calls(self):
+        with tempfile.TemporaryDirectory() as cache_dir:
+            first = self._run(synth_cache_dir=cache_dir)["call_counts"]
+            self.store = {"entries": []}
+            second = self._run(synth_cache_dir=cache_dir)["call_counts"]
+        self.assertEqual(first["synth_cache_hits"], 0)
+        self.assertEqual(second["synth"], 0)
+        self.assertEqual(second["synth_cache_hits"], first["synth"])
+
+    def test_dry_run_text_only_estimates_zero_narration_and_tts(self):
+        result = orchestrate.run_episode(
+            "2026-09-02", self.registry, self.store, FakeEvidenceClient(), "fake-api-key",
+            fetch_fn=self._fake_fetch_fn, embed_fn=self._forbidden, narrate_fn=self._forbidden, synth_fn=self._forbidden,
+            dry_run=True, text_only=True,
+        )
+        self.assertEqual(result["embed_calls_estimate"], 2)
+        self.assertEqual(result["narration_calls_estimate_max"], 0)
+        self.assertEqual(result["synth_calls_estimate_max"], 0)
+
+    def test_cli_text_only_run_writes_archive_and_report_but_no_audio(self):
+        class ClientCtx(FakeEvidenceClient):
+            def __init__(self, store_path=None):
+                super().__init__()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        items = [
+            make_item("pubmed", "https://doi.org/10.1000/abc1", "FHIR interoperability advances clinical decision support"),
+            make_item("stat_news", "https://statnews.com/x", "Hospital adopts new scheduling software"),
+        ]
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(sys, "argv", ["orchestrate.py", "--data-dir", tmp, "--date", "2026-09-02", "--text-only"]), \
+             mock.patch.dict(os.environ, {"GEMINI_API_KEY": "k"}, clear=True), \
+             mock.patch.object(orchestrate, "ingest_all", return_value={"items": items, "failed": []}), \
+             mock.patch.object(orchestrate, "embed_items", side_effect=lambda its, key, fn=None: {
+                 "items": its, "embeddings": [self._fake_embed_fn(i["title"], key) for i in its], "failed": []}), \
+             mock.patch.object(orchestrate.evidence_pinning_client, "EvidencePinningClient", ClientCtx), \
+             mock.patch.object(sys, "stdout", stdout):
+            exit_code = orchestrate.main()
+            archive_json = os.path.join(tmp, "archive", "2026-09-02.json")
+            archive_md = os.path.join(tmp, "archive", "2026-09-02.md")
+            self.assertTrue(os.path.exists(archive_json))
+            self.assertTrue(os.path.exists(archive_md))
+            with open(archive_json, encoding="utf-8") as f:
+                entries = json.load(f)
+            with open(os.path.join(tmp, "episodes", "2026-09-02", "report.json"), encoding="utf-8") as f:
+                report = json.load(f)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "episodes", "2026-09-02", "episode.wav")))
+        self.assertEqual(exit_code, 0)
+        self.assertGreater(len(entries), 0)
+        self.assertTrue(report["text_only"])
+        self.assertEqual(report["call_counts"]["narrate"], 0)
+        self.assertEqual(report["call_counts"]["synth"], 0)
+
+    def test_report_json_carries_call_counts_text_only_and_archive_count(self):
+        result = self._run(text_only=True)
+        report = orchestrate._report_json(result)
+        self.assertEqual(report["call_counts"], result["call_counts"])
+        self.assertTrue(report["text_only"])
+        self.assertEqual(report["archive_entry_count"], len(result["archive_entries"]))
+        self.assertFalse(report["episode_produced"])
+
+
 class SynthCacheWiring(RunEpisodeWiring):
     """synth_cache_dir's real point: a retry after a partial TTS failure
     should only pay for what's still actually missing, not redo
@@ -869,6 +988,12 @@ class MainApiKeyGate(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertIn("GEMINI_API_KEY", stderr)
         fake_run_episode.assert_not_called()
+
+    def test_text_only_flag_is_passed_through_to_run_episode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, _, fake_run_episode = self._run_main(["--data-dir", tmp, "--dry-run", "--text-only"], gemini_api_key="k")
+        # dry-run returns before text_only matters; the flag must still parse
+        fake_run_episode.assert_called_once()
 
     def test_dry_run_also_works_fine_when_a_key_is_actually_present(self):
         with tempfile.TemporaryDirectory() as tmp:
