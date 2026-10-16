@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
-    "version": "0.27.0"
+    "version": "0.28.0"
   },
   "plugins": [
     {
@@ -77,6 +77,18 @@
       "strict": false,
       "skills": [
         "./issue-reconciler"
+      ],
+      "homepage": "https://github.com/Hefrock/agent-skills"
+    },
+    {
+      "name": "review-and-plan",
+      "description": "A grounded way to decide what to do next. Quick mode runs a 7-step checklist (clarify, MECE options, grounded premortem, independent review, verify the mechanism, written stop signals, build-only-if-needed-twice) before a design or next-step recommendation. Review mode wraps it in a sitrep, gap analysis and sprint plan for a whole project, repo, notes vault or skill collection. Instructions only, no scripts; the independent-review step uses Claude Code subagents.",
+      "author": { "name": "Hefrock" },
+      "category": "agent-design",
+      "source": "./skills",
+      "strict": false,
+      "skills": [
+        "./review-and-plan"
       ],
       "homepage": "https://github.com/Hefrock/agent-skills"
     },

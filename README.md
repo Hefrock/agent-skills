@@ -21,6 +21,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 | [`agent-redteam`](./skills/agent-redteam) | Generates adversarial test cases to check that an agent fails safely — refuses, hedges, or degrades gracefully — instead of confidently getting it wrong. Pairs with `agent-eval` for scoring. |
 | [`repo-pincer`](./skills/repo-pincer) | Reverse-engineers a codebase: reads what the docs claim, reads what the code actually does, and reports exactly where they disagree. |
 | [`issue-reconciler`](./skills/issue-reconciler) | Finds GitHub issues that are actually already resolved but never got closed — a merged PR that said "Closes #N" but didn't take effect, or a skill that quietly got built with nobody linking the PR. Proposes closures with evidence; never closes anything on its own. |
+| [`review-and-plan`](./skills/review-and-plan) | A grounded way to decide what to do next: a 7-step checklist for one decision (clarify, MECE, premortem from real evidence, independent review, verify the mechanism, stop signals, build only if needed twice), or a full sitrep, gap analysis and sprint plan for a whole project. Instructions only. |
 
 ### Privacy — catch leaks before they happen
 
@@ -103,6 +104,7 @@ agent-skills/
 │   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 76-test suite
 │   ├── repo-pincer/             # codebase reverse-engineering — claims vs. reality reconciliation, scripts/check_structural_claims.py + track_findings.py, test suite
 │   ├── issue-reconciler/        # GitHub issues vs. reality reconciliation — scripts/find_closing_references.py, test suite
+│   ├── review-and-plan/         # checklist + sitrep/gap analysis/sprint plan — instructions only, no scripts
 │   ├── privacy-linter/          # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite
 │   ├── privacy-threat-oracle/   # rule-based compartment/adversary decision engine — scripts/oracle.py, test suite
 │   ├── style-obfuscator/        # stylometric fingerprint + reference-corpus similarity — scripts/fingerprint.py, test suite
