@@ -58,7 +58,7 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/calibrate_judge.py judge_results.jsonl human_scores.jsonl --update-log ${CLAUDE_PLUGIN_ROOT}/references/llm-judge-prompt.md
    ```
-   `human_scores.jsonl` only needs the 5-10 IDs you actually hand-scored (same JSONL schema as any `score_eval.py` results file) — it compares whichever IDs appear in both files. See [`examples/README.md`](./examples/README.md)'s calibration example for a worked case where this catches a judge fooled by confident, verbose wrong answers. `--update-log` appends a row to `${CLAUDE_PLUGIN_ROOT}/references/llm-judge-prompt.md`'s calibration table automatically, replacing the "not yet calibrated" placeholder on the first real run — don't edit that table by hand.
+   `human_scores.jsonl` only needs the 5-10 IDs you actually hand-scored (same JSONL schema as any `score_eval.py` results file) — it compares whichever IDs appear in both files. See [`examples/README.md`](./examples/README.md)'s calibration example for a worked case where this catches a judge fooled by confident, verbose wrong answers. `--update-log` appends a row to `${CLAUDE_PLUGIN_ROOT}/references/llm-judge-prompt.md`'s calibration table automatically, replacing the "not yet calibrated" placeholder on the first real run — don't edit that table by hand. Add `--action "what you changed"` to replace the auto-generated "Action taken" text with your own note; `|` and newlines in it are escaped, so free text is safe.
 
 6. **Aggregate and report using `${CLAUDE_PLUGIN_ROOT}/scripts/score_eval.py`.** Don't manually tally pass rates — run the script against the results file:
    ```bash
