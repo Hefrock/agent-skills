@@ -1,0 +1,64 @@
+Caveat first: I only have the file list, the README claim and ci.yml. I haven't seen any src or test code, so this is a sitrep on what the repo structure and CI show, not on code quality. Anything I say about the code is a hypothesis to check.
+
+## Sitrep
+
+What I can see:
+- A small Python CLI with a src layout: `cli`, `store` and `render` modules in `src/tasktrack/`.
+- Three test files, one per module: `test_cli.py`, `test_store.py`, `test_render.py`.
+- `pyproject.toml`, `docs/usage.md` and a README.
+- One CI workflow with one job, `lint`, which runs `ruff check .` and nothing else.
+
+What the README claims: "92% test coverage, 140 tests, CI on every push."
+
+Claim check:
+- "CI on every push": I can't confirm this. I haven't seen the workflow's `on:` triggers, only that a job exists.
+- "140 tests": unverified. CI never runs the tests, so nothing in the repo I can see produces or checks this number.
+- "92% coverage": unverified, and the same applies. CI doesn't measure coverage. The figure could be stale, measured once locally, or wrong.
+- The README's CI claim reads as stronger than what CI does. CI only lints. It doesn't test, measure coverage, type-check or build.
+
+## Gap analysis
+
+Confirmed gaps, from ci.yml:
+1. CI never runs the test suite. A broken commit that passes ruff would merge green.
+2. No coverage measurement or threshold, so the 92% figure can't be enforced or kept honest.
+3. No Python version matrix. I haven't seen `pyproject.toml`, so I don't know which versions are supported.
+4. Possibly no formatter check (`ruff format --check`), type checking or build check. Only `ruff check .` is run.
+
+Probable gaps, to verify before acting:
+5. The README numbers may be stale or unsupported. Check by running the tests and coverage locally.
+6. Module-to-test mapping looks good, but I can't tell whether the tests are meaningful or how the 92% is distributed.
+7. There is no CHANGELOG, LICENSE or release workflow in the file list. These may not matter for a small personal CLI.
+8. `docs/usage.md` may have drifted from the actual CLI behavior. I haven't read it.
+
+Unknown, not assessed: code correctness, test quality, `pyproject.toml` contents (dependencies, entry point, supported Pythons), the workflow triggers, and whether any tests currently fail.
+
+## Sprint plan
+
+Order matters: verify before changing anything.
+
+**Step 0, about 30 minutes: establish ground truth.**
+- Install the package with its dev dependencies, then run `pytest -q` and `pytest --cov`.
+- Record the real test count and coverage figure, and note any failures.
+- Read `pyproject.toml` for the supported Python versions and the test dependencies.
+- Exit criterion: you know whether the README numbers are true today.
+
+**Step 1, highest value: make CI run the tests.**
+- Add a `test` job that installs the package and runs `pytest`, on `push` and `pull_request`.
+- Run it on the Python versions that `pyproject.toml` declares.
+- Exit criterion: a deliberately failing test turns CI red.
+
+**Step 2: make the coverage claim enforceable.**
+- Add `--cov` with `--cov-fail-under` set a little below the measured figure.
+- Fix the README to the verified numbers, or replace the hard-coded numbers with a coverage badge.
+
+**Step 3, optional: tighten the checks.**
+- Add `ruff format --check`, and a type checker if the code is typed.
+- Add a smoke test that builds the package and runs the CLI entry point with `--help`.
+
+**Step 4, optional: docs and hygiene.**
+- Check `docs/usage.md` against the real CLI output.
+- Add a LICENSE or CHANGELOG only if the project will be shared.
+
+Out of scope for now: refactoring `store`, `cli` or `render`, and any feature work. I have no evidence yet that the code needs changes, so I'd hold that until Step 0 shows what is broken.
+
+The biggest risk is that Step 0 shows tests failing or coverage well below 92%. In that case, fixing those comes before the CI work in Step 1. If you want a deeper review of the code, share the src and test files and I'll extend this.

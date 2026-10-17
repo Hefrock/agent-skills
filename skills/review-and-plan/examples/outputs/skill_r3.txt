@@ -1,0 +1,30 @@
+Not yet. Write it down and wait for a second occurrence.
+
+Coverage: the only evidence I have is your usage log, which has one relevant entry: 2026-10-02, "converted a CSV to a markdown table by hand". No other entry mentions CSVs or tables. I haven't looked at anything else, such as your repo, your other skills, or whether a tool already does this.
+
+This is quick mode: one decision, one "should I build this." The checklist applies as follows.
+
+1. Clarify: you want a skill that converts CSV to markdown tables. The scope is clear, so I have no question for you.
+
+2. Options (MECE):
+   - A. Build the skill now.
+   - B. Log the need and build nothing until it recurs.
+   - C. Skip the skill entirely and rely on what Claude does by default or on an existing tool.
+   B and C can combine: log it, and if it recurs, check C before building A.
+
+3. Premortem on option A, with only risks I can trace to the log or the skill's own text:
+   - The need hasn't shown up twice. One occurrence is a single data point, so I can't tell a recurring need from a one-off. (Source: the usage log has exactly one entry.)
+   - The skill may duplicate what Claude already does without one. I can't confirm this from the material I have. The log says you did the conversion by hand, not that Claude failed at it. I'm flagging this as something to check, not as an established risk.
+   I'm dropping other risks I could invent, such as edge cases with quoted commas or maintenance burden, because nothing I read supports them.
+
+4. Independent review: skipped. I have no subagents here, so this is a solo pass and weaker for it. The decision is also cheap and reversible, so a fresh reviewer wouldn't change much.
+
+5. Verify the mechanism: I haven't verified anything. I did not check whether a plain "convert this CSV to a markdown table" prompt already works. That check is cheap, and you should run it before building anything.
+
+6. Stop signal: there is no sweep or repair loop here, so I don't need one.
+
+7. Needed twice: this is the deciding step. You have one occurrence, so the rule says don't build anything permanent yet.
+
+Recommendation: option B. Keep the 2026-10-02 entry as the first logged instance. If a second CSV-to-table conversion shows up, reopen the question. At that point first try a plain prompt, and only build the skill if that fails or is inconsistent. Also, the work you did by hand once is small and well understood, so waiting costs you very little.
+
+I haven't built anything or changed any files.

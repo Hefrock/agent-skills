@@ -1,0 +1,5 @@
+'fix null check in parser' is better.
+
+It says what changed and where. Someone scanning the log can tell from it that the commit touches the parser and deals with a null check. 'fix bug' could describe any commit, so it tells a future reader nothing and makes `git log` and `git blame` harder to use.
+
+Going by the material, the commit adds a null check in parser.py. A more precise wording would be 'add null check in parser' or 'fix crash on null input in parser', if that is what the check prevents. I only know the change is a one-line null check, so I can't say whether it fixes a crash or something else. Your suggested message is accurate to what I can see.

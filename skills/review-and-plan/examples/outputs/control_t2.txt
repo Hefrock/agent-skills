@@ -1,0 +1,15 @@
+Sitrep of open PRs (stale snapshot, not live state)
+
+Caveat first: the only PR data I have is a `gh pr list` output captured 2026-10-12. Today is 2026-10-16, so it is 4 days old. I can't run commands here, so I can't refresh it. Anything below may have changed since then. PRs may have been merged, closed, or updated, and new ones may have been opened.
+
+As of 2026-10-12, three PRs were open:
+- #41 "Add retry logic" (open)
+- #42 "Fix flaky test" (open)
+- #43 "Bump deps" (open)
+
+What I can't tell you from this data: review status, CI status, merge conflicts, authors, age, or whether any are blocked. The list gave only titles and open state, so I won't guess at those.
+
+To get a current sitrep, run this and paste the output:
+`gh pr list --state open --json number,title,author,createdAt,updatedAt,reviewDecision,statusCheckRollup,mergeable`
+
+I can then give you a real status per PR.

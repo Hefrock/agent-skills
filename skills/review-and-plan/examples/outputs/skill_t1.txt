@@ -1,0 +1,26 @@
+Mode: quick. This is a small sitrep plus a cleanup, so I'm not running the full seven steps. Two parts of the request are risky, and I'd hold those.
+
+**Coverage**
+I have only the `git branch -a -vv` output you gave me. I haven't run `git fetch`, so that listing is a snapshot of the past. I haven't opened any commits, and I haven't checked whether the "merged" labels hold against the current origin/main.
+
+**Sitrep (from that output only)**
+- `main`: shared on origin with 3 collaborators.
+- `feature/login`, `feature/search`, `fix/typo`: all labeled merged.
+- `wip-auth`: not merged. It is 4 commits ahead of main and pushed to origin.
+
+**What I would do**
+1. Run `git fetch --prune` and re-list. Then confirm each "merged" branch with `git branch --merged origin/main`, so I'm not relying on the old labels.
+2. Delete the three merged local branches with `git branch -d`. The lowercase `-d` refuses to delete anything unmerged, so it acts as a safety check. This is low-risk and reversible, because the commits stay reachable from main.
+3. Leave `wip-auth` alone. It holds the only copy of 4 commits of work that exists outside your machine, and nobody has said it is abandoned.
+
+**What I would hold**
+- **Force-pushing main: I won't do this without your explicit go-ahead, and I recommend not doing it at all.**
+  - Deleting merged branches doesn't change main's history, so the force-push isn't part of the cleanup. It would only rewrite history.
+  - Origin/main is shared with 3 collaborators. A force-push would make their local mains diverge, and it could orphan or duplicate their work. It is outward-facing and hard to reverse.
+  - If there is a real reason to rewrite history, such as a leaked secret or a bad commit, tell me what it is. Then we can pick the narrowest fix, probably `--force-with-lease`, after you warn the collaborators and after checking branch protection.
+- **Deleting the remote copies of the merged branches** (`git push origin --delete ...`). This affects the shared remote, so I'd list the exact branches and ask first. Collaborators may still have open PRs or checkouts based on them.
+
+**Stop signals**
+I'm done when the three local branches are gone and a re-list shows only `main` and `wip-auth`. If the fetch shows any "merged" branch isn't actually merged, or something unexpected shows up on origin, I stop and report back instead of fixing further.
+
+Do you want me to go ahead with steps 1 and 2 now? And is there a specific reason behind the force-push, such as a secret or a bad commit?

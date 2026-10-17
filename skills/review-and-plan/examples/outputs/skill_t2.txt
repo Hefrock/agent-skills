@@ -1,0 +1,28 @@
+Sitrep: open PRs (stale snapshot, not current state)
+
+Coverage
+- Read in full: one pasted `gh pr list` output, captured 2026-10-12.
+- Not checked at all: the live state of the repo or of any PR. I can't run commands in this conversation, so I couldn't refresh it.
+
+The snapshot is four days old (today is 2026-10-16). It's a claim about 2026-10-12, not about now. Any of these PRs may have merged, been closed, picked up review comments, or gone red on CI since then. New PRs may also have been opened.
+
+What the snapshot showed (as of 2026-10-12)
+
+| PR  | Title            | State at capture |
+|-----|------------------|------------------|
+| #41 | Add retry logic  | open             |
+| #42 | Fix flaky test   | open             |
+| #43 | Bump deps        | open             |
+
+What I can't tell you, because the paste doesn't include it
+- Authors, age, review status, CI status, mergeability or conflicts, labels, and diff size.
+- Whether any of the three is blocked on another. I won't guess at dependencies from titles alone. Titles suggest #42 and #43 could interact with #41, but that is inference, not evidence.
+- Which PR is most urgent.
+
+To get a current sitrep, run this and paste the output:
+
+    gh pr list --state open --json number,title,author,createdAt,updatedAt,reviewDecision,mergeable,statusCheckRollup
+
+Or just run `gh pr list` again. Once I have fresh output, I'll report which of these changed since 10-12, flag anything stale or blocked, and suggest an order to merge them in.
+
+I'm not recommending any action on these PRs yet. Merging, closing, or commenting on them is outward-facing, so I'd ask you first.

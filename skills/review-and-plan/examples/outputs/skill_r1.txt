@@ -1,0 +1,92 @@
+Mode: Review (you asked for a sitrep, gap analysis and sprint plan on the whole repo).
+
+## Coverage
+
+- Read in full: `.github/workflows/ci.yml` (as given to me).
+- Read in part: `README.md`. I only have the one quoted line: "92% test coverage, 140 tests, CI on every push."
+- Listed only (names, no contents): `pyproject.toml`, `src/tasktrack/{__init__,cli,store,render}.py`, `tests/test_cli.py`, `tests/test_store.py`, `tests/test_render.py`, `docs/usage.md`.
+- Not at all: any source or test content, any git history, any remote state, any CI run results. I have no tools in this session, so I could not run `git fetch`, run the tests, or open anything else. Everything below is limited by that.
+
+## Sitrep
+
+What exists (from `git ls-files`):
+- A small Python package `tasktrack` with four modules: `__init__`, `cli`, `store`, `render`.
+- Three test files that map one to one onto `cli`, `store` and `render`.
+- `docs/usage.md`, a README, `pyproject.toml`, and one CI workflow.
+
+What is moving: I can't say. I have no commit history or open PRs, so I can't report activity.
+
+Where two parts of the repo disagree (both sides reported):
+- README says "92% test coverage, 140 tests, CI on every push."
+- `ci.yml` has a single job named `lint` that runs `ruff check .` and nothing else. It does not run pytest and does not measure coverage.
+- So the repo as given shows CI on push (if the workflow triggers on push, which I wasn't told) for linting only. Nothing in the files I saw runs the tests or produces the 92% figure.
+- The README claim may still be true. The number could come from local runs or from another config I haven't seen. I can neither confirm nor refute it.
+
+## Gap analysis
+
+Gaps in the target:
+
+| Gap | Evidence | Source of evidence |
+|---|---|---|
+| CI does not run tests | The only job is `lint` running `ruff check .` | `ci.yml` in full (observed) |
+| CI does not measure coverage | No coverage step in the workflow | `ci.yml` in full (observed) |
+| README's "92% coverage, 140 tests" has no visible backing | Nothing in the workflow produces or checks it | README line plus `ci.yml` (observed) |
+| README's "CI on every push" is only partly supported | The job exists, but it covers lint only. The `on:` trigger wasn't shown to me. | `ci.yml` (observed, as relayed) |
+
+Gaps in my own coverage (not claims about the repo):
+
+| Gap | Evidence |
+|---|---|
+| Whether the 140 tests exist and pass | I haven't opened or run any test file |
+| Whether 92% is accurate, or where it is configured | `pyproject.toml` might have a coverage or pytest config. I only saw the file name. |
+| Whether `docs/usage.md` matches the CLI | I haven't read either |
+| Whether ruff is configured, and whether it passes | I haven't read `pyproject.toml` |
+| Anything about code quality | I haven't read any source |
+
+I'm not claiming the tests are missing or broken. The tests probably exist, since three test files are tracked. The gap is that nothing in CI exercises them.
+
+## Sprint plan
+
+Ordered with read-only work first.
+
+1. **Read the unread files and run the tests locally (read-only).** Open `pyproject.toml`, the README and `ci.yml` trigger block, then run `pytest --cov` locally.
+   Done when: I can state the real test count and coverage figure, and compare them with the README's 140 and 92%.
+2. **Check the README claim against that result.**
+   Done when: each README number is marked confirmed, stale or unverifiable. If the numbers are off, report the correction and don't hide it.
+3. **Check the CI trigger and last run.** Fetch or re-read the remote state before describing it. Note whether the `lint` job passes on `main`.
+   Done when: I can say what CI actually did on the latest commit. I won't describe the remote from memory.
+4. **Propose a CI change (needs your approval before I push anything).** Add a `test` job that runs pytest with coverage, and optionally a coverage threshold.
+   Done when: you've approved the diff. Pushing it is outward-facing, so I'll ask first.
+5. **Prove the new check can fail.** Temporarily break a test, or set the threshold above the real coverage, and confirm CI goes red. Then restore it.
+   Done when: I've seen it fail and then pass.
+6. **Align README and CI.** Either update the README to match reality or let the new CI job back the claim.
+   Done when: README and CI no longer disagree.
+
+Stop signals (written before starting):
+- Stop the sweep when a rerun of the review returns the same findings.
+- Stop when two checks in a row find nothing new.
+- Stop if a fix touches anything outside this list. Come back to you before continuing.
+- Don't fix, recheck, then fix the fix. One repair pass on CI, then verify.
+
+Deliberately not in this sprint:
+- Refactoring `cli`, `store` or `render`.
+- Raising coverage above its current level or writing new tests.
+- Reworking `docs/usage.md` beyond checking it against the CLI.
+- Adding a coverage badge, matrix builds, release automation or pre-commit hooks. None of these has shown a need yet, so I'd write them down and wait until the need appears twice.
+
+## Premortem on this plan
+
+Each risk is tied to something observed or a documented pattern:
+- **Risk: I report a wrong README verdict.** I've read none of the tests, so any claim about 140 tests or 92% would be a guess. This is why step 1 runs the suite before any verdict. (Source: coverage section above.)
+- **Risk: the new CI job passes but proves nothing.** A check that has never failed isn't evidence. That's why step 5 forces a failure. (Source: checklist step 5.)
+- **Risk: local results differ from CI.** Local runs and CI can use different Python versions or dependency sets. I haven't seen `pyproject.toml`, so I don't know whether dependencies are pinned. Step 3 covers this by checking an actual CI run.
+- **Risk: I describe stale remote state.** I have no fetch in this session, so anything I say about `main` or recent runs would be a snapshot of the past. Step 3 refreshes it first.
+- **Risk: scope creep into fixing the code.** Step 4 and the not-in-sprint list guard against it, plus the stop signal about touching things outside the list.
+
+## Independent review
+
+The independent-review step wasn't done. I have no subagents here, so this plan and premortem are a solo pass and weaker for it. If you want a second opinion, a fresh agent should pick its own dimensions to check.
+
+## What I need from you
+
+Please paste, or let me read, `pyproject.toml`, the full README, the `on:` block of `ci.yml`, and a recent CI run link. With those, step 1 can start. I'll hold any push or workflow change until you approve it.
