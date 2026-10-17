@@ -1,0 +1,7 @@
+Blue.
+
+Save is the primary action, and your primary palette is blue. Green is currently used only for success toasts, so it signals "that worked". If Save is also green, the color stops meaning one thing. Users could read the button as a confirmation, or the toast could look like part of the button.
+
+This is a cheap, reversible, one-line CSS change, so I'm not running a full review. If you try blue and don't like it, switching to green takes one line.
+
+I'm going only on what you told me about the palette and the toast usage. I haven't seen the screen or the rest of the UI.

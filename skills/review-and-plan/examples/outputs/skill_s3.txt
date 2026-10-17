@@ -1,0 +1,5 @@
+'fix null check in parser' is better. It says what changed and where, so someone scanning the log or running git blame can tell what the commit did without opening the diff. 'fix bug' could describe any commit.
+
+If you want to go a bit further, use the imperative mood and name the actual fix, for example 'Add null check in parser.py'. For a one-line change, though, your second option is already fine.
+
+This is a small, cheap, reversible choice, so I skipped the full review checklist.

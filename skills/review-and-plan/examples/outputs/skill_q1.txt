@@ -1,0 +1,48 @@
+Mode: Quick (one design, one premortem). Coverage: I read the full design doc text you gave me and nothing else. No repo, org settings, issue counts, or workflow files were available, so every risk below traces to a specific sentence in the doc or to a gap in it. I dropped risks I could only invent. Independent review (step 4): no subagents exist here, so this review is solo and weaker for it. Treat it as a first pass.
+
+Clarify (step 1)
+The doc answers scope and intent: nightly, org-wide, 60 days idle, close via `gh issue close`, skip `stale-exempt`, summary to #eng, all repos on day one. I'm not asking questions. Where the doc is silent, I flag it as a gap rather than assume.
+
+Options (step 2, MECE on rollout and behavior)
+A. As written: close everything stale, all repos, day one.
+B. Same logic, staged: dry-run (report only) first, then a few repos, then the org.
+C. Warn-then-close: label and comment at 60 days, close after a grace period.
+D. Don't build: leave issues open, or make this per-repo opt-in.
+These differ on blast radius and reversibility. B and C can be combined.
+
+Premortem: "it's three weeks later and this went badly. Why?"
+
+1. The first run closes the entire historical backlog at once.
+   Source: "closes every issue with no activity for 60 days, across all repos" plus "enable for all repos on day one". Every issue already idle for 60 days or more qualifies on night one, not just newly stale ones. Nothing in the doc caps the number closed per run or per repo.
+
+2. Nobody gets a warning, and closes carry no stated reason.
+   Source: the doc describes only the close and the #eng summary. It has no warning step, no comment on the issue, and no grace period. Reporters and maintainers learn about a close after the fact, if at all.
+
+3. The exemption mechanism is untested and unannounced.
+   Source: "Issues labeled `stale-exempt` are skipped." The doc doesn't say the label exists in each repo, who applies it, or how teams learn about it. On day one, nobody will have labeled the issues that matter (long-running tracking issues, security reports, accepted-but-unscheduled work), so the exemption protects nothing at launch.
+
+4. "No activity" is undefined.
+   Source: the phrase appears once and is never defined. It could mean last comment, last update (which includes label changes and bot events), or linked PR activity. The wrong definition either closes live work or never closes anything. I can't tell which from the doc.
+
+5. Access and limits are unspecified for an org-wide job.
+   Source: "across all repos in the org, using `gh issue close`". A workflow's default token is scoped to a single repo, so org-wide closing needs a PAT or GitHub App with write access everywhere. The doc doesn't name one. This is a known GitHub Actions behavior, not something I verified in your org. Also unstated: pagination, API rate limits, and what happens if the job dies partway through a run.
+
+6. The #eng summary may not scale, and nobody is assigned to read it.
+   Source: "Posts a summary to #eng." A first run that closes thousands of issues could produce an unreadable or oversize post. The doc doesn't say who reviews it or what happens on a failed run.
+
+7. Day-one rollout leaves no way to undo a mistake.
+   Source: "enable for all repos on day one." Closed issues can technically be reopened, but the doc has no list of what was closed and no reopen procedure, so bulk recovery would be manual.
+
+Mechanism checks (step 5), to do before calling it ready
+- Run it in dry-run mode (list what would close, close nothing) and read the actual output. I haven't done this and can't from here.
+- Prove the exemption can fail: put `stale-exempt` on one test issue and confirm it's skipped, then remove the label and confirm it's closed.
+- Confirm the token's actual scope in a test repo.
+
+Stop signals, written first
+Ship only after a dry-run on two or three repos matches your expectations. Stop reworking the design when two consecutive review passes find no new risk. If the dry-run count is far larger than anyone expected, stop and switch to option C instead of tuning thresholds.
+
+Needed twice (step 7)
+The doc doesn't say whether the need has come up before. If stale issues have only been a complaint once, writing a one-off script you run by hand is cheaper than a permanent nightly job. I can't judge this from the doc.
+
+Recommendation
+Don't build it as written (A). Build B plus C. Start with a dry-run that only posts to #eng, add a warning comment and a grace period, and pilot on a few repos before going org-wide. Add a daily cap on closes and keep a log of what was closed. Define "no activity" explicitly, and name the credential. Decide who owns the `stale-exempt` label and tell teams about it before the first close. If this is only needed once, consider D.

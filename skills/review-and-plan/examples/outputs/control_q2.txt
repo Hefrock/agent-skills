@@ -1,0 +1,10 @@
+Not yet. The demand log has one entry, the 2026-10-10 lookup of the nixpkgs option for services.openssh.settings. Your rule is to raise the build question at two distinct lookups, and one doesn't meet it. A single lookup that was easy to do by hand is not evidence that a server would pay for itself.
+
+Asking this question doesn't add to the count. It stays at one.
+
+If the count reaches two, build in this order and stop at the first step that covers the need:
+1. Check for an existing nixpkgs or NixOS MCP server and use it as is.
+2. If nothing fits, write a thin wrapper script, for example around `nixos-option` or search.nixos.org queries.
+3. Build a custom MCP server only if both of those fall short.
+
+A custom server is the last step in that order, not the first. Next time you look up a NixOS option, log it. At two distinct lookups, reopen this question.
