@@ -1,0 +1,19 @@
+Use HTTP cache headers behind the CDN.
+
+Why, from what you've told me:
+- The catalog changes only a few times a day, and reads are about 2k/min (roughly 33/s). That is a low-churn, read-heavy workload, which is what CDN caching is for.
+- You already have a CDN, so this costs a few response headers and no new infrastructure.
+- Redis would mean deploying and operating a new service for a load that three app instances can already handle. Every request would still reach your app tier. I wouldn't add it on this evidence.
+- In-process LRU gives you three separate caches. After an admin change, the instances would serve different data until each one expires. That inconsistency is the main problem with it at 3 instances.
+
+How I'd set it up:
+- Send `Cache-Control: public, max-age=<short>, s-maxage=<longer>`, plus an `ETag` or `Last-Modified` so revalidation is cheap. Choose the TTL from how stale the catalog is allowed to be. Even 60 seconds takes most of the load off the origin.
+- If a change must show up quickly, have the admin tool call the CDN's purge API when it saves. Otherwise a short TTL alone is fine.
+- Consider `stale-while-revalidate` so users never wait on a refresh.
+
+What I don't know, and what would change the answer:
+- If the response differs per user (pricing tiers, personalization, auth), a shared CDN cache is unsafe unless you vary the cache key correctly. In that case cache the shared catalog data in the app instead, and layer per-user data on top.
+- If the business can't tolerate any staleness and your CDN has no usable purge, headers alone won't be enough.
+- If the origin query is expensive or the CDN hit rate turns out to be poor, add a small in-process cache with a short TTL as a second layer. Treat Redis as something to add only if you later need shared state across instances, which nothing here suggests yet.
+
+I'd start with headers, measure the CDN hit rate and origin load, and add other layers only if the numbers show a need.

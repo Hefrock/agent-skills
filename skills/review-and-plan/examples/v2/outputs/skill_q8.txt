@@ -1,0 +1,26 @@
+Not yet. Keep doing it by hand and write it down, because the need has only shown up once.
+
+Coverage: I read your log in full, and it has one entry: 2026-10-09, "ran link checker by hand, found 2 broken links". I did not look at your repo, your CI setup, the link checker itself, or how often you really run the routine. Everything below rests on that one line.
+
+This is a small, cheap, reversible decision, so I'm using the short form of the checklist.
+
+Why wait (step 7, needed twice): a CI step is a permanent thing, and the log shows one manual run. You call it a weekly routine, but the log doesn't show that. A single entry can't tell me whether this recurs, whether the checks keep finding real breakage, or whether you'd act on the results. The 2 broken links from that run are the only evidence the check pays off, and that's thin. Writing it down costs almost nothing, and you can formalize it once a second logged run shows the same need.
+
+Options, which don't overlap and cover the range:
+1. Stay manual and log every run. Cost is nothing, and it builds the evidence you're missing.
+2. Add a scheduled CI job that only reports. It runs on a timer and posts results without blocking merges.
+3. Add a CI step that gates merges on the check. This is the strictest option.
+
+Premortem on building CI now. I can only cite what's in the log, so I'm listing only the risks I can tie to it:
+- You build the step and the check rarely finds anything. Evidence: one run, 2 links, no history to compare against.
+- A gating step makes you fix flaky or external-site failures that a weekly manual pass would let you skip. I can't cite the source for this one. It's a general pattern with link checkers, not something in your log, so treat it as unverified until you've seen it happen in your own setup.
+
+I dropped other risks, such as CI minutes and maintenance burden, because nothing I read supports them.
+
+Independent review: I didn't get one. I have no subagent here, so this is a solo pass and weaker for it.
+
+Verify before building (step 5), whenever you do: confirm that the CI step fails when a link is actually broken. Plant a bad link, watch the step fail, then remove it. I haven't run any check, so I haven't verified anything about how your checker behaves.
+
+Stop signal: if your next manual run finds nothing new, or you skip it, that's evidence against building. If the next run finds broken links again, you have the second occurrence, and I'd then pick option 2 (a report-only scheduled job) rather than a merge gate.
+
+Next step: run the check by hand and log it each week. When the second entry lands, ask me again. By then the log should also show how often it ran and what it found, which would settle the question.

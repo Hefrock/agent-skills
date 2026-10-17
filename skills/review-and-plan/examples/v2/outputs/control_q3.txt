@@ -1,0 +1,10 @@
+Not yet, based on what the log shows.
+
+The only evidence is one entry: on 2026-10-14 you renamed 12 screenshots by hand. That's a single occurrence, and I can't tell from it how often this comes up, how long the rename took, or whether the naming scheme is consistent enough to automate. Twelve files by hand is a few minutes of work. A script has to be written, tested and remembered, and that usually costs more than one batch saves.
+
+Suggested approach:
+- Don't build anything yet. Next time you rename a batch by hand, add a second log entry with the rough time it took and the pattern you used (for example, date plus a short description).
+- If a second entry appears, the need is real. A script is then worth it, and it can be small: a shell one-liner or a short script that renames by timestamp or a fixed pattern.
+- If the renaming depends on what's in each screenshot, a script won't help much. In that case, changing your screenshot tool's default filename format may remove the problem entirely.
+
+I can't say how often you take screenshots or whether you'll hit this again, because the log doesn't cover it. If you already know you do this every week, that changes my answer, and you should tell me so.

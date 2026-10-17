@@ -1,0 +1,74 @@
+{
+ "K01": {
+  "arm": "control",
+  "case": "q5"
+ },
+ "K02": {
+  "arm": "control",
+  "case": "q1"
+ },
+ "K03": {
+  "arm": "control",
+  "case": "r3"
+ },
+ "K04": {
+  "arm": "skill",
+  "case": "r3"
+ },
+ "K05": {
+  "arm": "skill",
+  "case": "q6"
+ },
+ "K06": {
+  "arm": "control",
+  "case": "q6"
+ },
+ "K07": {
+  "arm": "skill",
+  "case": "q7"
+ },
+ "K08": {
+  "arm": "skill",
+  "case": "q8"
+ },
+ "K09": {
+  "arm": "control",
+  "case": "q3"
+ },
+ "K10": {
+  "arm": "control",
+  "case": "q7"
+ },
+ "K11": {
+  "arm": "control",
+  "case": "q2"
+ },
+ "K12": {
+  "arm": "skill",
+  "case": "q1"
+ },
+ "K13": {
+  "arm": "skill",
+  "case": "q4"
+ },
+ "K14": {
+  "arm": "control",
+  "case": "q4"
+ },
+ "K15": {
+  "arm": "skill",
+  "case": "q5"
+ },
+ "K16": {
+  "arm": "control",
+  "case": "q8"
+ },
+ "K17": {
+  "arm": "skill",
+  "case": "q3"
+ },
+ "K18": {
+  "arm": "skill",
+  "case": "q2"
+ }
+}

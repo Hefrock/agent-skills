@@ -1,0 +1,24 @@
+Yes, it's worth it, and it's small enough that I'd skip the full review checklist and just do it.
+
+Why: the need has now shown up twice in your usage log (2026-09-12, 9 screenshots renamed by hand; 2026-10-14, 12 screenshots renamed by hand). That meets the "needed twice" bar. The cost is a one-off shell loop, it's reversible, and nothing outward-facing is involved. A premortem or independent review would cost more than the decision is worth.
+
+Keep it proportionate: a short shell function or script, not a skill, a tool, or anything with configuration. Build it only to the extent of what the log shows, which is renaming screenshots by hand.
+
+What I don't know: the log doesn't say what naming scheme you rename them to, or where the screenshots live. I'm not going to guess, so here is a placeholder to adapt. It prints the renames first and does nothing until you pass `--go`:
+
+    #!/usr/bin/env bash
+    # usage: rename-shots.sh [--go] DIR
+    go=0; [ "$1" = "--go" ] && { go=1; shift; }
+    i=1
+    for f in "$1"/Screenshot*.png; do
+      new="$1/shot-$(date -r "$f" +%Y%m%d)-$(printf '%02d' "$i").png"
+      echo "$f -> $new"
+      [ "$go" = 1 ] && mv -n "$f" "$new"
+      i=$((i+1))
+    done
+
+The dry run is the check. `mv -n` refuses to overwrite, so a wrong guess can't destroy anything. Run it once without `--go` and read the output before committing.
+
+Stop signal: if the first dry run shows the wrong pattern, tell me the scheme you actually use and I'll adjust it once. Don't keep tuning it past that. If you end up needing special cases (multiple naming schemes, metadata, OCR), that's the point to reconsider, not before.
+
+What would you like the renamed files to look like?

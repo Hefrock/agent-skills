@@ -1,0 +1,10 @@
+Yes, it's worth it, but keep it small: a shell loop, not a project.
+
+Your log shows you've done this by hand twice, on 2026-09-12 (9 screenshots) and 2026-10-14 (12 screenshots). That's about a month apart, and the batch got bigger. Doing a chore by hand twice is a reasonable point to automate it. A rename loop is cheap to write and costs nothing to undo, and nothing outward-facing is involved, so there's little downside.
+
+What I'd do:
+- Write a short shell loop or a small function in your shell config. Don't build a script with options, a config file or a skill.
+- Preview before you run it. Print the planned renames (`echo mv ...`) first, then run it for real once the output looks right.
+- Put in the naming pattern you've been applying by hand. I don't know it, because the log only says "renamed by hand". If you can't state it in one line, settle that before you write any code.
+
+I'd stop at the loop. Re-evaluate only if you find yourself changing the pattern often or adding special cases. Otherwise, write the loop and move on.

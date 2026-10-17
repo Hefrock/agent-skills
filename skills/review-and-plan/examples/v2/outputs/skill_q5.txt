@@ -1,0 +1,71 @@
+Mode: Quick. This is one decision, and it is hard to reverse, so the full checklist applies.
+
+Coverage: I read only the plan text you gave me. I have not seen migrate.sql, the schema, the database engine or version, the customers table, or the backup setup. Every risk below traces to a specific phrase in the plan or to a documented failure pattern for this kind of migration, and I name which. This review is solo. No second reviewer exists, so it is weaker than an independent one.
+
+Step 1, clarify. I can't answer these from the plan, and several risks depend on them:
+- Which engine and version is it? Adding a NOT NULL column with a default is a metadata-only change on PostgreSQL 11 and later. On older PostgreSQL and on some MySQL setups it rewrites all 4M rows under a lock.
+- Does the orders table take writes at Friday 6pm?
+- What is the join key from orders to customers, and can customers.region be NULL or missing?
+- How long does a restore of last night's backup take, and has anyone ever tested one?
+
+Step 2, options (MECE, by how the change is applied):
+A. Run the plan as written: one DDL step, then one UPDATE.
+B. Split it. Add `region` as nullable with no default, backfill in batches, then add the default and NOT NULL once it is fully populated.
+C. Build a new table or shadow column and swap it in.
+D. Defer the change until it has been rehearsed on a staging copy, then pick A, B or C.
+Whichever option you pick, the rehearsal in D comes first.
+
+Step 3, grounded premortem. Imagine it is Friday 7pm and the migration failed.
+
+1. The single UPDATE holds a long transaction on a production table.
+   - Source: "backfill from the customers table in one UPDATE" on "4M rows".
+   - Failure pattern: one statement touches every row, so it holds row locks for its whole runtime, generates a large volume of write-ahead log or undo, and bloats the table. Concurrent orders writes then wait or time out.
+   - The rollback is also hurt. If the UPDATE fails or you cancel it late, the database must undo all of its work, which can take as long as the forward run.
+
+2. The DDL step may lock the table.
+   - Source: "add a NOT NULL column `region` with default 'unknown'" on a 4M-row table.
+   - This is conditional on the engine (question 1). On older versions an ALTER that rewrites 4M rows can block reads and writes for minutes.
+   - I can't tell from the plan whether this applies.
+
+3. The rollback loses data.
+   - Source: "Rollback: restore last night's backup."
+   - A restore returns the database to last night's state, so every order placed between the backup and the failure is lost. The plan does not mention a replay or a point-in-time recovery.
+   - Restore time is unstated, so the outage length is unknown. A restore that has never been tested is itself an unverified mechanism.
+   - The migration's own failure modes (risks 1, 2 and 4) have cheaper undo paths, such as dropping the column or cancelling a batch. The plan skips them and goes straight to the most destructive one.
+
+4. The backfill can fail or leave wrong data.
+   - Source: "backfill from the customers table", with no join key, no handling of unmatched orders, and no null handling stated.
+   - If any matching customers.region is NULL and the target column is NOT NULL, the whole UPDATE errors out.
+   - Orders with no matching customer keep 'unknown'. That is the same value as "not yet backfilled", so you can't tell a finished backfill from a partial one.
+   - Duplicate customer rows could also make the join ambiguous. This depends on the schema, which I haven't seen.
+
+5. Nothing has been tested.
+   - Source: "No staging run is planned."
+   - Risks 1 to 4 are exactly what a staging run on a copy of the 4M rows would measure: lock time, UPDATE duration, errors and restore time. Skipping it means you find out in production.
+
+6. Friday 6pm timing.
+   - Source: the plan's own schedule.
+   - If the migration runs long or fails, recovery happens at the start of the weekend. I have no evidence about on-call coverage or traffic, so treat this as a question, not a finding.
+
+Dropped as unsupported: index bloat, replication lag and application-code incompatibility. I have no evidence about any of them in the plan.
+
+Step 4, independent review. Not done. No other reviewer is available, so everything above is a solo pass.
+
+Step 5, verify the mechanism. I ran nothing. These checks are what you should do before the migration:
+- Run the whole thing on a staging copy of the production data and time each step.
+- Restore last night's backup into a scratch environment and time it. That is the only way to learn whether the rollback works.
+- Check your engine and version against the lock behavior in risk 2.
+- Run the backfill's SELECT form first to count unmatched orders and NULL regions.
+- Prove the checks can fail. For example, put a NULL region in staging and confirm the backfill errors, so you know the NULL check really catches it.
+
+Step 6, stop signals, written before you start:
+- The staging run completes with no errors and the timings are acceptable. Then stop rehearsing.
+- If a rerun of the unmatched/NULL count returns the same numbers, stop investigating them and decide how to handle them.
+- If a fix needs a change outside this migration (for example the app code), pause and re-plan. Don't patch your way through it.
+- In production, if any batch runs past a time limit you set beforehand, abort at that batch. Don't keep going.
+
+Step 7, needed twice. Don't build tooling for this. Write down what you learn in the staging run, and only turn it into a reusable migration process if the need shows up again.
+
+Recommendation: don't run this as written on Friday at 6pm. The three problems that matter most are the one-shot UPDATE (risk 1), the data-losing rollback (risk 3) and the untested plan (risk 5). The lower-risk version is option B: add the column as nullable, backfill in batches with a stated batch size and pause between batches, check for unmatched and NULL rows, then add the default and the NOT NULL constraint at the end. Under that approach the rollback for most failures is "drop the column" or "stop the batches", and restoring the backup becomes a last resort. Rehearse on staging first and move the production run to a time when the people who can fix problems are available.
+
+Please send me the engine and version, the join key and migrate.sql if you want me to tighten this. Until I see those, risks 2 and 4 stay conditional.

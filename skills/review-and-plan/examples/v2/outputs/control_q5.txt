@@ -1,0 +1,35 @@
+Premortem: assume it is Saturday morning and this migration went badly. The most likely reasons, based only on the plan as written:
+
+1. Long table lock and an outage at peak time (most likely, highest impact)
+Adding a NOT NULL column with a default to a 4M-row table can rewrite the whole table or take a heavy lock, depending on the database and version. In older Postgres (before 11), older MySQL, and SQL Server in some cases, it blocks reads and writes on orders for the duration. Friday 6pm is often peak order time. I don't know your engine or version, so I can't say whether this is instant or a multi-minute lock. That unknown is the biggest risk.
+
+2. The single backfill UPDATE
+One UPDATE across 4M rows from a join to customers holds row locks for the whole run, produces a very large transaction and log/WAL volume, can bloat the table, can block concurrent writers, and can fill disk or replication lag. If it fails or is killed partway, the whole transaction rolls back, which can itself take as long as the update did. It would also be a long-running transaction while the app is live.
+
+3. The default 'unknown' hides bad data
+Rows whose customer has no match, or where customers.region is NULL, will silently keep 'unknown' (or fail, if the join sets NULL into a NOT NULL column). The migration can "succeed" and leave a quietly wrong column. The plan has no check on how many rows end up as 'unknown'.
+
+4. No staging run
+Nothing has been tested against production-sized data, so you have no timing, lock behavior, or error information. Every risk above is then discovered live. This is the plan's biggest process gap.
+
+5. The rollback is weaker than it looks
+"Restore last night's backup" means losing every order written between the backup and the restore, which on a Friday evening could be hours of orders. It also means downtime during the restore, and the restore time is untested. It is a disaster recovery step, not a rollback. Also unstated: whether the backup is verified restorable, and whether the app code deployed with this change expects the column (code and schema ordering).
+
+6. Timing
+Friday 6pm means thin staffing and a weekend if something is stuck. If it goes wrong, you are fixing it with the least support available.
+
+7. Application compatibility
+If the app inserts into orders without specifying region, the default covers it. If anything uses SELECT * or strict column lists, or ORMs with cached schemas, the new column could break something. Not stated in the plan, so unverified.
+
+What I would change before running (cheap fixes first):
+- Run it on a restored copy of production (or at least a same-size copy) to get real timings and lock behavior. This is the single most valuable step.
+- Confirm your engine and version, and whether ADD COLUMN ... NOT NULL DEFAULT is metadata-only there. If not, add the column as nullable with no default, backfill, then add the constraint (or use the engine's online schema change tool).
+- Backfill in batches (for example 10k to 50k rows by primary key range), committing each batch, with a pause between batches to limit lock time and replication lag.
+- Before and after, count rows where region ends up 'unknown' and decide whether that is acceptable. Check for customers with NULL or missing region first.
+- Take a fresh backup right before starting, and verify it restores. Write down the restore time. Better, make the real rollback a reversible step (drop the column) rather than a restore.
+- Move the window to a low-traffic time with people available, not Friday 6pm.
+- Set a lock timeout / statement timeout so the ALTER fails fast instead of queueing behind long queries and blocking everything behind it.
+
+Verdict: do not run this as written. The main blockers are the untested lock behavior on a 4M-row production table, the one-shot UPDATE, and a rollback that loses data. The fix is mostly a staging run plus batching, which is a small amount of work compared with the downside.
+
+Limits of this review: I have no tools and no other reviewer here, so this is one pass from the plan text alone. I did not see your schema, database engine, traffic pattern, or the migrate.sql file, and several points above depend on those.

@@ -1,0 +1,9 @@
+{"id": "q1", "score": 0.5, "category": "grounding", "rationale": "Eight sprawling risk sections go far beyond the doc (archived repos, PAT scope, workflow auto-disable, compliance) without labeling them as general knowledge and never state the review was solo."}
+{"id": "q2", "score": 0.95, "category": "mode-selection", "rationale": "Correctly declines to build at one lookup, orders existing server then wrapper then custom, and says to log it, in compact form."}
+{"id": "q3", "score": 0.7, "category": "length-fit", "rationale": "Gives the not-yet verdict with no checklist or options table, though somewhat longer than the 2-4 sentences expected."}
+{"id": "q4", "score": 0.8, "category": "length-fit", "rationale": "Says yes and keep it small, applies needed-twice correctly with no checklist, slightly longer than the short target."}
+{"id": "q5", "score": 0.85, "category": "grounding", "rationale": "Long premortem is what the notes expect, risks map to plan sentences with general patterns hedged and solo status stated, though the app-compatibility point is speculative."}
+{"id": "q6", "score": 0.85, "category": "mode-selection", "rationale": "Concise pick with reasoning from the stated facts and a clear list of unknowns, though the option space is covered implicitly rather than as an explicit list."}
+{"id": "q7", "score": 0.85, "category": "grounding", "rationale": "Moderate-length premortem hitting the masked race, the slower CI, and the src vs wheel gap, and it declines to claim the fix works."}
+{"id": "q8", "score": 0.6, "category": "length-fit", "rationale": "Right not-yet verdict with a trigger for flipping it and no checklist walkthrough, but several paragraphs instead of 2-4 sentences."}
+{"id": "r3", "score": 0.6, "category": "length-fit", "rationale": "Correct 'not yet, log it' with no visible checklist, but it runs several paragraphs where 2-4 sentences were expected."}

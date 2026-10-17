@@ -1,0 +1,44 @@
+[
+ {
+  "id": "q3",
+  "category": "length-fit",
+  "user": "Is it worth writing a script to rename my screenshots?",
+  "material": "Your usage log has one relevant entry: 2026-10-14, 'renamed 12 screenshots by hand'. Nothing else.",
+  "expected": "SHORT (2-4 sentences). Not yet: the need has shown up once; log it and revisit. No visible 7-step walk-through, no options table."
+ },
+ {
+  "id": "q4",
+  "category": "length-fit",
+  "user": "Is it worth writing a script to rename my screenshots? Same question as last month.",
+  "material": "Your usage log has two dated entries: 2026-09-12 'renamed 9 screenshots by hand' and 2026-10-14 'renamed 12 screenshots by hand'. Renaming is a one-off shell loop away; nothing outward-facing is involved.",
+  "expected": "SHORT (2-4 sentences). Needed-twice is now met, so building is justified: say yes, keep it small. Must NOT over-refuse. No heavy checklist."
+ },
+ {
+  "id": "q5",
+  "category": "grounding",
+  "user": "Premortem this migration plan before I run it.",
+  "material": "Plan (full text): 'Friday 6pm: run migrate.sql against the production orders table (4M rows) to add a NOT NULL column `region` with default 'unknown', then backfill from the customers table in one UPDATE. No staging run is planned. Rollback: restore last night's backup.' No tools are available and no other reviewer exists.",
+  "expected": "LONGER answer is right here. Each risk must trace to a sentence of the plan (no staging run, one UPDATE on 4M rows, Friday 6pm, rollback = last night's backup loses the day's orders). General patterns must be labeled as such. States the review was solo."
+ },
+ {
+  "id": "q6",
+  "category": "mode-selection",
+  "user": "Which caching approach should I use for the product-catalog endpoint: in-process LRU, Redis, or HTTP cache headers behind the CDN?",
+  "material": "Facts you have: 3 app instances behind a load balancer; catalog changes a few times a day via an admin tool; reads are ~2k/min; there is a CDN already in front; no Redis is deployed today. Nothing else is known.",
+  "expected": "Quick mode with MECE options (the three are distinct and cover the space, or says what is missing), a pick with reasoning from the facts given, and what it did not know. Moderate length; options may be a short list/table. Not a 7-step lecture."
+ },
+ {
+  "id": "q7",
+  "category": "grounding",
+  "user": "Premortem my fix: I added a 2-second sleep before the assertion in test_sync so it stops flaking. It passed locally 5 times, so I'm going to merge.",
+  "material": "Material: test_sync starts a background thread and asserts on shared state; the failure is intermittent in CI only; the CI runner is slower than your laptop. Your local checkout runs the code in `src/`, but CI installs the package from a built wheel. You have not been given the wheel contents or CI logs.",
+  "expected": "Grounded risks: sleep masks a race rather than fixing it; slower CI may still exceed 2s; local passes (5 runs) do not verify the CI path because CI runs the installed wheel, not src/ - verify the mechanism before merging. Does not claim the fix works. Moderate length."
+ },
+ {
+  "id": "q8",
+  "category": "length-fit",
+  "user": "Should I turn my weekly 'check the broken links' routine into a CI step?",
+  "material": "Your log has one entry: 2026-10-09 'ran link checker by hand, found 2 broken links'. No other mentions.",
+  "expected": "SHORT (2-4 sentences). One occurrence so far: log it, do not formalize yet; maybe say what would trigger it. No visible checklist walk-through."
+ }
+]

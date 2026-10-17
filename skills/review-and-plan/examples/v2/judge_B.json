@@ -1,0 +1,20 @@
+{
+"K01":{"mode_selection":0.9,"grounding":0.85,"length_fit":0.95,"rationale":"Long premortem is what the notes expect, risks map to plan sentences with general patterns hedged and solo status stated, though the app-compatibility point is speculative."},
+"K02":{"mode_selection":0.6,"grounding":0.5,"length_fit":0.4,"rationale":"Eight sprawling risk sections go far beyond the doc (archived repos, PAT scope, workflow auto-disable, compliance) without labeling them as general knowledge and never state the review was solo."},
+"K03":{"mode_selection":0.9,"grounding":0.9,"length_fit":0.6,"rationale":"Correct 'not yet, log it' with no visible checklist, but it runs several paragraphs where 2-4 sentences were expected."},
+"K04":{"mode_selection":0.4,"grounding":0.9,"length_fit":0.1,"rationale":"Right verdict but walks through all seven checklist steps with options and premortem for a trivial once-seen need, the exact thing the notes forbid."},
+"K05":{"mode_selection":0.5,"grounding":0.8,"length_fit":0.2,"rationale":"Good pick and MECE options but delivers a full seven-step lecture with verify, stop signals and needed-twice where moderate length was expected."},
+"K06":{"mode_selection":0.85,"grounding":0.9,"length_fit":0.95,"rationale":"Concise pick with reasoning from the stated facts and a clear list of unknowns, though the option space is covered implicitly rather than as an explicit list."},
+"K07":{"mode_selection":0.6,"grounding":0.9,"length_fit":0.3,"rationale":"Risks are well grounded (sleep masks race, src vs wheel, 5 local passes prove nothing) but it uses the full seven-step format at far more than moderate length."},
+"K08":{"mode_selection":0.4,"grounding":0.85,"length_fit":0.1,"rationale":"Correctly says not yet, but buries it under options, premortem, independent review, verify and stop-signal sections where 2-4 sentences were expected."},
+"K09":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.7,"rationale":"Gives the not-yet verdict with no checklist or options table, though somewhat longer than the 2-4 sentences expected."},
+"K10":{"mode_selection":0.9,"grounding":0.85,"length_fit":0.9,"rationale":"Moderate-length premortem hitting the masked race, the slower CI, and the src vs wheel gap, and it declines to claim the fix works."},
+"K11":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.85,"rationale":"Correctly declines to build at one lookup, orders existing server then wrapper then custom, and says to log it, in compact form."},
+"K12":{"mode_selection":0.6,"grounding":0.9,"length_fit":0.4,"rationale":"Risks are tightly sourced to the doc and solo review is stated, but it narrates every checklist step at great length for a quick-mode premortem."},
+"K13":{"mode_selection":0.9,"grounding":0.8,"length_fit":0.5,"rationale":"Correctly says yes and keeps it small without a heavy checklist, but adds a full script based on guessed naming and a long tail where a few sentences sufficed."},
+"K14":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.8,"rationale":"Says yes and keep it small, applies needed-twice correctly with no checklist, slightly longer than the short target."},
+"K15":{"mode_selection":0.9,"grounding":0.95,"length_fit":0.9,"rationale":"Longer structured premortem is what the notes want, every risk is cited to a plan phrase, general patterns are labeled, and solo status is stated."},
+"K16":{"mode_selection":0.85,"grounding":0.9,"length_fit":0.6,"rationale":"Right not-yet verdict with a trigger for flipping it and no checklist walkthrough, but several paragraphs instead of 2-4 sentences."},
+"K17":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.65,"rationale":"Explicitly skips the checklist and applies needed-twice correctly with a stop signal, though it is longer than the short answer expected."},
+"K18":{"mode_selection":0.85,"grounding":0.9,"length_fit":0.7,"rationale":"Correct do-not-build-yet with existing-server-first ordering, but includes an options list and checklist references beyond a short quick-mode answer."}
+}

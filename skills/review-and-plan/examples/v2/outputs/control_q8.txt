@@ -1,0 +1,12 @@
+Not yet, based on what I can see. Here is the reasoning and what would change my answer.
+
+What the evidence shows: your log has exactly one entry, on 2026-10-09: "ran link checker by hand, found 2 broken links". Nothing else mentions it. That is one run, not a weekly routine, and I can't confirm from the log that you do this every week. I also can't see what the checker is, how long it takes, or whether the 2 links were real problems or false positives.
+
+Why that matters: the rule of thumb is to build automation only once the manual task has been needed twice. One logged run doesn't show the routine is recurring, so I can't tell whether CI would save you any effort. The one useful signal is that the check did find something real (2 broken links), so it isn't pointless. But one hit doesn't show the weekly cadence is worth formalizing.
+
+What I'd do instead:
+1. Keep running it by hand for now, and log every run, including the date, the number of links found, and whether they were real.
+2. If the log shows a second or third run (or you notice you are doing it weekly), turn it into a CI step then. At that point you will also know how often it finds real problems and how long it takes.
+3. If you want to do it now anyway, the cost is probably low, since a scheduled CI job running the same command is cheap and easy to undo. Just be aware that this is a judgment call, not something your log supports yet.
+
+One thing I can't tell from the material: whether you ran this weekly before you started logging. If you did, tell me and the answer flips toward "yes, automate it", because the recurrence would already be established.

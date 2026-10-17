@@ -1,0 +1,44 @@
+Mode: Quick (one decision: merge this fix or not). Not trivial to skip, since a flaky-test "fix" that merges and still flakes costs everyone's CI time.
+
+Coverage: I read only the material you gave me. I did not see the test code, the diff, the wheel contents, or any CI logs. Everything below is limited to those facts, and where I'm inferring I say so.
+
+Short answer: I would not merge on this evidence yet. The local passes don't test what failed.
+
+1. Clarify
+- The failure is intermittent, CI-only, and the test starts a background thread and asserts on shared state. The CI runner is slower than your laptop.
+- Two things I can't tell from what I have: how long the background work takes on CI, and whether the failure is "assertion ran too early" or "a real race/bug in the shared state." The sleep only fixes the first.
+
+2. Options (MECE)
+- A. Keep the fixed sleep (your fix, 2s).
+- B. Replace the sleep with a deterministic wait: join the thread, or wait on an Event/Condition/queue with a timeout, then assert.
+- C. Remove the race in the code under test (synchronize the shared state), if the flake is a real bug.
+- D. Do nothing / quarantine the test (skip or mark flaky) while investigating.
+These cover "tolerate timing", "wait on the actual signal", "fix the code", and "don't change". B and C can be combined.
+
+3. Grounded premortem: imagine A merged and it still flakes or hides a bug
+- Risk: 2s is a guess about a slower machine. Source: material says the CI runner is slower than your laptop and the failure is intermittent. You have no CI timing data, so you don't know that 2s clears the slowest run. Intermittent failures under load are exactly when a fixed delay is too short.
+- Risk: your evidence doesn't exercise the failing path. Source: material says local runs `src/` while CI installs a built wheel, and the failure is CI-only. 5 local passes say nothing about the wheel or the slow runner. (Passing locally 5 times was probably also true before the fix, since it only fails intermittently and in CI.)
+- Risk: the sleep may mask a real race instead of curing it. Source: material says the test asserts on shared state touched by a background thread. If the code has a genuine synchronization bug, a sleep just lowers the odds of seeing it. I can't confirm this either way without the code.
+- Risk: the difference between src/ and the wheel might itself be the cause (e.g., a file missing from the wheel, a different version of the code). Source: the material states the two run different code but I haven't been given the wheel contents, so this is a possibility, not a finding. I'm flagging it because it's unverified, not because I know it's wrong.
+- Cost (not a failure, but real): every run now pays 2 extra seconds, and a later slower runner needs a bigger number.
+I dropped other candidate risks (e.g., specific CI config problems) because nothing in the material supports them.
+
+4. Independent review
+This was a solo pass: no fresh agent reviewed it, so it is weaker than it should be. If you want a stronger check, hand the diff and the CI logs to a separate reviewer.
+
+5. Verify the mechanism (what to do before calling it fixed)
+- Reproduce the flake first. Run the test in CI (or a CPU-throttled container) enough times to see it fail without the fix, then confirm it passes with the fix. Right now there is no evidence that the failure was ever reproduced, so a pass proves nothing.
+- Run the test against the built wheel, not just src/ (e.g., build the wheel, install it in a clean venv, run the test there). That matches the CI path.
+- Get the CI logs for a failing run: is the assertion failing on a missing value (too early) or a wrong value (race)? That distinguishes option A/B from C.
+- Prove the check can fail: with the sleep removed it should fail under load; with the fix it should not.
+
+6. Stop signals (written first)
+- Stop investigating once CI logs show which failure type it is and one reproducible failing run exists.
+- Stop re-running if N consecutive CI runs (say 20-50) pass with the fix and the pre-fix version failed at least once in the same setup.
+- If a fix needs changes outside this test and the code it exercises, stop and re-scope instead of widening the repair.
+
+7. Needed twice
+Don't build a general flaky-test framework or retry plugin for this. If you see a second flaky thread test, then write down the pattern and consider a shared wait helper.
+
+Recommendation
+Replace the sleep with a deterministic wait (join the thread or wait on an Event with a generous timeout, then assert), and verify it on the wheel path in CI-like conditions. If you must merge the sleep as a stopgap, say so in the PR, link a follow-up, and don't treat the 5 local passes as validation. The merge is your call; I haven't taken any action on it.

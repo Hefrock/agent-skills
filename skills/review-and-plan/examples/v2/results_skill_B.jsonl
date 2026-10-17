@@ -1,0 +1,9 @@
+{"id": "q1", "score": 0.9, "category": "grounding", "rationale": "Risks are tightly sourced to the doc and solo review is stated, but it narrates every checklist step at great length for a quick-mode premortem."}
+{"id": "q2", "score": 0.85, "category": "mode-selection", "rationale": "Correct do-not-build-yet with existing-server-first ordering, but includes an options list and checklist references beyond a short quick-mode answer."}
+{"id": "q3", "score": 0.65, "category": "length-fit", "rationale": "Explicitly skips the checklist and applies needed-twice correctly with a stop signal, though it is longer than the short answer expected."}
+{"id": "q4", "score": 0.5, "category": "length-fit", "rationale": "Correctly says yes and keeps it small without a heavy checklist, but adds a full script based on guessed naming and a long tail where a few sentences sufficed."}
+{"id": "q5", "score": 0.95, "category": "grounding", "rationale": "Longer structured premortem is what the notes want, every risk is cited to a plan phrase, general patterns are labeled, and solo status is stated."}
+{"id": "q6", "score": 0.5, "category": "mode-selection", "rationale": "Good pick and MECE options but delivers a full seven-step lecture with verify, stop signals and needed-twice where moderate length was expected."}
+{"id": "q7", "score": 0.9, "category": "grounding", "rationale": "Risks are well grounded (sleep masks race, src vs wheel, 5 local passes prove nothing) but it uses the full seven-step format at far more than moderate length."}
+{"id": "q8", "score": 0.1, "category": "length-fit", "rationale": "Correctly says not yet, but buries it under options, premortem, independent review, verify and stop-signal sections where 2-4 sentences were expected."}
+{"id": "r3", "score": 0.1, "category": "length-fit", "rationale": "Right verdict but walks through all seven checklist steps with options and premortem for a trivial once-seen need, the exact thing the notes forbid."}
