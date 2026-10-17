@@ -1,0 +1,5 @@
+Make the Save button blue.
+
+The app uses a blue primary palette, and Save is a primary action, so blue keeps it consistent with the rest of the UI. Green is currently used only for success toasts. If Save were green, users could confuse "click to save" with "saved successfully."
+
+It's also a one-line CSS change, so if you try blue and don't like it, switching later costs almost nothing.

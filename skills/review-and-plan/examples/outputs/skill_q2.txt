@@ -1,0 +1,17 @@
+Not yet. The need hasn't shown up twice.
+
+What I read: the demand log has one entry, from 2026-10-10, where you looked up the nixpkgs option for services.openssh.settings. I read nothing else, so I haven't checked whether an existing nixpkgs MCP server is available or what the lookup cost you.
+
+This is a permanent build, so the "needed twice" rule applies (checklist step 7). One lookup is a single data point. It doesn't show a recurring need, and it doesn't show that the lookup was painful.
+
+Options, in order of cost:
+1. Do nothing and keep logging each nixpkgs or NixOS-option lookup in the demand log.
+2. Use an existing MCP server, if a suitable one exists. I haven't verified that one does.
+3. Write a thin wrapper script, such as a `nix` option search command.
+4. Build a custom MCP server.
+
+These options don't overlap, and together they cover the choices. Each step up costs more to build and more to maintain, so you only move up when the step below has proven insufficient.
+
+Recommendation: log it now. When a second distinct lookup shows up, come back to the build question and start at option 2, not option 4. A custom server is the last resort. I'd skip a full premortem and independent review at this point, because nothing is being built yet and logging is cheap and reversible.
+
+I've done nothing outward-facing. I haven't edited the log or built anything.

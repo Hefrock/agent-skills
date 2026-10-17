@@ -1,0 +1,10 @@
+Not yet. The usage log has one relevant entry, on 2026-10-02, when you converted a CSV to a markdown table by hand. That is a single occurrence, and no other entry mentions CSVs or tables.
+
+My rule of thumb is to build a skill only once the need has come up twice. One data point doesn't show the task is recurring. It also doesn't show that a skill would beat what you can already do. Claude can turn a pasted CSV into a markdown table in one turn with no skill, and a one-line script would also work. A skill adds maintenance cost and another description competing for triggering, and for a task this simple it gives you very little extra.
+
+My recommendation:
+1. Don't build it now.
+2. Log the next time you do this. That would be the second entry.
+3. If it happens again, reconsider. Before building, check whether a skill would add anything over a plain request. It might if you have specific needs, such as column alignment, escaping pipes, very large files, or a fixed output style. If a plain request already works, you still don't need a skill.
+
+If you want, tell me what went wrong or felt tedious doing it by hand on 10-02. If something specific was hard, such as messy quoting or wide tables, that would make the case for a skill stronger than the single log entry does.

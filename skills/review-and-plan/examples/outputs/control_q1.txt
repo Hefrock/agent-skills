@@ -1,0 +1,51 @@
+Premortem: imagine it is three weeks after launch and this design has gone badly. The most likely ways it got there, ranked by likely damage:
+
+1. Mass closure of legitimate issues on day one (highest risk)
+- Enabling it for every repo in the org at once means the first nightly run closes the entire backlog of issues older than 60 days. In most orgs that is hundreds or thousands of issues, in one night.
+- "No activity" is ambiguous. Does it mean no comments, no label changes, no linked PRs, or no reactions? Long-running tracking issues, roadmap items, accepted-but-unscheduled work, security reports and "blocked on upstream" issues are often quiet for 60+ days and still valid.
+- Closing is only mildly reversible. Reopening is possible, but a bulk-closed backlog loses triage context, and people stop trusting the tracker.
+
+2. No warning period
+- Issues are closed with no prior "this will close in N days" notice or stale label. Reporters and owners get no chance to say it is still relevant. The usual pattern is mark stale, wait 7-14 days, then close.
+- Use of `gh issue close` alone does not post a comment explaining why, unless you pass `--comment`. Closed issues would look like silent, unexplained closures.
+
+3. The opt-out is too weak and too hidden
+- `stale-exempt` has to exist as a label in every repo, or it can't be applied. Repos that lack it have no exemption path.
+- Teams will not know the label exists until their issues are already closed. Exemption only helps if people learn about it before the first run.
+- Nothing exempts by other signals: milestone, assignee, "bug" or "security" labels, pinned issues, or issues linked to open PRs or projects.
+
+4. Blast radius and permissions
+- "All repos in the org" probably includes archived repos (writes fail), forks, repos owned by other teams, and repos that are not engineering's to manage, such as support, legal or customer-facing trackers.
+- The workflow needs a token with write access to issues across the org. That is typically a PAT or GitHub App with broad scope, which is a security concern in itself, and a bug or compromised workflow could act org-wide.
+- A GitHub Action lives in one repo. Running it "across all repos" needs org-level listing and cross-repo auth, which is more setup than the design acknowledges.
+
+5. Technical failure modes
+- API rate limits and pagination: `gh` listing and closing across many repos can hit secondary rate limits, and a partial run leaves inconsistent state. The design doesn't say whether the job is idempotent or resumable.
+- Search semantics: "updated" timestamps change on bot activity (including this job's own comments or labels), so the activity measure can be gamed or reset by other automation.
+- Failure is silent unless noticed. A failed run posts nothing, or posts a misleading summary, and nobody knows closures stopped or half-completed.
+- The scheduled workflow is disabled by GitHub after 60 days of repo inactivity, which would quietly turn the job off.
+
+6. The Slack summary is too late and too noisy
+- A summary posted to #eng after the closures can't prevent mistakes. It only reports them.
+- On day one the summary could list thousands of issues, and people will mute the channel.
+
+7. No dry-run, no kill switch, no rollback plan
+- The design has no dry-run mode, no per-repo allowlist, and no cap on closures per run.
+- There is no documented way to undo a bad run, such as a log of exactly which issues were closed so they can be bulk-reopened.
+
+8. Policy and people problems
+- Closing issues from external contributors or customers without notice can read as hostile.
+- Some issues are compliance- or audit-relevant and must stay open or be closed deliberately.
+- Different teams have different norms. A single org-wide 60-day rule is unlikely to fit all of them.
+
+Recommended changes before building:
+1. Start with a dry run that only lists what would be closed, posts the list, and closes nothing. Review it for a week or two.
+2. Pilot on one or two willing repos, then widen in stages instead of org-wide on day one.
+3. Add a two-stage flow: label as stale and comment, wait 7-14 days, then close with an explanatory comment (`gh issue close --comment`, `--reason "not planned"`).
+4. Cap the number of closures per run and per repo. Skip archived repos, and make repos opt in rather than opt out.
+5. Broaden exemptions: `stale-exempt`, plus assigned issues, milestoned issues, security labels, and issues with linked open PRs. Create the label org-wide first and announce it.
+6. Write a machine-readable log of every closed issue so a bad run can be reversed.
+7. Use a scoped GitHub App token instead of a broad PAT, and alert on job failure, not just on success.
+8. Define what "activity" means, and exclude bot activity.
+
+If you want one-line advice: the design is reasonable in spirit, but "close everything stale, org-wide, starting day one, with no warning" is the one choice that makes a recoverable mistake into a trust-damaging one. Change the rollout first.

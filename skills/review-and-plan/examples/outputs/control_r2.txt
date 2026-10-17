@@ -1,0 +1,21 @@
+I've only seen a small slice of the vault, so this is a partial review. I have the listing of all 40 notes, but I opened just three of them. Treat what follows as a first pass, not a full audit.
+
+What I saw:
+- Inbox/ has 12 files named untitled-1 to untitled-12. I opened untitled-3, and it is empty.
+- Knowledge/ has 20 notes. I read bayes.md in full. It is 6 lines long and has no links to other notes. I only saw the names of the others, such as kalman-filter.md.
+- Journal/ has 8 entries from 2026-09-20 to 2026-10-14. The 2026-10-14 entry is 3 lines long and says "fix the vault later."
+
+What to fix first:
+
+1. Triage the Inbox. Twelve untitled files is the most obvious problem, and the one I checked was empty. Delete the empty ones, then give each remaining note a real title and move it into Knowledge/ or Journal/. I can't tell yet how many of the other 11 are empty and how many hold content, so open them all before deciding.
+
+2. Link your Knowledge notes. bayes.md has zero links, which makes it an orphan. Bayes is closely related to kalman-filter.md, so that is an obvious first link. If the other 18 notes look like bayes.md, the vault is a pile of unconnected notes and not a network. I only checked one, so I can't say that yet. Check a few more before you spend time on it.
+
+3. Decide what "fix the vault later" means. Your 2026-10-14 journal entry doesn't say what you meant, so I can't tell whether it refers to the Inbox, the links, or something else. If you remember, tell me and I'll reprioritize.
+
+What I can't say:
+- Whether the other 19 Knowledge notes have links, duplicates, or contradictions.
+- Whether the other 11 Inbox files are empty.
+- Whether the other 7 journal entries contain anything that should be turned into Knowledge notes.
+
+To get further, I'd run a link audit across Knowledge/ and open all 12 Inbox files. Want me to do that?

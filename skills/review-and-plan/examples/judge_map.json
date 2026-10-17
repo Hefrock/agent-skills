@@ -1,0 +1,82 @@
+{
+ "J01": {
+  "arm": "control",
+  "case": "r1"
+ },
+ "J02": {
+  "arm": "skill",
+  "case": "s1"
+ },
+ "J03": {
+  "arm": "control",
+  "case": "t1"
+ },
+ "J04": {
+  "arm": "control",
+  "case": "q2"
+ },
+ "J05": {
+  "arm": "skill",
+  "case": "s2"
+ },
+ "J06": {
+  "arm": "control",
+  "case": "r3"
+ },
+ "J07": {
+  "arm": "skill",
+  "case": "r1"
+ },
+ "J08": {
+  "arm": "control",
+  "case": "t2"
+ },
+ "J09": {
+  "arm": "skill",
+  "case": "q1"
+ },
+ "J10": {
+  "arm": "skill",
+  "case": "t1"
+ },
+ "J11": {
+  "arm": "control",
+  "case": "s1"
+ },
+ "J12": {
+  "arm": "control",
+  "case": "r2"
+ },
+ "J13": {
+  "arm": "skill",
+  "case": "r2"
+ },
+ "J14": {
+  "arm": "skill",
+  "case": "r3"
+ },
+ "J15": {
+  "arm": "skill",
+  "case": "s3"
+ },
+ "J16": {
+  "arm": "skill",
+  "case": "t2"
+ },
+ "J17": {
+  "arm": "control",
+  "case": "q1"
+ },
+ "J18": {
+  "arm": "control",
+  "case": "s2"
+ },
+ "J19": {
+  "arm": "control",
+  "case": "s3"
+ },
+ "J20": {
+  "arm": "skill",
+  "case": "q2"
+ }
+}

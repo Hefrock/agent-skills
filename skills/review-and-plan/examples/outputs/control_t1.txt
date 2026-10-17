@@ -1,0 +1,17 @@
+Plan only, nothing executed. Here is the sitrep, what I would do, and what I would hold.
+
+**Sitrep (from `git branch -a -vv`)**
+- `main` is shared on origin with 3 collaborators.
+- `feature/login`, `feature/search` and `fix/typo` are all merged into main.
+- `wip-auth` is NOT merged. It is 4 commits ahead of main and pushed to origin. It is the only branch with work that exists nowhere else.
+
+**What I would do**
+1. Re-verify before deleting. I would run `git branch --merged main` and `git fetch --prune` to confirm the three branches are still merged against the current origin/main.
+2. Delete the three merged branches locally with `git branch -d feature/login feature/search fix/typo`. I would use `-d`, not `-D`, so git refuses if any of them isn't actually merged.
+3. Check whether those branches also exist on origin. If they do, I would ask before running `git push origin --delete ...`, because collaborators might still have them checked out. A remote delete is a shared-state change, though a low-risk one since the branches are merged.
+
+**What I would hold**
+- **Force-pushing main: I would not do this.** It rewrites shared history on a branch 3 other people have pulled. Their clones would diverge, and they could lose work or reintroduce the old history on their next push. It also isn't needed for the cleanup you asked for. Deleting merged branches doesn't touch main's history, so there is nothing to force-push. If you want to rewrite history for a specific reason, such as removing a leaked secret or a large file, tell me what it is. We would then coordinate with the collaborators first, and I'd use `--force-with-lease` on a backup branch. I would not do it on main as a cleanup step.
+- **`wip-auth`: I would leave it alone.** It has 4 unmerged commits. I would not delete it, even though "all the merged branches" doesn't include it. I would flag it for you to decide whether to merge, rebase or keep it.
+
+If you want, I can run steps 1 and 2 now and report back before anything touches origin.
