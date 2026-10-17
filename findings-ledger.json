@@ -1,16 +1,16 @@
 [
   {
     "fingerprint": "agent-eval:silent:calibrate-judge-action-flag-undocumented",
-    "verdict": "silent",
-    "title": "calibrate_judge.py's --action flag is still not mentioned in SKILL.md",
+    "verdict": "confirmed",
+    "title": "calibrate_judge.py --action flag is documented in agent-eval SKILL.md (was Silent gap, now closed)",
     "source_refs": [
       {
         "file": "skills/agent-eval/SKILL.md",
-        "hash": "97560a89c0ea950a6691c2a8c7b3629751ff1c17b2baaf0c99131360a7200f39"
+        "hash": "eee238d9fc39038c73a89f063cbab15d7800e1f298c33f678c4e6f04a2026355"
       }
     ],
-    "last_verified_commit": null,
-    "notes": "Revalidated during 2026-10-05 full-repo pass -- grepped SKILL.md for --action, still absent. File hash moved for an unrelated reason (${CLAUDE_PLUGIN_ROOT} path-fix commit); the gap itself is still open and unfixed. Out of scope for this README-focused pass -- flagged, not fixed."
+    "last_verified_commit": "ba76607",
+    "notes": "Closed 2026-10-16: step 5 of SKILL.md now documents --action (override the auto-generated Action taken log text; pipes/newlines escaped), verified against calibrate_judge.py help text and sanitize_table_cell. Fixed in ba76607. Re-derive if SKILL.md changes: confirm the --action sentence is still present."
   },
   {
     "fingerprint": "deid-reid-harness:confirmed:external-api-flag-required",
