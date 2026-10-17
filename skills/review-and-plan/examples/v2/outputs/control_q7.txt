@@ -1,0 +1,24 @@
+Premortem: I would not merge this yet. Assume that a month from now the flake is back or the fix turned out to be fake. These are the most likely reasons, based only on what you've told me.
+
+1. The sleep guesses at timing and doesn't synchronize anything.
+test_sync starts a background thread and asserts on shared state. A fixed 2-second sleep only works if the thread always finishes within 2 seconds. CI is slower than your laptop, and its load varies, so a noisy-neighbor job, a cold cache, or a GC pause can push the thread past 2 seconds. The test then fails intermittently again, just less often, which is harder to diagnose. A sleep that makes the flake rarer has hidden the race without removing it.
+
+2. Five local passes tell you almost nothing.
+The failure is intermittent and shows up in CI only. If it already passed on your laptop most of the time before the fix, then 5 passes after the fix is what you'd expect with or without it. The check can't tell a working fix from no fix. Your laptop also isn't the environment that was failing.
+
+3. You may not be testing the same code in CI.
+Locally you run the code in `src/`. CI installs the package from a built wheel. I haven't seen the wheel contents, so I can't say whether they match `src/`. They could differ in a stale build, missing files, a different version of the module, or different import paths. If the flake comes from something in the wheel, a sleep in the test won't touch it, and your local runs wouldn't show it either. I'm not saying this is the cause. It's an untested difference between the environment where the test passes and the one where it fails.
+
+4. The cost of the sleep.
+Every run now takes 2 seconds longer. If the test is parametrized or copied elsewhere, that adds up. Sleeps also tend to get raised to 5 seconds, then 10, the next time CI flakes.
+
+5. I can't verify the root cause.
+I don't have the CI logs or the wheel contents. So I can't say whether the failure is the thread not having finished (a timing problem) or a real race or ordering bug in the code (a correctness problem). A sleep only helps in the first case. In the second, it could mask a real bug that will reach production.
+
+What I'd do before merging, roughly in order of value:
+- Replace the sleep with real synchronization: join the thread with a timeout, wait on a `threading.Event`, or poll the condition with a deadline (for example, up to 10 seconds, returning as soon as the state is correct). That makes the test fast when the thread is fast and tolerant when CI is slow.
+- Pull the CI logs from a failing run and confirm the assertion failed because the state wasn't ready yet. If it failed with wrong values rather than missing values, it's a race and not just slowness.
+- Check that the wheel CI installs matches `src/`, by building it and diffing or by printing the module's `__file__` and version in CI.
+- Reproduce the flake before declaring it fixed. Run the test in a loop, like 200 times, under CPU load (for example with `stress` or `taskset`) both before and after the change. If the pre-fix version doesn't fail under load, you can't show the fix does anything.
+
+Bottom line: the sleep may well reduce failures, but with this evidence you can't say it fixes the cause. If the CI logs show it was only slowness and you swap the sleep for a wait-on-condition, I'd be comfortable merging. If you merge now, treat it as a temporary workaround, not a fix.

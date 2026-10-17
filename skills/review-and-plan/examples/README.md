@@ -40,5 +40,23 @@ python scripts/flatten.py              # results_<arm>_<judge>.jsonl
 python ../../agent-eval/scripts/score_eval.py results_skill_A.jsonl --baseline results_control_A.jsonl --ci
 ```
 
+## v2 (2026-10-17): Quick-mode length (task A1)
+Follow-up to the r3 result. Files are in `v2/`; build and score with `scripts/v2.py` (`build`, `judge`, `flatten`). `SKILL.md` was **not** changed: this is the baseline of the current skill.
+
+- 6 new Quick-mode cases (q3-q8): three where a short answer is right (q3, q4, q8), one where the need has shown up twice and building is right (q4), one options pick (q6), two where a long, source-cited answer is right (q5, q7). The v1 cases r3, q1, q2 were re-judged under the new rubric. Both arms (with and without the skill) ran for all 9.
+- The rubric now scores **length-fit as its own criterion**, so mode selection is no longer docked for a long reply (v1 mixed the two). Same blind two-judge protocol as v1; judge ids are `K01-K18` in `v2/judge_map.json`.
+
+| category (n) | skill, judge A / B | control, judge A / B |
+|---|---|---|
+| length-fit (4: q3, q4, q8, r3) | 0.31 / 0.34 | 0.59 / 0.68 |
+| grounding (3: q1, q5, q7) | 0.95 / 0.92 | 0.73 / 0.73 |
+| mode-selection (2: q2, q6) | 0.75 / 0.68 | 0.90 / 0.90 |
+
+- **Length is a real, consistent skill effect on short-answer questions.** The skill scored below the control on all four short-answer cases (q3, q4, q8, r3) with both judges, and the judges' notes say it walks a visible multi-step checklist where 2-4 sentences were expected. q4 (build when needed twice) shows it does **not** over-refuse.
+- **The grounding benefit holds** (q1 largest, q5 and q7 smaller) and is the skill's best-supported advantage. Any length edit must not cost it.
+- q6 (options pick): the skill turned it into a checklist lecture (0.60 / 0.50 vs 0.85 control).
+
+Limits: n=2-4 per category, so the `score_eval.py` "SIGNIFICANT" labels at n<20 should not be taken at face value; the length-fit cases and their "2-4 sentences" reference are my own, and the criterion was added after seeing r3, so the length-fit cases are the shape the skill was already known to lose on; still no human calibration; text-only scenarios.
+
 ## Next
-Add harder cases, including ones the skill is expected to fail, then rerun against these results as the baseline. Shorten Quick-mode answers (r3).
+Edit only the Quick section of `SKILL.md` (silent checklist; show just the steps that changed the answer; 2-3 sentence answers for needed-twice questions), then rerun the skill arm on `v2/` and `outputs/` with the same judges and compare against `v2/results_skill_*.jsonl`. Pass if length-fit on q3/q4/q8/r3 reaches 0.8 on both judges, grounding on q1/q5/q7 stays at or above 0.9, and no case drops more than 0.1. Then bump `marketplace.json`'s version and tag it.

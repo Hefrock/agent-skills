@@ -1,0 +1,13 @@
+Not yet. This is a small, cheap, reversible decision, so I'm not running the full checklist. Only the "needed twice" rule applies.
+
+What I can see: your usage log has one relevant entry, 2026-10-14, "renamed 12 screenshots by hand". That is one occurrence. I haven't looked at your screenshot folder, your naming convention, or any other log, so I can't say whether the need is recurring. I'm going only on that single entry.
+
+Recommendation: don't write a permanent script yet. The rule is to write the need down first and formalize it only after it has shown up twice. One manual session of 12 files doesn't show a pattern.
+
+What to do now:
+- Add a line to your log saying what the rename rule was (for example, "Screenshot <date> at <time>.png becomes YYYY-MM-DD_topic.png"). That makes the second occurrence easy to recognize, and it gives you the spec if you do build something.
+- If it happens again, build it then. At that point a short shell loop or a small script is a reasonable, low-cost answer, and it is easy to throw away if the need goes away.
+
+Stop signal for this decision: if the log shows a second rename session, build it. If not, leave it manual.
+
+One caveat: if you already know you take screenshots constantly and the manual renaming is a regular annoyance, that is information the log doesn't capture. Tell me and I'll weigh it. Otherwise, the evidence supports waiting.

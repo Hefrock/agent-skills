@@ -1,0 +1,37 @@
+Short answer: use HTTP cache headers behind the CDN you already have. Don't add Redis, and don't start with an in-process LRU. This is a quick-mode decision, and I only have the facts you gave me (3 instances behind a load balancer, catalog edits a few times a day through an admin tool, about 2k reads/min, a CDN already in front, no Redis today). I haven't seen your code, your CDN config, or the endpoint's response shape.
+
+**Clarify (what I'd check before committing)**
+- Does the catalog response vary per user (prices, entitlements, A/B flags, auth)? If it does, a shared CDN cache is unsafe unless the cache key accounts for that. This is the biggest unknown, and I can't tell from what you've told me.
+- How stale can the catalog be after an admin edit: seconds, minutes, or not at all?
+- Does your CDN support purge or invalidation by URL or tag, and does the admin tool run somewhere that can call it?
+
+**Options (MECE by where the cached copy lives)**
+1. At the edge (CDN, driven by `Cache-Control` / `ETag`). It adds no new infrastructure, and most of the 2k/min never reaches your origin.
+2. In each app process (LRU). There are 3 separate caches, so after an edit they can disagree until their TTLs expire.
+3. In a shared network store (Redis). It's one consistent copy, but it means deploying and operating something new.
+4. No caching, as the baseline. At about 33 reads/sec, an uncached endpoint may already be fine, depending on query cost, which I don't know.
+
+**Why edge caching fits the facts**
+- Reads are about 2k/min (roughly 33/sec) and the catalog changes only a few times a day. That is a very high read-to-write ratio, which suits caching close to the client.
+- The CDN is already there, so this option costs a header change and possibly a purge hook.
+- The load is modest. Redis would add a new service to run, secure, and monitor for a load that the other options handle.
+
+**Premortem (each risk traces to a stated fact or a known failure pattern)**
+- Stale data after an edit. Edits happen a few times a day, so the staleness window matters. Mitigate with a short `max-age` plus `stale-while-revalidate`, or purge from the admin tool on save.
+- Per-user or personalized responses leaking through a shared cache. This is a known failure pattern and I can't rule it out from the facts given. Check for `Vary` and auth headers first.
+- The CDN ignoring or overriding your headers. Its default rules often differ from what the origin sends. This is unverified for your setup.
+- In-process LRU specifically: 3 instances means 3 independent caches, so users behind the load balancer can see different catalog versions after an edit. This follows directly from your topology.
+- Redis specifically: a new dependency and a new failure mode, with no stated need for it at this load.
+
+**Independent review:** none. I'm doing this solo, with no fresh agent checking it, so treat the recommendation as weaker for that. The unknowns above are what a reviewer would probe first.
+
+**Verify the mechanism before calling it done**
+- Request the endpoint through the CDN and inspect the response headers (`Age`, `X-Cache` or your CDN's equivalent, `Cache-Control`). Confirm that hits really are served from the edge.
+- Edit a catalog item and confirm the change shows up within your staleness budget. Do this once with purge and once without.
+- Prove the check can fail: remove the header and confirm the hit indicator disappears.
+
+**Stop signals:** if the CDN shows a high hit rate and edits appear within your tolerance, stop. Don't layer on more caching. If the endpoint is personalized or you need stricter freshness than purge can give, come back to the options.
+
+**Needed twice:** don't build Redis or an LRU layer now. Revisit only if edge caching measurably falls short, or if a second use case needs shared server-side state. Write that down and decide then.
+
+**What would change my answer:** a personalized response (then cache a shared base catalog at the edge and personalize separately), a hard requirement for instant consistency, or origin query cost so high that cache misses after a purge hurt. In that last case, a small in-process cache with a short TTL is the next step before Redis.
