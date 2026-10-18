@@ -45,7 +45,7 @@ Use as many of these as apply. Each tells the reader something different.
 - **Concept:** In plain language → Core idea → Why it matters → Key properties → Open questions → Related → Sources.
 - **Source:** header block (type, author, link, read on, how read) → In plain language → Core argument → Key takeaways → Concepts referenced → Quotes worth keeping → Sources.
 - **Project:** what done looks like → In plain language → Goal → Status → Key concepts → Decisions (dated, with the reason) → Open questions → Related → Sources.
-- **Journal:** What I learned → Housekeeping → Open questions → Ideas to promote.
+- **Journal:** What happened today → What I learned → Decisions (optional) → Open questions → Still to do → Ideas to promote. On a quiet day keep only What happened today, What I learned and Ideas to promote. Wiki mechanics (links added, fixes, audits) stay out of the journal; they go in the run log or commit history.
 - **Map:** In plain language → concepts by level → Sources → Active projects → Open questions → Sources for this map.
 
 Every page with `confidence: low` or `verification: name-match` needs an Open questions section naming what is unverified.
