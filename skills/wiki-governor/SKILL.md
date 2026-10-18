@@ -18,7 +18,7 @@ The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before run
 1. **Orchestrate, don't duplicate.** Governor calls `wiki-librarian /audit`, `wiki-synthesizer /synthesize`, and — when the warehouse is in use — `wiki-warehouse /warehouse-audit`. It only implements what none of them do: compliance, health scoring, gap surfacing. If a check already lives in another skill, cite it — don't re-scan.
 2. **Measure, don't game.** The health score is a mirror, never a target. Report sub-metrics honestly, including regressions. A score that is being optimized instead of earned is worse than no score — say so if you see it happening (Goodhart's law).
 3. **Report before acting.** Inherit the librarian's confirm-before-destructive discipline. Governor auto-applies only the low-risk fixes the librarian already classifies as safe.
-4. **Leave a trail.** Every run appends a governance report to today's journal and updates `Maps/_context.md`.
+4. **Leave a trail.** Every run appends a governance report to today's run log (`Journal/Runs/YYYY-MM-DD.md`) and updates `Maps/_context.md`.
 5. **Cadence over impulse.** Designed to run weekly, or when `last_governed` is more than 7 days old.
 
 ## /govern [scope]
@@ -43,7 +43,7 @@ Hold the vault to `knowledge-os/constitution.md`. Map the librarian's and wareho
 | 6 — Status reflects reality | `status: mature` pages link to ≥2 others | librarian schema check |
 | 7 — No islands | zero inbound **and** outbound links | librarian orphan check |
 | 8 — Preserve provenance | every concept page carries a `Captured from [[journal]]` or `Source: [[…]]` backlink | librarian schema check |
-| 9 — One run, one log | today's journal has a synthesis/audit log entry | governor |
+| 9 — One run, one log | today's run log (`Journal/Runs/YYYY-MM-DD.md`) has a synthesis/audit log entry | governor |
 | 10 — Distill, don't dump | warehouse-linked notes (`doc_id` present) have a body under ~4000 characters | librarian schema check |
 
 Output a compliance table: law, pass/fail, and the specific pages violating it. Law 9 is governor's own distinctive check — it's about the governance run itself, so nothing else is positioned to verify it.
@@ -83,7 +83,7 @@ Make the wiki notice what it does not know. Aggregate every `## Open questions` 
 
 ### Phase 5 — Governance report + hot cache
 
-If today's journal doesn't exist yet, create it first with `write_note` from `assets/journal.md`, then append — `append_note` refuses to silently create a frontmatter-less file. Append to today's journal:
+If today's run log (`Journal/Runs/YYYY-MM-DD.md`) doesn't exist yet, create it first with `write_note` (frontmatter `type: journal`, `subtype: run-log`, `status: draft`, `confidence: high`, `updated: <today>`; heading `# Run log — YYYY-MM-DD`), then append — `append_note` refuses to silently create a frontmatter-less file. Append to today's run log:
 
 ```markdown
 ## Governance run — YYYY-MM-DD

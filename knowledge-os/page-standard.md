@@ -29,6 +29,7 @@ The authoritative schema is in the wiki-operator skill. In short: `type`, `statu
 - `verification` records how a claim was checked and caps `confidence`: only `vendor` (traced to the author's or standards body's own document) or `multi-source` (two or more independent sources agree) can support `high`.
 - `verified_against` is the actual link or source name. A tier of `vendor` or `multi-source` with nothing here is an unbacked label.
 - Don't retrofit `verification` onto older pages on sight, but set it on any new page or any edit that touches a factual claim.
+- **Journals** record a day, not a verified claim, so they don't need `verification`. Set `confidence: medium` when the entry's findings rest on search results or secondary sources, and label each external source link "opened" or "search result only".
 
 ## Provenance: what to link
 
@@ -45,7 +46,7 @@ Use as many of these as apply. Each tells the reader something different.
 - **Concept:** In plain language → Core idea → Why it matters → Key properties → Open questions → Related → Sources.
 - **Source:** header block (type, author, link, read on, how read) → In plain language → Core argument → Key takeaways → Concepts referenced → Quotes worth keeping → Sources.
 - **Project:** what done looks like → In plain language → Goal → Status → Key concepts → Decisions (dated, with the reason) → Open questions → Related → Sources.
-- **Journal:** What happened today → What I learned → Decisions (optional) → Open questions → Still to do → Ideas to promote. On a quiet day keep only What happened today, What I learned and Ideas to promote. Wiki mechanics (links added, fixes, audits) stay out of the journal; they go in the run log or commit history.
+- **Journal:** What happened today → What I learned → Decisions (optional) → Open questions → Still to do → Ideas to promote. On a quiet day keep only What happened today, What I learned and Ideas to promote. Other wiki mechanics (links added, fixes, map updates) stay out of the entry body. Run logs from synthesis, audit and governance runs go in `Journal/Runs/YYYY-MM-DD.md` (constitution Law 9), not in the daily note, which may link to the run log in one line.
 - **Map:** In plain language → concepts by level → Sources → Active projects → Open questions → Sources for this map.
 
 Every page with `confidence: low` or `verification: name-match` needs an Open questions section naming what is unverified.

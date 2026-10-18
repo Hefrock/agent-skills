@@ -7,7 +7,7 @@ updated: YYYY-MM-DD
 
 # Journal — YYYY-MM-DD
 
-<!-- Quiet day? Keep only "What happened today", "What I learned" and "Ideas to promote"; delete the rest. Wiki mechanics (links added, fixes, audits, map updates) do not belong here: they go in the tool's run log or the commit history. Keep "What I learned" about learning. -->
+<!-- Quiet day? Keep only "What happened today", "What I learned" and "Ideas to promote"; delete the rest. Keep "What I learned" about learning: wiki mechanics (links added, fixes, map updates) do not belong in it. Run logs from synthesis, audit and governance runs go in `Journal/Runs/YYYY-MM-DD.md`, not in this note (constitution Law 9, "One run, one log"). This note may carry one line linking to it. -->
 
 ## What happened today
 
