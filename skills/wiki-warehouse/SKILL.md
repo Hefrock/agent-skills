@@ -161,8 +161,9 @@ direction here:
 - **wiki-synthesizer** — after `/ingest`, run `/synthesize sources` to promote the new
   Source note's ideas into `Knowledge/` concept pages. In the other direction,
   `/synthesize`'s Phase 2.5 flags external URLs it finds in newly-touched pages that
-  aren't backed by a warehoused `doc_id` yet — check today's journal's "Citations
-  flagged for archival" section for candidates to run `/ingest` on.
+  aren't backed by a warehoused `doc_id` yet — check today's run log
+  (`Journal/Runs/YYYY-MM-DD.md`), under "Citations flagged for archival", for candidates
+  to run `/ingest` on.
 - **wiki-librarian** — its structural audit plus this skill's `/warehouse-audit` together
   cover both intra-vault links and vault→warehouse pointers.
 - **wiki-governor** — Phase 1 runs `/warehouse-audit` automatically whenever the vault has
