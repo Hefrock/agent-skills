@@ -19,7 +19,7 @@ The `obsidian-vault` MCP server must be connected. Verify with `/mcp` before run
 2. **Update over create.** Search `Knowledge/` before creating any new concept page. If a page exists, enrich it — do not fork it.
 3. **Preserve provenance.** Every concept page updated during synthesis gets a backlink to the journal entry or source that prompted the update.
 4. **Non-destructive.** When preprocessing journal entries, never delete or rewrite original text — only append structured sections.
-5. **One run, one log.** After each synthesis run, append a compact entry to today's journal documenting what changed.
+5. **One run, one log.** After each synthesis run, append a compact entry to today's run log (`Journal/Runs/YYYY-MM-DD.md`) documenting what changed. Never write it into the daily note.
 6. **Update the hot cache last.** `Maps/_context.md` is written at the end of every run — never mid-run.
 7. **Flag citations, don't fetch them.** Newly-cited external URLs get surfaced for archival — this skill never fetches or ingests a document itself. That's `wiki-warehouse`'s job, and its confirm-before-committing rule still applies; flagging is not an ingestion decision.
 
@@ -110,7 +110,7 @@ Rewrite `Maps/_context.md`:
 
 ### Phase 4 — Run log
 
-If today's journal (`Journal/Daily/YYYY-MM-DD.md`) doesn't exist yet, create it first with `write_note` from `assets/journal.md`, then append — `append_note` refuses to silently create a frontmatter-less file. Append to today's journal:
+If today's run log (`Journal/Runs/YYYY-MM-DD.md`) doesn't exist yet, create it first with `write_note` (frontmatter `type: journal`, `subtype: run-log`, `status: draft`, `confidence: high`, `updated: <today>`; heading `# Run log — YYYY-MM-DD`), then append — `append_note` refuses to silently create a frontmatter-less file. Append to today's run log:
 
 ```markdown
 ## Synthesis run — YYYY-MM-DD

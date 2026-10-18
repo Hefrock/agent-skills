@@ -46,7 +46,7 @@ Use as many of these as apply. Each tells the reader something different.
 - **Concept:** In plain language → Core idea → Why it matters → Key properties → Open questions → Related → Sources.
 - **Source:** header block (type, author, link, read on, how read) → In plain language → Core argument → Key takeaways → Concepts referenced → Quotes worth keeping → Sources.
 - **Project:** what done looks like → In plain language → Goal → Status → Key concepts → Decisions (dated, with the reason) → Open questions → Related → Sources.
-- **Journal:** What happened today → What I learned → Decisions (optional) → Open questions → Still to do → Ideas to promote. On a quiet day keep only What happened today, What I learned and Ideas to promote. Other wiki mechanics (links added, fixes, map updates) stay out of the entry body. Synthesis, audit and governance runs append their own run log as a separate section at the end (constitution Law 9); keep it apart from What I learned.
+- **Journal:** What happened today → What I learned → Decisions (optional) → Open questions → Still to do → Ideas to promote. On a quiet day keep only What happened today, What I learned and Ideas to promote. Other wiki mechanics (links added, fixes, map updates) stay out of the entry body. Run logs from synthesis, audit and governance runs go in `Journal/Runs/YYYY-MM-DD.md` (constitution Law 9), not in the daily note, which may link to the run log in one line.
 - **Map:** In plain language → concepts by level → Sources → Active projects → Open questions → Sources for this map.
 
 Every page with `confidence: low` or `verification: name-match` needs an Open questions section naming what is unverified.

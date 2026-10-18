@@ -96,7 +96,7 @@ broken-link checks and from all vault-health computations. Any retrieval **by
 would otherwise match and be treated as a real note.
 
 ### 9. One run, one log
-After any synthesis or audit session, append a compact summary to today's journal. This creates a permanent record of what changed and why.
+After any synthesis, audit or governance run, append a compact summary to today's run log, `Journal/Runs/YYYY-MM-DD.md` (create it if it doesn't exist, with `type: journal` and `subtype: run-log`). This creates a permanent record of what changed and why. Run logs are not written into the daily note in `Journal/Daily/`, which stays for learning; the daily note may carry one line linking to the day's run log.
 
 ### 10. Distill, don't dump
 Full text and original files live only in cold storage (the `knowledge-warehouse` repo, or wherever raw material is warehoused outside the vault) — never in a note. A note holds a summary, a few key excerpts, and a stable pointer back to the original (a `doc_id` or equivalent), not the whole document. If you're about to paste full source text into a note, stop; distill it instead.

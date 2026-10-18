@@ -62,7 +62,7 @@ write the audit-log entry back into the vault afterward.
      this skill; hand off to `wiki-operator` for the actual edit.
 4. **Leave a trail** — same convention as `wiki-librarian`'s Principle 5: append an
    audit summary (notes scanned, findings count, severity mix, what was fixed vs.
-   deferred) to today's journal after the run.
+   deferred) to today's run log (`Journal/Runs/YYYY-MM-DD.md`) after the run.
 5. **Gate it if this is being run unattended** (e.g. a scheduled check rather than an
    interactive session):
    ```bash
