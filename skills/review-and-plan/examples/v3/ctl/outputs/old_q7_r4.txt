@@ -1,0 +1,33 @@
+**Short version: don't merge yet.** The fix hasn't been tested in the environment where the flake happens.
+
+This is a quick-mode premortem. I haven't seen the test code, the wheel contents or the CI logs, so each risk below traces only to what you told me. I did the review myself, with no independent reviewer, so treat it as weaker for that.
+
+**What the evidence says**
+- `test_sync` starts a background thread and asserts on shared state, and it fails only intermittently, only in CI.
+- The CI runner is slower than your laptop.
+- Local runs use `src/`, but CI installs a built wheel.
+
+**Premortem: imagine it merged and the flake came back**
+1. **The sleep is a bet on timing, not a fix.** The test fails because the assertion can run before the thread has updated the shared state. A slower CI runner is exactly where a fixed 2 seconds is most likely to fall short. It could also hide a real race in the code instead of a test-only race. (Source: your description of the test and the slower runner.)
+2. **Five local passes tell you almost nothing.** The test already passed on your faster machine before the change, because the failure shows up only in CI. Five more passes there can't show the fix works on the runner that flakes. (Source: "intermittent in CI only", "CI runner is slower".)
+3. **You may not be testing the code CI runs.** Locally you run `src/`, but CI runs the built wheel. If the wheel differs from `src/` (a stale build, missing files, a different code path), the CI failure could have a different cause. A sleep would then mask it or do nothing. I can't tell, because I haven't seen the wheel. (Source: your statement about the install paths.)
+4. **The sleep adds 2 seconds to every run and can still miss.** If the thread is slow or stuck, the test still fails. If it finishes in milliseconds, you pay 2 seconds anyway. (Source: general behavior of fixed sleeps, not anything specific I read in your repo.)
+
+I've dropped any risk I couldn't tie to something you said.
+
+**A sturdier fix**
+- Replace the sleep with a real synchronization point: `thread.join(timeout=...)`, a `threading.Event` the worker sets when it's done, or a poll-until-condition helper with a generous timeout. The test then waits exactly as long as needed and fails clearly if the thread never finishes.
+
+**Check before merging (step 5, verify the mechanism)**
+- Run the test against the installed wheel, not `src/`: build it, install it into a clean environment, and run the test there.
+- Prove the test can fail. Remove your fix, or add a deliberate delay inside the thread, and confirm the test fails. Then restore the fix and confirm it passes. If it passes both ways, it isn't testing what you think.
+- Check the CI logs from a failing run, which I haven't seen. They will show whether the failure is the assertion firing early or something else, such as an import or version mismatch from the wheel.
+- To get the real signal, push the branch and let CI run it many times. Rerun the job 20 or more times, or loop the test in CI. If it fails even once, the fix isn't done.
+
+**Stop signals**
+- Stop when the wheel-based run and the CI reruns pass consistently, or when the logs show a cause that isn't timing.
+- If a fix attempt turns up a new failure outside this test, stop and report it instead of chaining fixes.
+
+**Not in scope:** rewriting the threading design and changing the CI runner. Neither is justified by what I've seen.
+
+If you can share the test code and one failing CI log, I can tighten this from "likely" to "grounded".

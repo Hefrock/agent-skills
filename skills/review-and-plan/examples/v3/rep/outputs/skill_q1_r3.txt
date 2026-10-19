@@ -1,0 +1,24 @@
+Solo premortem: no tools and no second reviewer, so this is weaker than an independent review. I only have the design doc text, so I can't say what the org's repos contain.
+
+**Risks traced to the doc**
+
+1. **Closing everything on day one, org-wide (from "Rollout: enable for all repos on day one").** The first run will hit the whole backlog at once. Every issue older than 60 days across every repo closes in one night. Closing issues is reversible, but a mass close sends notifications and can bury real bugs and feature requests. This is the biggest risk.
+2. **The only safety valve is opt-out (from "Issues labeled `stale-exempt` are skipped").** Nobody can exempt issues before the first run unless they already know the label exists. The doc doesn't say the label exists in each repo, or that anyone will be told to apply it. Labels differ by repo, and applying one takes write access.
+3. **"No activity" is undefined (from "no activity for 60 days").** The doc doesn't say whether activity means comments only, or also label changes, assignments, linked PRs, reactions or project-board moves. Any of these could make an issue look idle when it isn't. Issues blocked on an external dependency or waiting on a release would be closed by mistake.
+4. **No dry run or cap (from the nightly schedule plus `gh issue close`).** Nothing in the doc previews what would be closed, limits how many issues close per run, or lets a human approve the first batch. If the age filter or the exemption check is wrong, the damage is already done by the time the #eng summary posts.
+5. **The summary comes after the action (from "Posts a summary to #eng").** It tells people what happened but doesn't prevent anything. Across many repos the summary could be too long to read, or the Slack post could fail and nobody would know. The doc doesn't say what happens on failure.
+6. **No close reason, comment or reopen path (from the doc's silence).** It specifies `gh issue close` but not a closing comment. Reporters would get no explanation and no instructions for reopening, and a reopened issue could be closed again the next night.
+
+**Risks from general knowledge, not from the doc**
+
+- Org-wide Actions usually need a token with write access to every repo. A broad token is a security concern, and archived or private repos may fail or behave differently.
+- `gh` listing and rate limits can cause partial runs in a large org. The doc doesn't say how partial runs are handled.
+- Closing stale issues is a policy people often disagree about. Teams may want different thresholds, or no auto-close at all for some repos.
+
+**What I couldn't check**
+
+I don't know how many open issues are older than 60 days, whether `stale-exempt` exists anywhere, or whether any repo has a different policy. A count of the current backlog would show how large the day-one close would be.
+
+**Recommendation**
+
+Don't build it as written. The cheapest changes address risks 1 and 4: start with a dry-run mode that only posts the would-close list to #eng, then enable it on one or two repos. Add a closing comment with a reopen note. Widen the rollout only after a run or two closes nothing surprising.

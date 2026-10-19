@@ -1,0 +1,46 @@
+**Premortem: nightly stale-issue closer**
+
+**Coverage:** I read only the design doc text you gave me. I didn't run or check anything, and I have no tools here. This review is solo, with no independent reviewer, so treat it as weaker than a fresh-agent review. Each risk below cites the doc or is labeled as general knowledge.
+
+**Assume it failed. The likely ways:**
+
+1. **Day-one, org-wide rollout means the first run is the blast radius.**
+   - Source: "enable for all repos on day one."
+   - The first run hits every repo's whole backlog at once, so it will close everything already older than 60 days. That includes issues nobody has looked at in months but that still matter.
+   - Nothing in the doc describes a pilot or a dry run.
+
+2. **The only protection is an opt-out label that won't exist yet.**
+   - Source: "Issues labeled `stale-exempt` are skipped."
+   - On day one almost nothing carries that label, and the doc doesn't say who applies it or when. The people who would exempt issues find out after the closures.
+   - The rule is also blunt: "every issue with no activity" has no carve-out for types such as security reports, roadmap or tracking issues, or issues blocked on someone else. Nothing in the doc distinguishes them.
+
+3. **"No activity" is undefined.**
+   - Source: the doc never says what counts.
+   - Comments, label changes, linked PRs, and project-board moves could each count or not. A wrong guess closes live work or keeps dead issues open.
+
+4. **There is no warning step.**
+   - Source: the doc describes only closing, plus a summary afterward.
+   - Reporters get no chance to say "still relevant" before the close. The doc also doesn't mention a closing comment or reason, so people may see a silent close.
+
+5. **The summary comes after the damage.**
+   - Source: "Posts a summary to #eng."
+   - Nothing in the doc says the summary lists each closed issue. If it only gives counts, there is no easy way to find and reopen the wrong ones.
+   - A first-run summary covering a whole org's backlog may also be too large to read.
+
+6. **Auth and rate limits (general knowledge, not in the doc).**
+   - The default `GITHUB_TOKEN` in Actions is scoped to a single repo. An org-wide job usually needs a PAT or GitHub App, and the doc doesn't say which. Closing many issues in one night can also hit API rate limits and leave the run partly done, with no stated handling.
+
+7. **Notification flood (general knowledge).**
+   - A mass close notifies every reporter and subscriber at once. That can hurt contributor goodwill and make people stop filing issues.
+
+8. **Scheduled workflows can be disabled (general knowledge).**
+   - GitHub pauses scheduled workflows in repos with no recent activity. The job could silently skip the quietest repos, which are the ones with the most stale issues.
+
+**What I'd change before building (cheap and reversible):**
+- Ship a dry run first. It lists what would close and posts that list to #eng, with no closing.
+- Pilot on one or two repos before going org-wide.
+- Add a warning comment and a grace period, for example warn at 60 days and close at 74.
+- Define "activity" explicitly.
+- Make the summary list each closed issue so it can be reversed.
+
+**What I didn't know:** your org's size and backlog, whether `stale-exempt` already exists anywhere, how the job authenticates, and whether closed issues can be bulk-reopened. Any of these could change the severity of the risks above.

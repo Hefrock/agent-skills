@@ -1,0 +1,1 @@
+Not yet. Your log shows the need once (2026-10-14, renaming 12 screenshots by hand), and I have nothing else to go on, so I can't say it recurs or how much time it costs. Keep doing it by hand, log the next time it comes up, and write a small script when it shows up a second time.

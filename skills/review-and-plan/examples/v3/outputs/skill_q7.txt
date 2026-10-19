@@ -1,0 +1,22 @@
+I would not merge on this evidence yet. This review is solo (no fresh agent was available), so it is weaker than an independent one, and I have not seen the wheel contents or the CI logs.
+
+Premortem: imagine the merge went in and test_sync flaked in CI again. The likely reasons, with where each comes from:
+
+1. The sleep is a guess about timing, not a wait for the condition. (From your material: test_sync starts a background thread and asserts on shared state, and the CI runner is slower than your laptop.) If CI is slower than 2 seconds of margin on a bad run, the flake comes back, just less often. A fixed sleep only moves the threshold.
+
+2. Five local passes prove very little about an intermittent, CI-only failure. (From your material: the failure is intermittent and only shows in CI.) It never failed locally before the fix either, so 5 passes after the fix cannot tell "fixed" from "still fine locally". As a general rule, if a failure rate is p per run, 5 clean runs says little unless p is high, and your local p appears to be near zero already. The check has not been shown able to fail on your machine.
+
+3. Local and CI may not be running the same code. (From your material: local runs `src/`, CI installs a built wheel.) Your local passes exercise a different artifact than the one CI tests. If the wheel is stale, built from a different commit, or packaged differently, the sleep might be tested against different behavior. I cannot tell from what I have, so this is an open question, not a finding.
+
+4. The sleep may hide a real race instead of fixing it. (General-knowledge risk, not from your material.) If the assertion reads shared state with no synchronization, the bug may be in the code under test, and a longer sleep makes the test pass while the race stays in production. It also adds 2 seconds to every run, and sleeps tend to get bumped to 5 and then 10 over time.
+
+5. I do not know if the thread is guaranteed to finish at all. (Not in your material.) If it can hang or die silently, no sleep length helps.
+
+What I would do before merging, in order, cheapest first:
+- Replace the sleep with a real wait: join the thread with a timeout, or wait on an Event or a polling loop with a generous deadline (for example 30 seconds) that exits as soon as the condition is true. This is faster when things are fine and more tolerant when CI is slow.
+- Check the failure can happen: run the old test (without the sleep) in a loop locally, or under CPU stress, and see it fail. Then run the new version the same way and see it pass. Without that, you have not shown the fix does anything.
+- Look at the CI logs for one failing run, and confirm the wheel CI tests was built from the same commit as `src/`. I could not do either, so I cannot say whether the wheel difference matters.
+
+Stop signal: if the looped, stressed run of the new version passes many times in a row (say 100) and the CI logs show nothing about the wheel, stop and merge. Do not keep tuning the sleep.
+
+My recommendation is to hold the merge, swap the sleep for a condition-based wait, and show the old test failing under load first.

@@ -1,0 +1,122 @@
+{
+ "C01": {
+  "arm": "old",
+  "case": "q7",
+  "file": "v3/ctl/outputs/old_q7_r2.txt"
+ },
+ "C02": {
+  "arm": "old",
+  "case": "q5",
+  "file": "v3/ctl/outputs/old_q5_r3.txt"
+ },
+ "C03": {
+  "arm": "new",
+  "case": "q1",
+  "file": "v3/rep/outputs/skill_q1_r1.txt"
+ },
+ "C04": {
+  "arm": "old",
+  "case": "q7",
+  "file": "v3/ctl/outputs/old_q7_r1.txt"
+ },
+ "C05": {
+  "arm": "old",
+  "case": "q5",
+  "file": "v3/ctl/outputs/old_q5_r1.txt"
+ },
+ "C06": {
+  "arm": "old",
+  "case": "q5",
+  "file": "v3/ctl/outputs/old_q5_r2.txt"
+ },
+ "C07": {
+  "arm": "old",
+  "case": "q7",
+  "file": "v3/ctl/outputs/old_q7_r3.txt"
+ },
+ "C08": {
+  "arm": "old",
+  "case": "q7",
+  "file": "v3/ctl/outputs/old_q7_r4.txt"
+ },
+ "C09": {
+  "arm": "old",
+  "case": "q1",
+  "file": "v3/ctl/outputs/old_q1_r4.txt"
+ },
+ "C10": {
+  "arm": "old",
+  "case": "q1",
+  "file": "v3/ctl/outputs/old_q1_r1.txt"
+ },
+ "C11": {
+  "arm": "new",
+  "case": "q7",
+  "file": "v3/outputs/skill_q7.txt"
+ },
+ "C12": {
+  "arm": "new",
+  "case": "q5",
+  "file": "v3/rep/outputs/skill_q5_r3.txt"
+ },
+ "C13": {
+  "arm": "new",
+  "case": "q7",
+  "file": "v3/rep/outputs/skill_q7_r3.txt"
+ },
+ "C14": {
+  "arm": "new",
+  "case": "q1",
+  "file": "v3/rep/outputs/skill_q1_r2.txt"
+ },
+ "C15": {
+  "arm": "old",
+  "case": "q1",
+  "file": "v3/ctl/outputs/old_q1_r2.txt"
+ },
+ "C16": {
+  "arm": "new",
+  "case": "q1",
+  "file": "v3/outputs/skill_q1.txt"
+ },
+ "C17": {
+  "arm": "new",
+  "case": "q5",
+  "file": "v3/outputs/skill_q5.txt"
+ },
+ "C18": {
+  "arm": "new",
+  "case": "q5",
+  "file": "v3/rep/outputs/skill_q5_r1.txt"
+ },
+ "C19": {
+  "arm": "new",
+  "case": "q7",
+  "file": "v3/rep/outputs/skill_q7_r1.txt"
+ },
+ "C20": {
+  "arm": "old",
+  "case": "q5",
+  "file": "v3/ctl/outputs/old_q5_r4.txt"
+ },
+ "C21": {
+  "arm": "old",
+  "case": "q1",
+  "file": "v3/ctl/outputs/old_q1_r3.txt"
+ },
+ "C22": {
+  "arm": "new",
+  "case": "q1",
+  "file": "v3/rep/outputs/skill_q1_r3.txt"
+ },
+ "C23": {
+  "arm": "new",
+  "case": "q5",
+  "file": "v3/rep/outputs/skill_q5_r2.txt"
+ },
+ "C24": {
+  "arm": "new",
+  "case": "q7",
+  "file": "v3/rep/outputs/skill_q7_r2.txt"
+ }
+}

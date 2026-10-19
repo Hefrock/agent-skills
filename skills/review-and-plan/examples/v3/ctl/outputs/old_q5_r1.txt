@@ -1,0 +1,43 @@
+This is a quick-mode premortem. I read only the plan text you gave me. I read no schema, no `migrate.sql`, no backup config, and I ran nothing. The independent review (step 4) is not possible here because there are no subagents and no other reviewer, so this is a solo pass and weaker for it.
+
+**Clarify first.** Four things would change my answer, and the plan doesn't say:
+- Which database is this? Locking behavior differs a lot by engine and version. For example, adding a NOT NULL column with a constant default is a metadata-only change in recent PostgreSQL but a table rewrite in older versions and some other engines.
+- Is the orders table written to on Friday evening?
+- Has the backup ever been restored?
+- Can `region` really be derived from `customers`, and does every order have a matching customer?
+
+**Options (MECE).**
+1. Run the plan as written.
+2. Run the same steps, but first rehearse them on a restored copy of production.
+3. Split the work: add the column as nullable, backfill in batches, then add the NOT NULL constraint and default.
+4. Defer to a low-traffic window, with option 2 or 3 as a precondition.
+
+**Premortem.** Every risk below traces to a phrase in the plan. Engine behavior is a documented general pattern, not something I verified for your system.
+
+| Risk | Source in the plan |
+|---|---|
+| The single UPDATE rewrites about 4M rows in one transaction. It can hold row locks for a long time, block writers, bloat the logs and undo space, and run out of disk or hit a timeout. If it fails late, the rollback is also slow. | "backfill from the customers table in one UPDATE", "4M rows" |
+| The ALTER may take an exclusive lock or rewrite the table, which would stall orders for the duration. This depends on the engine. | "add a NOT NULL column `region` with default 'unknown'" on "the production orders table" |
+| Nothing has been tested. Syntax errors, a bad join, or an unexpected row count would first show up in production. | "No staging run is planned" |
+| Orders with no matching customer, or customers with a NULL region, are silently left as 'unknown'. Duplicate customer rows could make the UPDATE nondeterministic or fail. The plan has no check that the result is correct. | "backfill from the customers table", "default 'unknown'" |
+| The rollback loses data. Restoring "last night's backup" discards every order written between the backup and the restore. It is also an unrehearsed, probably slow restore at 4M rows, and it is the plan's only rollback. | "Rollback: restore last night's backup" |
+| Friday 6pm is a bad time to find problems. If it goes wrong, recovery happens at the start of a weekend with the least staffing. | "Friday 6pm" |
+
+I dropped two risks I could not trace to the plan: application code that breaks when it sees the new column, and replication lag. Both are plausible, but I have no evidence for either here.
+
+**Verify the mechanism (step 5).** Before you run anything:
+- Restore last night's backup to a scratch instance and time it. This proves the rollback works and tells you how long it takes. A rollback you haven't restored is a claim, not a plan.
+- Run the whole migration on that restored copy. Record the ALTER's lock behavior and duration, and the UPDATE's duration and log growth.
+- Check the result with queries: count of rows where `region = 'unknown'`, count of orders with no matching customer, and duplicate customer keys.
+- Prove the check can fail. Seed an orphan order in the copy and confirm your query flags it.
+
+**Recommendation.** Don't run it as written. Do option 3 after option 2: add the column as nullable, backfill in batches of a few thousand to tens of thousands of rows with commits in between, verify the counts, then add the NOT NULL constraint and default. Move the window to a time when someone can watch it and nothing is racing it. Also write a data-preserving rollback, such as dropping the column. That is much cheaper than restoring a backup.
+
+**Stop signals (written first).**
+- Stop rehearsing when two consecutive rehearsal runs on the copy give the same timings and the same verification counts.
+- Abort the real run if the ALTER blocks for longer than the limit you set beforehand, or if batch duration climbs steadily.
+- Don't fix a failed batch with another ad hoc fix. Pause and re-plan.
+
+**Needed twice (step 7).** Nothing permanent to build yet. If you do a second large migration, write this rehearsal-and-batching routine into a runbook then.
+
+**Not covered.** I didn't check your engine version, your traffic, whether `region` is the right column in `customers`, or application compatibility.

@@ -1,0 +1,27 @@
+This is a one-shot, hard-to-reverse change to production, so I'm running the full premortem. Coverage: I read only the plan text you gave me. I haven't seen migrate.sql, the schema, the database engine or version, or the backup setup. The review is solo (no other reviewer is available), so it is weaker than an independent one.
+
+Assume it's Saturday morning and the migration failed. These are the likeliest causes, each tied to the plan text.
+
+1. No staging run. The plan says so directly. The SQL, the join to customers and the runtime have never been exercised on real data. Every risk below is one a staging run on a copy of production would have caught.
+
+2. Adding a NOT NULL column with a default to a 4M-row table. Whether this is a quick metadata change or a full table rewrite under an exclusive lock depends on your engine and version, and the plan doesn't name either. On some engines and versions it rewrites the table and blocks orders reads and writes for the duration. I can't tell which applies, so treat this as unverified. Check the engine's documentation for your exact version, then time it on a copy.
+
+3. The backfill is one UPDATE over 4M rows. This is the most likely failure.
+   - It runs as a single long transaction. Expect long row locks on orders, transaction log or undo growth, and replication lag if you have replicas. Anything that writes to orders in that window may stall or time out.
+   - The plan doesn't say how orders joins to customers. Orders with no matching customer, or a customer whose region is NULL, will either stay 'unknown' or, if the UPDATE assigns NULL, violate NOT NULL. In the second case the whole statement fails and rolls back after running for however long it took, and the rollback can itself take a long time.
+   - Batching by primary-key range avoids all of this. That is a standard remedy, not something from your plan, so it's a suggestion rather than a finding.
+
+4. The rollback is weak. "Restore last night's backup" discards every order written between that backup and the failure, which could be most of a day by Friday evening. The plan doesn't say that anyone has tested the restore or knows how long it takes on 4M rows. It also doesn't say whether the backup finished successfully last night. A rollback that has never been run is a hope, not a rollback. For a failure before the backfill, dropping the new column is a far cheaper undo.
+
+5. Friday 6pm. If it fails or leaves the table locked, you are debugging production at the start of a weekend. The plan names no one on call and no point at which you would abort. I don't know your order traffic at that hour, so check it.
+
+6. Missing from the plan. It has no written abort condition, such as "if the UPDATE exceeds N minutes or lag exceeds M, stop." It has no post-run check, such as a count of NULL or 'unknown' regions compared with an expected number. Write both before starting, so you aren't deciding under pressure.
+
+Recommendation: don't run it as written. Before Friday, do these in order:
+1. Restore a recent backup to a scratch instance. This tests the restore and gives you a staging copy.
+2. Run the migration there and time each step.
+3. Split the migration into add column, then batched backfill, then verify. Add the NOT NULL constraint last if your engine allows it.
+4. Take a fresh backup immediately before the run, and write down the abort conditions and the rollback steps.
+5. Consider a quieter window with someone else available.
+
+Open questions that would change this: which database and version, the join key between orders and customers, whether replicas exist, and how many orders arrive per hour at Friday 6pm. If you share migrate.sql and the schema, I can check items 2 and 3 against what the SQL actually does instead of reasoning from the plan summary.

@@ -1,0 +1,22 @@
+Recommendation: don't merge yet. The sleep may well help, but "passed locally 5 times" doesn't test the failure you're fixing. Coverage and caveats first: I only have your description of the test and the CI setup. I have not seen the test code, the wheel contents, or any CI logs. This review is solo (no independent reviewer), so it is weaker than a fresh-eyes check.
+
+Risks, each with where it comes from:
+
+1. The local runs can't show the fix works. (Your material: the failure is "intermittent in CI only" and "the CI runner is slower than your laptop.") Five green local runs were also green before the fix, since it never flaked locally. They say nothing about CI timing.
+
+2. A fixed 2-second sleep is a guess about CI speed. (Your material: the runner is slower, and you haven't seen its logs, so you don't know how much slower.) If the background thread sometimes takes longer than 2s on a loaded runner, the flake only gets rarer. Rarer is harder to notice and harder to debug later. (General knowledge about sleep-based test fixes, not from your files.)
+
+3. The sleep may not touch the actual cause. (Your material: the test "asserts on shared state" while a background thread is running.) If the real problem is a race on that state, such as unsynchronized access or an assertion that can run mid-update, then waiting longer hides it instead of removing it. I can't tell which it is without the test and the code under test.
+
+4. CI may not be running the code you tested. (Your material: local runs `src/`, CI installs "from a built wheel," and you haven't seen the wheel contents.) The wheel could be stale or built differently, or it could be missing a change. In that case the CI flake might not even be the same bug you reproduced locally. Your local passes would then say nothing about it.
+
+5. Cost: the sleep adds 2 seconds to every run of the test, whether or not it's needed. (Plain arithmetic from your change.) It's minor on its own but accumulates if the pattern spreads.
+
+What I'd do before merging, in order:
+- Look at the CI logs from a failing run and confirm the failure is the assertion on shared state and not something else. This is read-only.
+- Check what the wheel CI builds contains, and confirm it matches your `src/`.
+- Replace the fixed sleep with a wait on the condition itself: join the thread, wait on an event, or poll with a timeout (say 10s) until the state is what the test expects. This is faster when things go well and tolerant when CI is slow. If the state really is racy, fix the synchronization in the code instead.
+
+If you want to merge the sleep anyway as a stopgap, that's reasonable as long as you note it as a stopgap and watch CI over the next several runs. The meaningful evidence is a run of green CI builds, not local runs. Local runs can't test this fix.
+
+What I don't know: whether the 2s is enough on your runner, and whether the thread or the test is the real source of the race. Either answer would change this advice.

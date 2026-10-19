@@ -1,0 +1,20 @@
+Don't merge yet. The sleep is a guess, and the evidence you have doesn't test it. Coverage: I only have your description. I haven't seen the test, the wheel contents or the CI logs, so every risk below comes from your description or from general flaky-test patterns, and I've labeled which is which. This review is solo, with no independent reviewer, so it is weaker than it should be.
+
+**Risks, with sources**
+
+1. **Local passes don't test the failing condition.** You said the flake shows up only in CI, and CI is slower than your laptop. Five local passes can't distinguish "fixed" from "never failed here anyway." Source: your description.
+2. **You tested different code from the code CI runs.** Your checkout runs `src/`, but CI installs a built wheel. If the wheel differs from `src/` (stale build, missing file, different version), your local runs say nothing about CI. I haven't seen the wheel, so I can't say whether it differs. Source: your description.
+3. **A fixed sleep only shifts the timing.** The test starts a background thread and asserts on shared state. A sleep gives the thread time to finish but doesn't make it finish. If the CI runner is slow or loaded enough, 2 seconds may not be enough, and the flake becomes rarer rather than gone. Source: your description, plus the general pattern for sleep-based fixes to thread races.
+4. **The sleep may hide a real race.** If the shared state is read while the thread is still writing it, the sleep could mask a bug in the code under test rather than in the test. I can't tell from what I've seen. Source: general pattern, unverified here.
+5. **Cost.** Every run now waits at least 2 seconds, whether or not it needs to. Source: the change itself.
+
+**What to do instead**
+
+- Replace the sleep with a real synchronization point. Join the thread with a timeout, wait on an `Event`, or poll the condition up to a generous deadline (say 10 to 30 seconds). It returns as soon as the condition holds and fails clearly if it never does.
+- Check that the fix can fail. Revert it, or shrink the wait to something tiny, and confirm the test fails. A test that can't fail proves nothing.
+- Verify against what CI runs. Build the wheel, install it in a clean environment, and run `test_sync` there. Better still, loop it (for example 50 to 200 runs) under CPU load to imitate the slow runner.
+- Look at the CI logs from a failing run. They should show which assertion failed and whether the thread was still running.
+
+**Stop signal:** if the looped wheel-based run passes with no failures, and the revert check fails as expected, stop. Don't keep tuning timeouts.
+
+**Bottom line:** the evidence supports "passes locally on `src/`," not "fixed in CI." Fix it with a join or wait, and run the check against the wheel before you merge.

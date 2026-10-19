@@ -1,0 +1,22 @@
+Don't merge yet. The sleep makes the symptom rarer, but it doesn't show the cause is fixed, and your evidence doesn't test the environment where the flake happens.
+
+Risks, each tied to what you told me:
+
+1. Your 5 local passes say little. The failure is "intermittent in CI only" and "the CI runner is slower than your laptop". Your laptop is the fast environment, where the race probably never fired, so 5 passes there would have happened before the sleep too. You never saw this test fail locally, so you haven't shown the sleep changes anything.
+
+2. A fixed sleep doesn't remove the race. Your test "starts a background thread and asserts on shared state". A 2-second sleep only helps if the thread always finishes within 2 seconds. A slower or more loaded CI runner can still exceed that, so the flake could come back less often, which is harder to debug. This follows from the setup you described and is a general pattern with sleep-based fixes, not something I found in your code.
+
+3. The shared state may be unsynchronized. If the assertion reads state the thread writes without a lock, event, or join, the test can be flaky or the code itself can have a real race. The sleep would hide a production bug. I haven't seen the code, so this is a possibility and not a finding.
+
+4. You may be testing different code than CI runs. Your local checkout runs `src/`, but CI installs from a built wheel. If the wheel differs (stale build, missing or different files, a different version), your local passes say nothing about it, and the CI failure might come from the packaging difference and not from timing. I haven't seen the wheel contents, so I can't say whether this matters. It is the biggest gap between your evidence and the failing environment.
+
+5. The cause is a guess. I haven't seen any CI logs, so "timing" is a hypothesis. The failure could be something else, such as an exception in the thread, an ordering assumption, or a leftover from another test.
+
+6. The sleep costs 2 seconds on every run, and it will cover up the next regression in this area.
+
+What I'd do before merging:
+- Reproduce the failure first. Run the test repeatedly under load, or in CI itself, on the old code (for example a loop of 50 to 200 runs, or CI reruns). Then apply the fix and rerun the same way. A fix that hasn't been shown to remove a failure you could reproduce isn't verified.
+- Replace the sleep with real synchronization: `thread.join(timeout=...)`, a `threading.Event` the thread sets when done, or polling the condition with a timeout. That waits only as long as needed and fails clearly on a real hang.
+- Check what the wheel contains and compare it with `src/`, and read the CI failure output for the actual assertion or exception.
+
+I wasn't able to do an independent review here, so this was a solo pass and weaker for it. Another reader might see risks I missed. Everything above comes from your description only, since I haven't read the test, the source, the wheel, or the logs.

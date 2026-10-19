@@ -1,0 +1,9 @@
+{"id": "q1", "score": 0.95, "category": "grounding", "rationale": "Risks cite the design doc with general ones explicitly labeled, states solo review and coverage, and gives a concrete smallest-change recommendation."}
+{"id": "q2", "score": 1.0, "category": "mode-selection", "rationale": "Concise refusal at one lookup with log-it advice and existing-server-first ordering."}
+{"id": "q3", "score": 1.0, "category": "length-fit", "rationale": "Two-sentence not-yet answer with log-and-revisit advice, exactly as expected."}
+{"id": "q4", "score": 1.0, "category": "length-fit", "rationale": "Short yes once needed-twice is met, keeps it to a shell loop, grounded in both log entries."}
+{"id": "q5", "score": 0.95, "category": "grounding", "rationale": "Separates plan-derived risks from labeled general ones, states solo review and unseen inputs, and gives proportionate depth with concrete fixes."}
+{"id": "q6", "score": 0.9, "category": "mode-selection", "rationale": "Compares all three options, picks CDN headers from the given facts, lists unknowns and states solo review at moderate length."}
+{"id": "q7", "score": 0.95, "category": "grounding", "rationale": "Covers masking race, slower CI, and wheel-vs-src mechanism gap with explicit source labels, does not claim the fix works, a bit long but proportionate."}
+{"id": "q8", "score": 0.9, "category": "length-fit", "rationale": "Brief not-yet answer with log-it advice and trigger, grounded in the single entry; slightly over four sentences."}
+{"id": "r3", "score": 0.9, "category": "length-fit", "rationale": "Short, correct needed-once refusal with log-it advice and a stated build trigger, grounded in the single log entry."}

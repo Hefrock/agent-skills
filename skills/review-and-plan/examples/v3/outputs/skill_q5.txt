@@ -1,0 +1,24 @@
+**Verdict: don't run it as written.** This is a solo review. I had no subagent, and the only material I saw is the plan text. I haven't seen `migrate.sql`, the schema, the database engine or the traffic levels, so those are open questions.
+
+**Risks that come from the plan itself**
+
+1. **The rollback is the weakest part.** "Restore last night's backup" would lose every order written between that backup and the failure. A Friday 6pm run puts that gap at roughly a day of orders. The plan doesn't say how long a restore takes, and it doesn't say whether anyone has tried one. The backup also can't undo a half-finished backfill without discarding good data. If this is the only change, a much cheaper rollback is probably `DROP COLUMN`. Take a fresh snapshot right before you start.
+2. **"No staging run is planned."** Nothing will have shown you the runtime, the lock behavior or whether the backfill is correct. Every other risk below is one a staging run on a copy of production would have caught.
+3. **"One UPDATE" over 4M rows.** This is a general database risk, not something I saw in your files. A single statement that large holds row locks for its whole duration. It writes a large amount of log and creates dead rows, and it can block or time out concurrent writes to `orders`. If it fails near the end, the whole thing rolls back, and the rollback itself can be slow.
+4. **The backfill rule is unspecified.** The plan says "backfill from the customers table" but not how rows are matched. Orders with no matching customer, or a customer with a null region, will silently keep `'unknown'`. Because `'unknown'` is also the default, you won't be able to tell "not backfilled" from "truly unknown" afterward. Check the count of `'unknown'` rows before and after.
+5. **Orders created after the migration.** The plan describes a one-time backfill. Any order inserted after it will get `'unknown'` unless the application or a trigger sets `region`. The plan doesn't cover that, so confirm the application code is ready.
+
+**Risks from general knowledge (not from your material)**
+
+6. **Adding a NOT NULL column with a default may lock the table.** On some engines and versions this rewrites the table. Newer PostgreSQL does it as a metadata-only change, and older versions and some other engines don't. I don't know your engine, so this could be trivial or could block `orders` for minutes.
+7. **Friday 6pm is a bad time for it.** If orders arrive in the evening, you'll be running a heavy write against live traffic. A problem will also hit when fewer people are available over the weekend.
+
+**Suggested changes, cheapest first**
+- Do a dry run on a restored copy of production, and record the lock time, runtime and count of unmatched rows.
+- Split it into three steps: add the column as nullable (or with the default), backfill in batches of about 10k to 50k rows with a pause between them, then add the NOT NULL constraint if you still want it.
+- Take a fresh snapshot just before starting. Write down the `DROP COLUMN` rollback, and the restore time if you need the backup.
+- Run it in a low-traffic window with someone available afterward.
+
+**What would make me change this:** if the table is idle at that time, the engine adds the column without a rewrite, and a staging run takes seconds, then only risks 1, 4 and 5 still need fixing.
+
+**Stop rule for the dry run:** if it behaves as expected twice in a row, stop rehearsing and schedule the real run.

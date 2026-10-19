@@ -1,0 +1,24 @@
+Short version: don't merge yet. The fix may work, but the evidence you have doesn't show that it does. This review is solo (I proposed no fix, but I'm also the only reviewer), so it is weaker than an independent one. I also haven't seen the wheel contents or the CI logs, so everything below comes from your description.
+
+Risks, each with its source:
+
+1. Your 5 local passes say little about the CI failure. (From your material: the failure is intermittent in CI only, and the CI runner is slower than your laptop.) A race that only shows up on a slower machine can pass on a fast one every time, with or without the sleep. Five local passes were probably going to pass before the fix too, so the check can't fail. That makes it no evidence at all.
+
+2. 2 seconds is a guess about CI speed. (From your material: test_sync starts a background thread and asserts on shared state, and the CI runner is slower.) A fixed sleep only shrinks the race window. If the CI runner is slow or loaded enough, the thread can still miss the deadline. You'd get a rarer flake, which is harder to diagnose than the current one. You don't know how much margin 2 seconds gives on CI, because you haven't measured the thread's actual duration there.
+
+3. The sleep may be hiding a real race instead of fixing a test timing issue. (From your material: the test asserts on shared state touched by a background thread.) If the code in `src/` reads or writes that state without a lock, event or join, users could hit the same race and the test is correctly flagging it. A sleep would silence the only detector. This is a documented general failure pattern, not something I saw in your code, so treat it as a question to check, not a finding.
+
+4. CI may not be running the code you tested. (From your material: your local checkout runs `src/`, but CI installs the package from a built wheel, and you haven't seen the wheel contents.) Possible gaps: a stale or differently-built wheel, a file missing from the package, or a different version of the sync code. Then the CI flake could come from a difference between the two, not from timing, and a sleep wouldn't touch it. I can't tell either way from what you've given me. It's an open question, not a likely cause.
+
+5. The cost is permanent and spreads. (General knowledge, labeled as such.) Every run now pays 2 seconds, and the next person who sees a flake will probably copy the same fix.
+
+What I'd do before merging, cheapest first:
+
+- Read the CI logs for the failing runs. Find which assertion fails and what the shared state looked like at that moment. This is read-only and would settle whether risk 1 or 4 applies.
+- Replace the sleep with a wait on a condition: `thread.join(timeout=...)`, a `threading.Event`, or a poll loop with a generous deadline that returns as soon as the state is ready. That is faster when things go well and tolerant when CI is slow.
+- Run the test against the installed wheel locally (build it, install it in a clean venv, run the test) so you test what CI tests.
+- Prove the check can fail. Revert your fix and loop the test under load, for example with `pytest --count` or `stress`/`taskset` to simulate a slow runner. Confirm it flakes without the fix and stops with it. If it never flakes without the fix, your local runs show nothing.
+
+Stop signals, so this doesn't become a fix-the-fix loop: if the CI logs show a clear cause, fix that and stop. If the repro under load fails before and passes after the condition-based wait across a few dozen runs, merge. If the failure moves to a different assertion, stop and treat it as a real race in `src/`, not a timing problem.
+
+If you merge now anyway, do it knowing you only have a hunch: label the sleep with a comment saying why it is there and open an issue to replace it. That keeps the need on record so it isn't forgotten.

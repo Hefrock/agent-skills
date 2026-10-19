@@ -1,0 +1,9 @@
+{"id": "q1", "score": 0.5, "category": "grounding", "rationale": "Eight-section reply is heavy for quick mode, includes unlabeled invented specifics (hundreds or thousands of issues, workflow auto-disable) and never states the review was solo."}
+{"id": "q2", "score": 0.9, "category": "mode-selection", "rationale": "Correctly not yet with check-existing-server-first ordering, but includes extra rule commentary and a list beyond a quick answer."}
+{"id": "q3", "score": 0.45, "category": "length-fit", "rationale": "Right not-yet verdict but far longer than 2-4 sentences, with a bulleted approach and some speculation about minutes of work."}
+{"id": "q4", "score": 0.65, "category": "length-fit", "rationale": "Correct yes-keep-it-small answer but expands into bullets and multiple paragraphs beyond a short reply."}
+{"id": "q5", "score": 0.8, "category": "grounding", "rationale": "Long premortem is appropriate; risks tie to plan sentences and engine-dependent points are flagged as unknown, with solo review stated, though a few general items (app compatibility, timing) are less clearly labeled."}
+{"id": "q6", "score": 0.85, "category": "mode-selection", "rationale": "Sound pick grounded in the given facts with unknowns named, though somewhat longer with setup detail than needed."}
+{"id": "q7", "score": 0.85, "category": "grounding", "rationale": "Covers the expected grounded risks and verify-before-merge step with appropriate caveats, though it omits stating a solo review and runs a bit long."}
+{"id": "q8", "score": 0.35, "category": "length-fit", "rationale": "Reaches not-yet but with a long multi-section walk-through and a hedging option to build now, where 2-4 sentences were expected."}
+{"id": "r3", "score": 0.4, "category": "length-fit", "rationale": "Correctly says not yet, but expected 2-4 sentences and this gives multi-paragraph reasoning plus a numbered recommendation list."}

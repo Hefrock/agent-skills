@@ -1,0 +1,9 @@
+{"id": "q1", "score": 0.9, "category": "grounding", "rationale": "Cites the doc for each risk, labels general risks, states solo review and unknowns, with proportionate length."}
+{"id": "q2", "score": 0.95, "category": "mode-selection", "rationale": "Short not-yet answer with existing-server-first ordering and log-and-reopen trigger."}
+{"id": "q3", "score": 1.0, "category": "length-fit", "rationale": "Concise three-sentence not-yet answer grounded in the one log entry with a clear next step."}
+{"id": "q4", "score": 1.0, "category": "length-fit", "rationale": "Correctly says yes now that need is shown twice, keeps it small, in a short paragraph."}
+{"id": "q5", "score": 0.9, "category": "grounding", "rationale": "Longer format fits; risks quote the plan, general risks are explicitly labeled, and solo review is stated up front."}
+{"id": "q6", "score": 0.85, "category": "mode-selection", "rationale": "Gives a clear pick reasoned from the stated facts, addresses all three options, lists unknowns, and is moderate in length."}
+{"id": "q7", "score": 0.8, "category": "grounding", "rationale": "Hits the sleep-masks-race, slow CI, and src-versus-wheel points without claiming the fix works, with minor inference that it never failed locally."}
+{"id": "q8", "score": 0.95, "category": "length-fit", "rationale": "Short not-yet answer matching one occurrence, with a trigger and a sensible caveat about unlogged runs."}
+{"id": "r3", "score": 0.95, "category": "length-fit", "rationale": "Short, correct not-yet answer tied to the single log entry with a clear trigger and no checklist walk-through."}
