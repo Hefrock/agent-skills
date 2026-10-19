@@ -1,0 +1,39 @@
+Mode: quick. This is one design, but it is outward-facing (it closes issues across the whole org on day one), so I'm running the checklist rather than skipping it.
+
+Coverage: I read the full design doc text you gave me and nothing else. I have no tools here, so I haven't seen your repos, your issue counts, your workflows, or how `gh issue close` is invoked. Every risk below traces to a sentence in the doc, or I label it as a general pattern I'm bringing in from outside.
+
+1. Clarify. The doc leaves these open, and the answers change the risk:
+- What counts as "activity"? Comments only, or also labels, edits, linked PRs, reactions, milestone changes?
+- Does "every issue" include issues assigned to someone, or on a project board or milestone?
+- Is there a dry run or a close comment, and is reopening expected to be easy?
+I'd ask you these before building. The doc can't answer them.
+
+2. Options (MECE, on the rollout and scope axis):
+- A. As written: all repos, real closes, day one.
+- B. Same logic, but report-only (dry run) org-wide first, then enable closes.
+- C. Real closes on a small opt-in set of repos first, then widen.
+- D. Don't automate closing. Only label issues `stale` and let humans close.
+A, B and C differ on how much blast radius the first real run has. D removes automated closing entirely.
+
+3. Premortem on A (imagine it failed):
+- The first run closes the whole backlog at once. Source: "closes every issue with no activity for 60 days, across all repos" plus "enable for all repos on day one." Any repo with old, still-valid issues gets them all closed in a single night. Closing sends notifications to everyone subscribed, and the doc has no cap or batching.
+- The exemption depends on a label that may not exist. Source: "Issues labeled `stale-exempt` are skipped." That is the only protection. Nobody knows to apply a label before the first run, and the doc says nothing about creating it in each repo or announcing it.
+- "No activity" is undefined, so the job may close issues that are still live. Source: the doc never defines it. If it means "last updated" it may behave differently from "last comment."
+- Silent failure or scope drift. Source: "across all repos in the org, using `gh issue close`." The doc doesn't say which token or permissions it uses. A missing permission could make the run fail on some repos. An over-broad token is a security concern.
+- The #eng summary is the only record, and it may be unreadable. Source: "Posts a summary to #eng." After a mass close it could be hundreds of lines, and it doesn't say whether it lists closed issues per repo.
+- Nothing in the doc covers undo. There is no reopen path, no close comment explaining why, and no rollback plan.
+- General pattern, from my own background knowledge and not from your doc: stale bots that mass-close a backlog on first enable are a widely reported source of contributor and customer frustration. Treat that as weaker evidence than the doc-sourced items above.
+I dropped other risks I could think of (rate limits, API outages) because nothing in the doc points to them.
+
+4. Independent review. There are no subagents or other reviewer here, so this review was solo. It is weaker than a fresh agent choosing its own dimensions, and the risks above come from one mind that also framed the options.
+
+5. Verify the mechanism. I can't do this here, and that is a gap, not a pass. Before relying on the design you should:
+- Confirm how the job selects issues, since `gh issue close` closes a named issue and has no inactivity filter. The selection logic is the part that needs checking.
+- Run it report-only against a real repo and compare the list to what you expect.
+- Check the `stale-exempt` skip works by putting the label on a test issue and confirming it is left alone. Also prove the check can fail, by removing the label and seeing the issue get picked up.
+
+6. Stop signals for the pre-build review: stop when (a) a second pass over the doc finds no new doc-sourced risks, or (b) the open questions in step 1 are answered. Don't keep iterating on the design on paper past that. The next evidence has to come from a dry run.
+
+7. Needed twice. The doc doesn't say this need has come up before. If it's the first time, option D (label only, no auto-close) or B (report-only) costs little and leaves a record, so check the real demand before building the full closer.
+
+Recommendation: don't ship A. Build B first, a report-only org-wide run that posts the would-close list to #eng, then enable real closes on a few repos (C) after the exemption label is announced and created. Tell me the answers to the step 1 questions and I'll tighten the plan.

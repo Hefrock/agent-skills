@@ -1,0 +1,20 @@
+{
+"K01":{"mode_selection":0.9,"grounding":0.8,"length_fit":0.9,"rationale":"Long premortem is appropriate; risks tie to plan sentences and engine-dependent points are flagged as unknown, with solo review stated, though a few general items (app compatibility, timing) are less clearly labeled."},
+"K02":{"mode_selection":0.75,"grounding":0.5,"length_fit":0.55,"rationale":"Eight-section reply is heavy for quick mode, includes unlabeled invented specifics (hundreds or thousands of issues, workflow auto-disable) and never states the review was solo."},
+"K03":{"mode_selection":0.85,"grounding":0.9,"length_fit":0.4,"rationale":"Correctly says not yet, but expected 2-4 sentences and this gives multi-paragraph reasoning plus a numbered recommendation list."},
+"K04":{"mode_selection":0.95,"grounding":0.95,"length_fit":0.95,"rationale":"Short, correct not-yet answer tied to the single log entry with a clear trigger and no checklist walk-through."},
+"K05":{"mode_selection":0.85,"grounding":0.85,"length_fit":0.9,"rationale":"Gives a clear pick reasoned from the stated facts, addresses all three options, lists unknowns, and is moderate in length."},
+"K06":{"mode_selection":0.85,"grounding":0.85,"length_fit":0.8,"rationale":"Sound pick grounded in the given facts with unknowns named, though somewhat longer with setup detail than needed."},
+"K07":{"mode_selection":0.9,"grounding":0.8,"length_fit":0.85,"rationale":"Hits the sleep-masks-race, slow CI, and src-versus-wheel points without claiming the fix works, with minor inference that it never failed locally."},
+"K08":{"mode_selection":0.95,"grounding":0.95,"length_fit":0.95,"rationale":"Short not-yet answer matching one occurrence, with a trigger and a sensible caveat about unlogged runs."},
+"K09":{"mode_selection":0.85,"grounding":0.85,"length_fit":0.45,"rationale":"Right not-yet verdict but far longer than 2-4 sentences, with a bulleted approach and some speculation about minutes of work."},
+"K10":{"mode_selection":0.9,"grounding":0.85,"length_fit":0.8,"rationale":"Covers the expected grounded risks and verify-before-merge step with appropriate caveats, though it omits stating a solo review and runs a bit long."},
+"K11":{"mode_selection":0.9,"grounding":0.85,"length_fit":0.75,"rationale":"Correctly not yet with check-existing-server-first ordering, but includes extra rule commentary and a list beyond a quick answer."},
+"K12":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.85,"rationale":"Cites the doc for each risk, labels general risks, states solo review and unknowns, with proportionate length."},
+"K13":{"mode_selection":1.0,"grounding":0.95,"length_fit":1.0,"rationale":"Correctly says yes now that need is shown twice, keeps it small, in a short paragraph."},
+"K14":{"mode_selection":0.95,"grounding":0.95,"length_fit":0.65,"rationale":"Correct yes-keep-it-small answer but expands into bullets and multiple paragraphs beyond a short reply."},
+"K15":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.9,"rationale":"Longer format fits; risks quote the plan, general risks are explicitly labeled, and solo review is stated up front."},
+"K16":{"mode_selection":0.7,"grounding":0.85,"length_fit":0.35,"rationale":"Reaches not-yet but with a long multi-section walk-through and a hedging option to build now, where 2-4 sentences were expected."},
+"K17":{"mode_selection":1.0,"grounding":1.0,"length_fit":1.0,"rationale":"Concise three-sentence not-yet answer grounded in the one log entry with a clear next step."},
+"K18":{"mode_selection":0.95,"grounding":0.9,"length_fit":0.95,"rationale":"Short not-yet answer with existing-server-first ordering and log-and-reopen trigger."}
+}

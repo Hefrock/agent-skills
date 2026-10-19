@@ -9,7 +9,10 @@ Most planning fails the same way: the plan reasons well about a picture of the w
 
 ## Pick a mode
 
-- **Quick:** one decision, one design, one "should I build this." Run the checklist, answer in a few paragraphs.
+- **Quick:** one decision, one design, one "should I build this." Run the checklist silently; it is the method, not the output format. Do not narrate the steps. The reply holds only what changed the answer: the pick, the reason or two behind it, and any check you could not do (for example, that the review was solo). Size it to the question:
+  - **"Worth building / formalizing?"** 2-3 sentences. Need seen once: say not yet, log it, and name what would trigger a build. Need seen twice: say yes and keep it small.
+  - **Options pick:** the pick, a short reason from the facts given, and what you did not know. A short list only if the options need laying out.
+  - **Premortem or review of a specific plan or fix:** longer is right. Each risk cites the part of the material it comes from, general-knowledge risks are labeled as such, and a solo review is stated.
 - **Review:** the user wants the state of a whole thing (project, repo, vault, skill set). Run Sitrep, then Gap analysis, then Sprint plan. The checklist runs inside the sprint plan.
 - **Skip:** if the decision is cheap and reversible, just do it and say what you did. Running seven steps on a trivial choice is the failure mode this skill is meant to avoid.
 

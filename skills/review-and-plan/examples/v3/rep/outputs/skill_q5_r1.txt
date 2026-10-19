@@ -1,0 +1,49 @@
+Verdict: I would not run this as written. The plan has no test and no usable undo, and two steps can hold locks on a live table.
+
+This review is solo. No tools or second reviewer were available, so I read only the plan text you pasted. I have not seen migrate.sql, the schema, the database engine, or your traffic. Risks quoted from the plan are marked "plan". Risks from general database knowledge are marked "general".
+
+**Risks, most severe first**
+
+1. **Rollback loses data (plan: "Rollback: restore last night's backup").** Friday 6pm is roughly 18-20 hours after a nightly backup. A restore discards every order placed since then, plus any other writes to the database if the restore is not table-scoped. Rollback is also the only safety net, and the plan does not say it was ever tested or how long it takes to restore a database with a 4M-row orders table. "We have a backup" is a claim about the past until someone has restored it.
+
+2. **No rehearsal (plan: "No staging run is planned").** Nothing tests the SQL, the join, or the runtime. Every other risk below would show up in a staging run against a copy of production. Without one, the first real run happens against production at the start of the weekend.
+
+3. **One 4M-row UPDATE (plan: "backfill from the customers table in one UPDATE").**
+   - General: a single statement is one transaction. It can hold row locks on all of `orders` for the whole run, so writes block or queue behind it.
+   - General: it can also produce very large undo/WAL volume and replication lag.
+   - General: if it fails or is cancelled partway, the whole thing rolls back and the time is lost. The rollback can itself take as long as the update did.
+   - The plan gives no batching and no runtime estimate.
+
+4. **The backfill can fail or leave junk values (plan: "NOT NULL column `region` with default 'unknown'" and "backfill from the customers table").**
+   - If any matching customer row has a NULL `region`, the UPDATE writes NULL into a NOT NULL column and the whole statement errors out, possibly after a long run.
+   - Orders with no matching customer (deleted or orphaned) either keep 'unknown' silently or get skipped, depending on how the join is written. The plan does not say which is acceptable.
+   - A join that matches more than one customer row per order gives nondeterministic results in some engines.
+   - I can't check any of this without the schema and the data. It is the kind of thing a staging run would catch in minutes.
+
+5. **The ADD COLUMN step may rewrite the table (plan: "add a NOT NULL column ... with default").**
+   - General: whether this is a near-instant metadata change or a full table rewrite under a heavy lock depends on the engine and version. Recent PostgreSQL is metadata-only. Older versions and some other engines rewrite the table.
+   - The plan does not name the engine, so I can't say which applies. This is a question to answer, not a confirmed risk.
+
+6. **Timing and ownership (plan: "Friday 6pm").**
+   - General: a long-running change that starts at the beginning of the weekend leaves less staff, and it may overlap with evening order traffic.
+   - The plan does not say who is on call, what peak traffic looks like, or what the abort point is.
+
+7. **Missing from the plan:**
+   - A post-migration check, such as a count of 'unknown' rows and a comparison of row counts before and after.
+   - A way to tell the app is healthy afterwards.
+   - A decision point where you stop and roll back instead of waiting.
+
+**What I did not know:** the engine and version, whether migrate.sql runs in a transaction, how much write traffic hits `orders` on Friday evening, whether the backup covers just this database, and whether anyone has restored it.
+
+**Smallest changes that would fix the worst problems**
+- Run the whole thing on a restored copy of production first. This tests the SQL, the runtime and the restore in one go.
+- Take a fresh backup or snapshot immediately before the change, and make the rollback "restore that", not last night's.
+- Split the migration into steps: add the column (nullable with a default, or as the engine supports), backfill in batches by primary key range, then add the NOT NULL constraint afterwards.
+- Move the run to a low-traffic window when someone can respond.
+
+**Stop signals, written before you start**
+- If the staging run takes longer than your maintenance window, do not run it in production as written.
+- If the staging run turns up any NULL or unmatched rows, fix the backfill logic first and rerun staging. Do not patch it live.
+- During the production run, if a batch runs well past its staging timing, stop at the next batch boundary and go to the rollback.
+
+Do you want me to draft the batched version of migrate.sql? I would need the schema, the engine, and the columns used to join `orders` to `customers`.

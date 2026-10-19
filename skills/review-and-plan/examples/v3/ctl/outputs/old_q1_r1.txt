@@ -1,0 +1,31 @@
+Coverage: I read only the design doc text you pasted. I have not seen any of the org's repos, issue counts, existing workflows, or Slack setup. No subagents are available, so this premortem is a solo pass and weaker for it. Nothing below was checked against a real repo.
+
+Premortem: assume it shipped on day one and it went badly. Each risk is tied to a line in the doc.
+
+1. It closes issues nobody has decided are dead. (Doc: "closes every issue with no activity for 60 days, across all repos".) "Every issue" includes security reports, long-lived tracking issues, accepted feature requests, and issues waiting on an external party. The only protection is opt-out through `stale-exempt`, and the doc says nothing about how repo owners learn the label exists. The first people to find out will be issue authors getting close notifications.
+
+2. "No activity" is undefined. (Doc: "no activity for 60 days".) It could mean comments only, or also labels, linked PRs, project-board moves and reactions. Depending on which one you implement, an issue with an open PR in progress could be closed. The doc doesn't say.
+
+3. There is no warning step. (Doc: "`gh issue close`", with no mention of a stale label, a comment, or a grace period.) Nothing tells the author or maintainers before the close. The close is the first and only signal.
+
+4. The blast radius is the whole org on the first run. (Doc: "enable for all repos on day one".) The first nightly run will probably hit the whole accumulated backlog at once, not 60 days of normal drift. The rollout has no dry run, no pilot repos and no cap on closes per run.
+
+5. The #eng summary comes after the damage. (Doc: "Posts a summary to #eng".) It reports closes that already happened. If the first run closes hundreds of issues, the summary is a cleanup list, not a safeguard. The doc also doesn't say whether the summary lists each issue or only a count. If it only gives a count, reopening the wrong ones is hard.
+
+6. Scope and permissions are unspecified. (Doc: "across all repos in the org".) The doc doesn't say which token runs this, whether archived or forked repos are in scope, or how a new repo gets covered. I can't judge these from the text. They are open questions, not predicted failures, and you should answer them before building.
+
+Where I'd land: the idea is reasonable, but day-one org-wide closing is the weak part. Closing is outward-facing and only partly reversible, so it should earn its way in.
+
+Options, each different from the others:
+A. Ship as written. Fastest, and it carries all six risks.
+B. Dry run first. The Action only reports what it would close, to #eng, for a week or two. No closes.
+C. Pilot on a few repos, then widen. Real closes, small scope.
+D. Change the policy so it labels `stale` and comments at 60 days, then closes at 74 days if there is still no activity.
+
+I'd do B, then C, and add D's warning step. B fixes risks 1, 2, 4 and 5 cheaply, because you see the real list before anything closes. D fixes risk 3.
+
+Stop signals for the dry run, written now so you don't keep tuning forever: stop when two consecutive dry-run reports show no issues that a maintainer says should not be closed, or when a maintainer flags a category you hadn't anticipated (then fix the rule once and rerun). Don't tune the rule beyond that.
+
+Before you call it done, verify the mechanism: run it against one throwaway repo and confirm that a `stale-exempt` issue is actually skipped, that an issue with recent activity is skipped, and that the close really happens on an old one. A check that has never been seen to fail doesn't prove the exemption works.
+
+I'm not suggesting anything permanent beyond the workflow itself. Don't build a dashboard or a reopen tool unless the pilot shows you need one.

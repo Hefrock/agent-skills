@@ -1,0 +1,32 @@
+**Solo review.** No tools and no second reviewer were available, so this premortem is weaker than an independent one. I only have the plan text, so I can't check the schema, the database engine, or how the backup is taken.
+
+**Verdict:** Don't run it as written. The plan has two likely failures and one rollback gap, and a staging run would expose most of them cheaply.
+
+**Risks from the plan text**
+
+1. **No staging run** ("No staging run is planned"). Every other risk below would show up on a copy first. A Friday 6pm start also leaves little time to recover before the weekend.
+2. **The rollback loses data.** "Restore last night's backup" discards every order written between the backup and the failure. On a Friday evening that is a full day of orders plus however long the migration ran. The plan doesn't say whether the backup has ever been restored successfully, or how long a restore of 4M rows takes.
+3. **The backfill is a single UPDATE over 4M rows** ("backfill from the customers table in one UPDATE"). This is the most likely failure.
+   - The single transaction can hold row locks on the orders table for its whole duration, blocking live writes.
+   - It can also produce a very large transaction log or WAL, fill the disk, or time out. If it fails partway, the whole thing rolls back and you've lost the window.
+   - The plan says nothing about batching, lock timeouts, or how long the backfill should take.
+4. **The default and the backfill conflict** ("NOT NULL column `region` with default 'unknown'... then backfill"). Every existing row gets 'unknown' first, so the backfill is rewriting values it just wrote. Depending on the engine, adding a column with a default may also rewrite the whole table, which means two full-table rewrites. The plan doesn't say which engine or version this is, so I can't tell how bad the first rewrite is.
+5. **Orders without a matching customer will silently stay 'unknown'.** The plan doesn't say what happens to orders whose customer row is missing or has no region. It also doesn't check afterward how many rows are still 'unknown'. This is a correctness risk, not just a performance one.
+6. **New orders during the window.** Rows inserted after the column is added but before the backfill finishes get 'unknown', and the plan has no step to catch them. If the application doesn't yet write `region`, it may also fail on inserts, depending on how the column is defined.
+
+**Risks from general knowledge, not from your text**
+
+- Application code, ORMs, views, or reports that list columns explicitly or use `SELECT *` may break or behave differently once the column exists.
+- Replicas can lag badly behind a long single transaction.
+- Whoever runs the migration may be tired late on a Friday, with less support around.
+
+**What I'd change before running it**
+
+1. Run the whole thing on a restored copy of production. This also tests the backup and gives you real timings.
+2. Split the work into steps: add the column as nullable (or with the default, if your engine does that cheaply), backfill in batches by primary-key range, check the count of 'unknown' rows, and only then add the NOT NULL constraint.
+3. Replace "restore the backup" with a rollback you can run in minutes, for example dropping the column. Keep the backup as the last resort, and write down how much order data it would lose.
+4. Move the run to a low-traffic window with people available. Friday evening is the worst time to find a problem.
+
+**Stop signals:** If the staging run's backfill takes longer than your maintenance window, or lock waits show up in staging, stop and redesign the backfill. Don't tune the same single UPDATE and rerun it.
+
+**What I couldn't check:** the database engine and version, the table's write rate, whether the backup has been restored before, and whether the application writes `region` yet. The answers to those would change how serious risks 3, 4 and 6 are.

@@ -1,0 +1,14 @@
+{
+"R01":{"grounding":0.93,"rationale":"Risks tie to the material (CI-only, slower runner, src/ vs wheel), unseen items are labeled as hypotheses, and it never claims the fix works."},
+"R02":{"grounding":0.9,"rationale":"Risks quote the plan (no staging, one UPDATE, backup rollback), general engine and locking points are labeled, and it states the review was solo; 'roughly a day of orders' is a slight stretch."},
+"R03":{"grounding":0.9,"rationale":"Each risk cites the material or is labeled general, and it admits the wheel and logs are unseen; the 'I proposed no fix' aside is odd but harmless."},
+"R04":{"grounding":0.88,"rationale":"Mostly traced to doc sentences with a separate labeled general section; a few speculative edge cases (updatedAt, bot activity) are hedged."},
+"R05":{"grounding":0.75,"rationale":"Asserts 'on day one no one has applied that label' as fact, and the notification-flood risk sits under 'trace to the doc' although it is general knowledge."},
+"R06":{"grounding":0.88,"rationale":"Sources are labeled and unknowns admitted; the 'local p near zero' and 'sleeps get bumped to 5 then 10' claims are inference and general pattern, though flagged."},
+"R07":{"grounding":0.8,"rationale":"Plan quotes are good, but general-knowledge points (lock and WAL behavior, two table rewrites, app inserts failing) sit under 'from the plan text' without labels and some are asserted rather than hedged."},
+"R08":{"grounding":0.88,"rationale":"Risks are sourced and caveated, and unknowns are stated; 'it never flaked locally' is inferred from the material and presented as fact."},
+"R09":{"grounding":0.85,"rationale":"Mostly quotes the plan and labels general items; '18+ hours after the backup' is an assumed figure and the new-order point is slightly extrapolated."},
+"R10":{"grounding":0.9,"rationale":"Risks cite doc quotes, general items (GITHUB_TOKEN scope, scheduled-workflow pausing) are labeled and accurate, and it states the review was solo; 'almost nothing carries the label' is assumed."},
+"R11":{"grounding":0.92,"rationale":"Each risk is tagged plan or general, uncertainties (engine, schema) are stated as open questions, and no verification is claimed."},
+"R12":{"grounding":0.82,"rationale":"Mostly traced to the doc with a labeled general section, but it claims a reopened issue 'could be closed again the next night' (reopening is activity), calls #eng a Slack post without support, and says closing is reversible without labeling it."}
+}

@@ -1,0 +1,26 @@
+**Mode:** Quick. This is one merge decision and merging is hard to undo, so I'm running the checklist. I'm working only from what you've told me. I haven't seen the wheel contents, the CI logs, or the test code.
+
+**Short answer:** Don't merge yet. The evidence you have doesn't show that the fix works.
+
+**Premortem: imagine the merge went in and the flake came back. Why?**
+
+1. **The sleep guesses at a timing and doesn't synchronize anything.** Your own description is that the failure is intermittent, shows up only in CI, and CI is slower than your laptop. The thread's runtime on CI is unbounded relative to a fixed 2s. A slower or busier runner can overrun it, and the test then fails the same way, just less often. (Source: your description of the flake and the slower runner.)
+2. **Five local passes can't tell you whether this fixed anything.** The test only flakes in CI, so it likely passed locally before the change too. Five green runs are what you'd expect with or without the sleep. They say nothing about the environment where it fails. (Source: "intermittent in CI only.")
+3. **The cause may not be timing at all.** Your local checkout runs `src/`, but CI installs a built wheel. If the wheel differs from `src/` (stale build, missing file, different version), a sleep would not touch the real cause. I haven't seen the wheel or the logs, so I can't rule this out or confirm it. It is a gap in my coverage, and I'm not claiming it's the cause. (Source: your note about the wheel install.)
+4. **Merging may hide a real race.** The test asserts on state shared with a background thread. If the code under test has a real race, the sleep would mask it in the test while the race stays in the product. That follows from the test's structure, but I haven't read the code, so I can't say whether it applies here.
+5. **Smaller cost:** the suite gets 2s slower on every run.
+
+**Independent review:** I did this one solo, so treat it as weaker than a review by a fresh agent. If you want the independent pass, I'd hand a fresh agent the test and the thread code and let it pick its own dimensions to check.
+
+**What I'd do before merging (verify the mechanism):**
+
+- **Replace the sleep with real synchronization.** Use `thread.join(timeout=...)`, a `threading.Event` the thread sets when it's done, or a poll-until-condition loop with a generous timeout. The test then waits exactly as long as needed, and a hang fails loudly.
+- **Reproduce under CI-like conditions.** Install the built wheel in a clean venv and run the test against that, not `src/`. Add CPU load, or run it many times in a loop, to approximate the slow runner.
+- **Prove the check can fail.** Add an artificial delay in the thread longer than your wait. The test should fail. Then remove the delay and watch it pass. If it passes with the delay in, the test isn't checking what you think it is.
+- **Pull the failing CI logs.** They show whether the failure is a timing miss or something else, such as a wheel mismatch.
+
+**Stop signals:** I'd stop when (a) the test passes N consecutive runs against the wheel under load, and (b) the injected-delay run fails as expected. If the wheel run shows a different failure from the one in CI, stop and investigate that instead of tuning the wait.
+
+**Not doing now:** a general flaky-test framework, or rewriting the threading code. Neither is needed until this pattern shows up a second time.
+
+If you'd rather ship the sleep as a stopgap, I'd merge it only with a TODO and a tracking issue, and after at least running the wheel-based reproduction. Say so explicitly in the PR so the flake isn't recorded as fixed.

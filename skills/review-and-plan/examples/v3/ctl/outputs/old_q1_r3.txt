@@ -1,0 +1,44 @@
+**Mode:** Quick. This is one design and one premortem. Coverage: I read the full design doc text, which is one paragraph. I read no repos, workflows or org settings. The review is solo because no other reviewer exists here, so it is weaker for that.
+
+**Clarify (open questions the doc can't answer):**
+- What does "activity" mean: comments only, or also labels, commits and linked PRs?
+- Does "every issue" include issues in archived repos and security-related issues?
+- Who owns `stale-exempt`, and does the label exist in every repo?
+
+**Options (MECE):**
+1. Close nightly, as written, on all repos from day one.
+2. Same job, but stage the rollout: dry run, then a few repos, then the org.
+3. Warn first (label `stale` and comment), then close after a grace period.
+4. Don't automate closing. Report stale issues in #eng and let humans close them.
+
+**Premortem: imagine it shipped and failed.** Every risk below traces to a phrase in the doc. I dropped risks I could only invent.
+
+| Risk | Source in the doc |
+|---|---|
+| Mass wrongful closure on night one. Every issue older than 60 days with no activity closes at once, including valid bugs and long-running tracking issues. Nothing in the doc limits the blast radius. | "closes every issue", "enable for all repos on day one" |
+| No warning step. Authors and owners get no notice before an issue is closed, so the first signal is the closure itself. | The doc has only the close and a summary, with no stale label or comment. |
+| The exemption depends on a label nobody has to apply. Issues are skipped only if someone labeled them `stale-exempt` beforehand. Repos where the label doesn't exist, or where nobody knows about it, get no protection. On day one nobody has had a chance to apply it. | "Issues labeled `stale-exempt` are skipped" |
+| "No activity" is undefined. If the job reads only the last-updated timestamp, it may disagree with what maintainers count as activity. Both closing active work and keeping dead work are possible. | "no activity for 60 days" |
+| Org-wide scope pulls in repos that shouldn't be touched. These could be archived repos, repos with different triage policies, or security or compliance trackers. The doc has no allowlist or denylist. | "across all repos in the org" |
+| Token and rate-limit failure. A job that touches every repo needs org-wide write access, which is a broad credential. A burst of closures on day one could hit API limits and fail partway, and the doc has no failure handling. | "across all repos", "using `gh issue close`" |
+| Silent failure or noisy reporting. The summary goes to #eng only. If it is huge on night one, or the job fails, nothing says so, and nobody reviews what was closed. | "Posts a summary to #eng" |
+| Reversal is manual and unplanned. Reopening is possible, but there is no record of which issues were closed, so mass-reopening needs reconstruction from the summary. | The doc has no undo or dry-run mechanism. |
+
+**Verdict:** Don't build it as written. The rollout line ("enable for all repos on day one") is the weakest part, and it is the part that is easy to change.
+
+**Recommendation:** Build option 2 combined with the warning step from option 3.
+1. Add a dry-run mode that only reports what would close. Run it for a week.
+2. Define "activity" explicitly.
+3. Label `stale` and comment first, then close after a grace period.
+4. Pilot on two or three repos before the org.
+5. Log every closure so it can be reversed.
+
+**Verify the mechanism before calling it done (step 5):**
+- Confirm that `gh issue close` and the activity query behave as assumed on a scratch repo.
+- Confirm that `stale-exempt` actually causes a skip. Prove the check can fail by running once without the label and watching the issue get selected.
+
+**Stop signals (written first):** The dry run is stable when two consecutive runs list the same candidates and a maintainer's spot check of a sample finds no wrongly flagged issue. Stop tuning at that point rather than adding more rules.
+
+**Not in scope yet:** Per-repo thresholds, auto-reopen on new comments, and other triage automation. Add them only if the need shows up twice.
+
+**Limitation:** This review was solo and based only on the one-paragraph doc. A second reviewer would likely find risks I missed, especially around org permissions.

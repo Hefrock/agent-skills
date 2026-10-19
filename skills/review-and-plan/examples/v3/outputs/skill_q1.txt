@@ -1,0 +1,29 @@
+Premortem: assume the rollout failed. Coverage: I read only the design doc text you gave me (full). I have no access to the org's repos, the workflow file, or any issue data, and no other reviewer exists, so this is a solo review and weaker for it. Risks below cite the design doc; ones marked "general" come from known failure patterns, not from your material.
+
+Risks that trace to the doc
+
+1. Irreversible blast radius on day one. The doc says "enable for all repos on day one" and "closes every issue with no activity for 60 days, across all repos in the org." The first run will hit the entire backlog at once, in every repo. If the rule is wrong for any repo, you find out after the damage. This is the biggest risk and the easiest to fix.
+
+2. The only safety valve is opt-out, and nobody knows about it yet. The doc exempts only issues labeled `stale-exempt`. On day one no one has applied that label, so every long-lived issue that matters (roadmap items, known bugs, security reports, tracking issues) is closed unless someone guesses the label exists. The summary in #eng arrives after the closes, not before.
+
+3. "Every issue" is broader than "stale." The doc has no carve-outs for issue type, assignee, milestone, linked open PRs, or repos that use issues as a backlog or archive. Issues waiting on an external party or assigned to a person with work planned would be closed. Closed with no warning comment, there is no grace period for anyone to object.
+
+4. No dry run or reversal path is described. The doc names `gh issue close` and nothing else: no preview mode, no cap per run, no record of what was closed beyond the #eng summary, and no reopen step. Reopening is possible by hand, but with a large first-run batch that is a bulk operation nobody planned.
+
+5. Notification flood. Closing a large batch fires an email and notification for every subscriber on every issue. Nothing in the doc limits the rate. The doc's summary goes to #eng, but the issue notifications go to every watcher, including people outside eng.
+
+General risks (not from your material, labeled as such)
+
+6. (general) Permissions and rate limits. An org-wide job needs a token with write access to every repo. The doc does not say which token, so it will likely end up as a broad PAT or app credential, which is a security surface by itself. A big first run can also hit GitHub API secondary rate limits partway through, leaving a partial run.
+
+7. (general) "No activity" depends on how it is measured. Whether the 60 days counts comments, label changes, or bot activity changes which issues qualify. The doc does not define it. Bot comments can also keep issues alive forever or, if excluded, close live ones.
+
+8. (general) Nightly means errors repeat. A bad rule runs again every night, and a silent failure (expired token, changed API) would go unnoticed if the #eng post is the only signal.
+
+What I did not know
+
+Whether repos have very different issue practices, how big the backlog is, and whether the org already uses a stale bot. Those facts would change how severe risks 1 to 3 are.
+
+Recommendation
+
+Do not ship the day-one, all-repos rollout as written. Smallest change that removes most of the risk: add a dry-run mode that only posts the would-close list to #eng, run it for a week on two or three repos, then enable closing there with a warning comment and a grace period (for example, warn at 60 days and close at 67), announce the `stale-exempt` label before the first real run, and cap closes per run. Expand to other repos after the pilot repos behave as expected. If you want, I can turn this into a revised rollout plan.

@@ -1,0 +1,38 @@
+Review note: this is a solo review. No other reviewer or tools were available, so I only had the plan text, and a second pair of eyes would catch things I can't. I also could not check your database engine, table schema, or the customers table, so the engine-specific risks below are general knowledge and labeled that way.
+
+Recommendation: don't run this as written on Friday at 6pm. The main reasons are no staging run and a rollback that loses data.
+
+Premortem: imagine it's Saturday and the migration went badly. Here is how.
+
+Risks traced to the plan text
+
+1. The rollback throws away a day of orders. (Plan: "Rollback: restore last night's backup.") Friday 6pm is about 18+ hours after last night's backup, so restoring means losing every order written since then. The plan also doesn't say whether anyone has ever restored this backup or how long a restore of a 4M-row table takes. An untested restore that takes hours is not a rollback.
+
+2. Nothing has ever exercised this script. (Plan: "No staging run is planned.") Every other risk here would show up in staging first. This is the root cause: syntax errors, a bad join, lock behavior and runtime would all be found on a copy at no cost, and instead they'd be found in production.
+
+3. The single UPDATE is a long transaction on a live table. (Plan: "backfill from the customers table in one UPDATE.") One statement touching up to 4M rows holds row locks until it finishes, so concurrent orders writes may block or time out, and a failure partway rolls the whole thing back after a long wait. The plan has no batching, no time estimate and no way to stop it cleanly. General-knowledge detail: in many engines this also bloats the transaction log or table (for example dead rows in Postgres) and can cause replication lag.
+
+4. The 'unknown' default and the backfill can quietly disagree. (Plan: NOT NULL with default 'unknown', then backfill from customers.) Any order whose customer has no match, or whose customer region is NULL, stays 'unknown' or fails the update, depending on the join and the column constraints. The plan doesn't say what counts as success, so you could finish with a large share of rows still 'unknown' and not notice. Also, new orders written during the window get 'unknown' from the default unless the application sets region, and the backfill will not cover rows inserted after it starts.
+
+5. The ordering is underspecified. The plan says to add the column and then backfill, but gives no check between the steps and no count at the end (for example, rows still 'unknown' versus an expected number). "Done" is not defined.
+
+Risks from general knowledge (not from the plan text, and I can't confirm them without your schema or engine)
+
+6. Adding a NOT NULL column with a default can rewrite or lock the whole table on older versions or some engines (the ALTER itself can be the slow, blocking step). Newer versions of some engines do this as a metadata-only change. Check yours.
+
+7. The application may break on the new column or its value. Code that inserts into orders without region, ORMs with strict column lists, or reports that don't expect 'unknown' could fail right after the change. The plan doesn't mention app deploys or consumers of the table.
+
+8. Timing. Friday 6pm leaves weekend coverage thin if something goes wrong, and it may overlap evening order traffic. This is a general operational pattern, not something in the plan, so weigh it against your actual traffic and on-call.
+
+What I'd change before running
+
+- Run the whole script on a staging copy of production-sized data first, and record the timing and the 'unknown' count.
+- Restore last night's backup to a scratch environment once, so the rollback is proven and its duration known.
+- Take a fresh backup (or snapshot) immediately before the run, so rollback loses minutes, not a day. Better still, make the rollback a reverse migration (drop the column) rather than a restore, since the change is additive.
+- Backfill in batches (for example by id ranges) instead of one UPDATE, with a pause and a way to stop.
+- Define success up front: expected count of rows still 'unknown' after the backfill, and a query that checks it.
+- Move the window to a low-traffic time when someone is on hand to watch it, not Friday evening.
+
+Stop signals for the prep work, written first: stop adding checks once a staging run completes with the expected 'unknown' count and a restore test succeeds, or two consecutive reviews of the script find nothing new. Don't keep polishing past that.
+
+What I couldn't verify: the engine and version, the schema of orders and customers, the traffic pattern, the backup tooling, and whether the app tolerates the new column. Items 6 to 8 depend on those.

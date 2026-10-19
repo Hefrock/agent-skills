@@ -1,0 +1,14 @@
+Use HTTP cache headers behind the CDN.
+
+- **Fit:** The catalog changes a few times a day and you already have a CDN, so a `Cache-Control` max-age of a few minutes (plus `stale-while-revalidate`) should absorb nearly all of the ~2k reads/min. It needs no new infrastructure and no code beyond setting headers.
+- **Why not Redis:** It would add a new service to run, secure and monitor. With these numbers, three app instances can serve the occasional cache miss on their own.
+- **Why not in-process LRU:** Each of the 3 instances would cache separately and expire at different times. Users behind the load balancer could then see different catalogs right after an admin edit. It also does nothing to shield the app from traffic the CDN could have absorbed.
+
+I don't know a few things that could change this pick:
+- How stale the catalog can be after an admin edit. If it must show up instantly, you need CDN purge on publish, or a short TTL with ETag revalidation.
+- Whether the response varies per user (pricing, auth, personalization). If it does, CDN caching needs care with `Vary` or may not be viable.
+- Whether your CDN honors origin cache headers and supports purge by URL or tag.
+
+If the response turns out to be per-user, revisit this. A small in-process cache for the shared catalog data would likely be the next step, and Redis only if the instances need to share state.
+
+This was a solo review. I didn't use an independent reviewer, and I checked nothing against your actual setup.

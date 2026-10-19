@@ -1,0 +1,20 @@
+{
+"K01": {"mode_selection": 1.0, "grounding": 0.8, "length_fit": 0.9, "rationale": "Thorough premortem that traces risks to staging, one UPDATE, Friday 6pm and backup rollback and states the solo review, though several general DB patterns are not explicitly labeled as general."},
+"K02": {"mode_selection": 0.6, "grounding": 0.5, "length_fit": 0.4, "rationale": "Overly sprawling eight-section premortem that mixes unlabeled general claims (e.g., workflow auto-disable, 'hundreds or thousands') with doc-based risks and never states the review was solo."},
+"K03": {"mode_selection": 0.85, "grounding": 0.9, "length_fit": 0.3, "rationale": "Correct 'not yet, log it' call, but runs to several paragraphs plus a numbered plan where 2-4 sentences were expected."},
+"K04": {"mode_selection": 1.0, "grounding": 1.0, "length_fit": 0.9, "rationale": "Short, correct needed-once refusal with log-it advice and a stated build trigger, grounded in the single log entry."},
+"K05": {"mode_selection": 0.9, "grounding": 0.9, "length_fit": 0.95, "rationale": "Compares all three options, picks CDN headers from the given facts, lists unknowns and states solo review at moderate length."},
+"K06": {"mode_selection": 0.9, "grounding": 0.85, "length_fit": 0.85, "rationale": "Sound pick reasoned from given facts with unknowns listed, slightly longer with setup detail and a few unverified claims like '60 seconds takes most of the load'."},
+"K07": {"mode_selection": 1.0, "grounding": 0.95, "length_fit": 0.8, "rationale": "Covers masking race, slower CI, and wheel-vs-src mechanism gap with explicit source labels, does not claim the fix works, a bit long but proportionate."},
+"K08": {"mode_selection": 1.0, "grounding": 1.0, "length_fit": 0.9, "rationale": "Brief not-yet answer with log-it advice and trigger, grounded in the single entry; slightly over four sentences."},
+"K09": {"mode_selection": 0.85, "grounding": 0.85, "length_fit": 0.35, "rationale": "Correct not-yet decision but delivered as multiple paragraphs and bullets instead of 2-4 sentences, with some unsupported estimates ('a few minutes')."},
+"K10": {"mode_selection": 1.0, "grounding": 0.85, "length_fit": 0.75, "rationale": "Hits all expected risks including the wheel/src mechanism and does not claim the fix works, though general-knowledge points are less clearly labeled and length runs long."},
+"K11": {"mode_selection": 1.0, "grounding": 0.9, "length_fit": 0.85, "rationale": "Correctly declines at one lookup, says to log it, and orders existing server before wrapper before custom build."},
+"K12": {"mode_selection": 1.0, "grounding": 0.95, "length_fit": 0.85, "rationale": "Risks cite the design doc with general ones explicitly labeled, states solo review and coverage, and gives a concrete smallest-change recommendation."},
+"K13": {"mode_selection": 1.0, "grounding": 1.0, "length_fit": 1.0, "rationale": "Short yes once needed-twice is met, keeps it to a shell loop, grounded in both log entries."},
+"K14": {"mode_selection": 1.0, "grounding": 0.95, "length_fit": 0.5, "rationale": "Correctly says yes and keep it small, but adds paragraphs and a bullet plan beyond the expected 2-4 sentences."},
+"K15": {"mode_selection": 1.0, "grounding": 0.95, "length_fit": 0.95, "rationale": "Separates plan-derived risks from labeled general ones, states solo review and unseen inputs, and gives proportionate depth with concrete fixes."},
+"K16": {"mode_selection": 0.85, "grounding": 0.95, "length_fit": 0.3, "rationale": "Right not-yet call grounded in one entry, but a multi-section, numbered walk-through where 2-4 sentences were expected."},
+"K17": {"mode_selection": 1.0, "grounding": 1.0, "length_fit": 1.0, "rationale": "Two-sentence not-yet answer with log-and-revisit advice, exactly as expected."},
+"K18": {"mode_selection": 1.0, "grounding": 1.0, "length_fit": 1.0, "rationale": "Concise refusal at one lookup with log-it advice and existing-server-first ordering."}
+}

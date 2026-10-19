@@ -1,0 +1,25 @@
+Quick mode: this is one irreversible-ish production change, so the premortem is worth running. Limitation up front: this is a solo review. No subagents or other reviewers exist, so it is weaker than an independent check. I also have only the plan text. I haven't seen migrate.sql, the schema, the database engine or version, or the backup setup. Every risk below traces to a sentence in your plan, and where it depends on something I can't see, I say so.
+
+Imagine it is Friday 7pm and this failed. How?
+
+1. The single UPDATE holds locks and stalls orders. Source: "backfill from the customers table in one UPDATE" on a 4M-row production table. One statement means one long transaction. On most engines that means row locks held for the whole run, a large undo/WAL footprint, and writers to orders queueing or timing out. Because every row starts at 'unknown', the UPDATE rewrites all 4M rows, not just a subset.
+
+2. The ADD COLUMN may itself lock or rewrite the table. Source: "add a NOT NULL column `region` with default 'unknown'". Whether this is instant or a full rewrite under an exclusive lock depends on the engine and version, which the plan doesn't state. I can't tell you which case you're in. That is exactly what a staging run would show.
+
+3. The backfill result is unchecked. Source: "backfill from the customers table". The plan has no check for orders with no matching customer, customers with a NULL region, or duplicate customer matches. Because of the default, those rows won't fail. They'll silently stay 'unknown', and nobody will notice that the migration only half worked. There is no done-when check, such as a count of rows still 'unknown' compared with what you expect.
+
+4. The rollback loses data. Source: "Rollback: restore last night's backup." The migration runs Friday at 6pm. Restoring last night's backup discards every order written between the backup and the failure, roughly a full business day plus the migration window. Restoring a full backup also takes time proportional to database size, and the plan doesn't say it has been tested. The plan's only escape hatch is the most destructive option available. A column add has a much cheaper undo (drop the column), but only if the backfill didn't mutate anything else.
+
+5. Nothing has been tried. Source: "No staging run is planned." Items 1 to 4 are all unknowns that a rehearsal would turn into numbers: runtime, lock behavior, unmatched-row count, restore time. Without it, you find out the runtime during the outage.
+
+6. Timing is a judgment call, not something I read. Source: "Friday 6pm". If a failure happens, recovery lands at the start of a weekend with less support around. I don't know your traffic pattern, so weigh this yourself.
+
+Recommendation: don't run it as written. The cheapest fix is a rehearsal. Restore last night's backup to a scratch instance, run migrate.sql there, and time it. That also tests your rollback path for the first time.
+
+Changes I'd make to the plan:
+- Split it up. Add the column nullable (or with the default if your engine does that instantly), backfill in batches by id range, verify, then add the NOT NULL constraint.
+- Replace "restore the backup" with a real rollback: drop the column. Take a fresh snapshot right before you start, and keep the backup restore only as a last resort.
+- Add a verification query: count rows still 'unknown' and compare it with the number of orders with no customer match.
+- Decide the stop signals now. For example, abort if the batch time goes over X, or if lock waits or replication lag appear, and don't improvise a fix mid-incident.
+
+Verification gap: I haven't run or read anything, so the mechanism is unverified. Items 1 and 2 especially are conditional on your engine. If you tell me the engine and version, I can say which of them actually applies.

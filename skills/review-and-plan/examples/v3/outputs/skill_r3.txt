@@ -1,0 +1,3 @@
+Not yet. Your log shows one instance (2026-10-02, converting a CSV to a markdown table by hand), and the skill's rule is to build nothing permanent until the need has shown up twice. Log it now and hold off on building.
+
+What would trigger a build: a second logged CSV-to-markdown-table conversion. If that happens, make the skill small, since the job is narrow. I can't tell from the log how long the first conversion took or how big the CSV was, so I can't say how much a skill would save.

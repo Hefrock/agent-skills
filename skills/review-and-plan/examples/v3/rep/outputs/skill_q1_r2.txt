@@ -1,0 +1,33 @@
+**Premortem: nightly stale-issue closer**
+
+This review was solo. No other reviewer or tools were available, so it is weaker than an independent check. I only have the design doc's text. I have not seen the repos, the org's issue habits, or the workflow file.
+
+Imagine it's a month after launch and this went badly. The failure paths, each tied to the doc:
+
+**Risks that come from the doc itself**
+
+1. **Day-one rollout to every repo.** The doc says "enable for all repos on day one" and "across all repos in the org." The first run would close the entire backlog of 60-day-idle issues in one pass, with no trial on a single repo. Any wrong assumption would hit every repo at once.
+2. **The only protection is an opt-out label.** The doc says "Issues labeled `stale-exempt` are skipped." No one knows to add that label until their issue has already been closed. Nothing in the doc says the label exists in every repo, or that anyone has been told about it.
+3. **No warning step.** The doc says it "closes every issue" with no activity for 60 days. It has no "marked stale, closes in N days" stage. Reporters get no chance to respond before the close.
+4. **"Every issue" is broader than "stale bug reports."** The doc has no filter for type. Roadmap items, long-running tracking issues, feature requests, security reports, and issues that are blocked or waiting on someone else would all be closed. A 60-day quiet period doesn't mean the issue is resolved.
+5. **No definition of "no activity."** The doc doesn't say whether this means comments only, or also labels, assignments, linked PRs, and reactions. If it uses `updatedAt`, it may count bot activity, including its own. If it counts only human comments, it may close issues with an open PR.
+6. **No reversal plan.** The doc has no reopen procedure or record of what was closed. The #eng summary may be the only record, and it is a chat message. The doc doesn't say what the summary contains (counts or a full list). A large run could produce a message nobody reads, or one that fails to post.
+7. **Unspecified credentials and scope.** The doc says "across all repos in the org" using `gh issue close`. It doesn't say what token it runs with. Org-wide write access in a scheduled workflow is a large permission for one script. A token lacking access to some repos would fail partway, and the doc says nothing about how failures are handled or reported.
+
+**Risks from general knowledge (not from the doc)**
+
+8. **Rate limits and large runs.** An org-wide first run that closes hundreds or thousands of issues with `gh` could hit GitHub API rate limits and stop partway. The next night would then continue from an unknown state. I'm assuming this from how the API generally behaves, not from anything in the doc.
+9. **Closed issues can look like rejection.** Stale-bots commonly annoy contributors, especially external ones. Whether this org has external contributors isn't stated.
+10. **Mid-run edge cases.** Issues someone touches during the run, or transferred issues, can behave unexpectedly. The doc doesn't say how it handles them.
+
+**What I'd change before building**
+
+- Add a dry-run mode that only posts what would be closed. Run it first on one or two repos.
+- Add a "stale" label and warning comment stage before closing.
+- Define "activity" explicitly, and exclude issues with linked open PRs.
+- Make the summary list every closed issue, so it doubles as the reversal record.
+- Roll out repo by repo, not all at once.
+
+**What I couldn't check:** how many issues this would close on day one, whether `stale-exempt` already exists in each repo, and what token the workflow would use. A dry-run count across the org would answer the first, and it costs almost nothing to produce.
+
+**Stop signal for this review:** if a second pass over the doc turns up no new risks, I'd stop and move to the dry-run build.

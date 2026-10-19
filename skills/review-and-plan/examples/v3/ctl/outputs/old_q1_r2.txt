@@ -1,0 +1,33 @@
+Quick mode: one design, one premortem. Coverage: I read only the design doc text you gave me, in full. I read no repos, no workflow files, no org settings. No tools and no second reviewer are available here, so the independent review (step 4) is solo and weaker for it. Nothing below was verified against a running system.
+
+Intent (from the doc): auto-close inactive issues org-wide, nightly, with a `stale-exempt` escape hatch and a summary in #eng, enabled everywhere on day one.
+
+Premortem: imagine this shipped and it went badly. Each risk is tied to a line in the doc. I dropped risks that did not trace to the text.
+
+1. Blast radius on day one. Doc: "across all repos in the org" and "enable for all repos on day one." The first nightly run will hit the entire backlog at once. Every issue older than 60 days with no activity closes in one pass. That is the largest and least reversible step in the design. Reopening many issues by hand is possible but noisy, and notifications to authors and subscribers have already gone out by then.
+
+2. Closing is treated as "no longer needed." Doc: closes "every issue with no activity for 60 days." Nothing in the doc distinguishes a dead issue from a valid, accepted, or blocked one: a long-running tracking issue, a security report, a roadmap item, or an issue waiting on an external dependency. The only protection is the `stale-exempt` label, which someone has to apply before the run.
+
+3. The exemption depends on people knowing about it. Doc: "Issues labeled `stale-exempt` are skipped." The label has to exist in each repo (the doc does not say who creates it), and maintainers have to learn it exists. There is no warning period, so a maintainer finds out about the label only after their issue is closed. This is the standard failure of stale bots, and the doc has no step that mitigates it.
+
+4. No warning stage. The doc goes straight from "inactive" to `gh issue close`. There is no "this will close in N days" comment, so the 60 days is the only notice, and silent inactivity is exactly the condition that means nobody is watching.
+
+5. The summary is the only audit trail, and it is unspecified. Doc: "Posts a summary to #eng." It does not say whether the summary lists every closed issue or just a count, or what happens if the Slack post fails. With a count, the team cannot tell what was closed. With a full list on the first run, it could be hundreds of lines in a channel.
+
+6. "No activity" is not defined. The doc does not say what counts: comments only, or also label changes, linked PRs, project-board moves, or bot comments. If bot comments count, the stale clock might never run out for some issues. If they do not, active work could look idle. I cannot tell from the doc which one is intended, so this is an open question rather than a confirmed bug.
+
+7. Permissions and rate limits. Doc: org-wide, via `gh issue close`. I did not read any workflow, so I do not know what token it will run with. An org-wide run needs a token with write access to every repo, which is a broad credential stored in Actions. Large first runs may also hit API rate limits and fail partway, which leaves some repos processed and some not. Whether the summary still posts after a partial failure is not specified. These two are plausible from how `gh` and Actions work in general, not from anything in the doc, so treat them as things to check rather than established facts.
+
+8. Archived and forked repos, and issues that are really PRs. The doc says "all repos." I do not know whether this includes archived repos (where closing may fail) or repos owned by teams that never agreed to it. Also unverified.
+
+Options (MECE, on rollout only, since that is where the risk concentrates):
+A. As written: all repos, close immediately, day one.
+B. Same logic, but dry-run first: the job runs nightly and only posts what it would close, with no closing.
+C. Staged: pilot on a few repos, close for real there, then widen.
+D. Opt-in: only repos that add a config or label enable it.
+
+Recommendation: do B first, then C. B costs almost nothing and answers risks 2, 5, 6, and 7 with real data from your org: how many issues would close, which repos, and whether the permissions and rate limits hold. C then limits the damage if the criteria are wrong. Also add a warning comment stage (risk 4) before any real close, and define "activity" explicitly (risk 6). I would not ship A.
+
+What I would not build now: a custom exemption UI, per-repo thresholds, or a reopening tool. Per the needed-twice rule, wait until the dry run or pilot shows you actually need them.
+
+Open questions for you: what counts as activity, who creates `stale-exempt` in each repo, which token it will use, and whether archived repos are in scope. If you want, I can turn this into a short checklist for the dry-run stage.

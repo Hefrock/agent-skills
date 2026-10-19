@@ -1,0 +1,27 @@
+I would not merge yet. Quick mode applies here: it is one decision, and it is cheap to check before you merge.
+
+Coverage: I have only your description. I have not seen the test, the fix, the wheel contents or the CI logs. The risks below come from your description. Each one cites the sentence it comes from.
+
+Premortem. Suppose the fix failed after merge:
+
+1. The sleep guesses at a timing and does not synchronize anything. (Source: "test_sync starts a background thread and asserts on shared state", and your fix is "a 2-second sleep before the assertion".) If the thread takes longer than 2 seconds on a loaded runner, the test flakes again. If it takes less, the test just got 2 seconds slower. Waiting on the thread, with join() with a timeout, an Event, or polling for the condition with a deadline, would fix the cause.
+
+2. Your evidence cannot show the fix works. (Source: "intermittent in CI only", "the CI runner is slower than your laptop", "passed locally 5 times".) The flake did not show up locally before the fix, so 5 local passes after it are what you would expect either way. The check cannot fail, so it proves nothing. The only meaningful test is many CI runs, or a local run that reproduces the failure first.
+
+3. CI may not run the code you tested. (Source: "Your local checkout runs the code in `src/`, but CI installs the package from a built wheel.") The failure might come from a difference between the wheel and src/, such as a missing file, a stale build or a different version, and not from timing. If so, a sleep only hides the problem. I do not know either way, because I have not seen the wheel contents or the CI logs.
+
+4. Shared state may be racy in the code itself. (Source: "asserts on shared state".) If the race is in the product code, the sleep hides a real bug and the test no longer catches it.
+
+Independent review: I have no subagent here, so this review was solo and weaker for it. Before you merge, have someone else (or a fresh agent) look at the test and the CI logs.
+
+Before merging, I would check these, cheapest first:
+- Read the CI failure logs. Does the assertion fail on a missing value (timing) or on a wrong value (a code or wheel difference)?
+- Confirm which code CI imports, wheel or src/. Compare the built wheel with src/.
+- Replace the sleep with a wait on the thread or condition, with a timeout.
+- Prove the check can fail. Reproduce the flake first, for example by adding artificial delay in the thread or running under CPU load. Then show the fix passes under the same conditions.
+
+Stop signals: if the logs show a timing-only failure and the wait-based fix passes the loaded reproduction, stop. If the logs show a wrong value, stop tuning the test and look at the wheel.
+
+Not in scope now: rewriting the threading design, or changing CI.
+
+If you need to unblock CI today, merge the sleep only as an explicitly temporary workaround, and open an issue for the proper wait. Without that issue it will become permanent.

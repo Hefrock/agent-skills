@@ -1,0 +1,68 @@
+Premortem: migrate.sql on the production orders table
+
+**Coverage and limits.** I read only the plan text you pasted. I haven't seen migrate.sql, the schema, the database engine or version, or the backup setup. No tools are available and there is no second reviewer, so this review is solo and weaker for it. Every risk below traces to a line in the plan, and where the outcome depends on facts I don't have, I say so.
+
+**Recommendation: don't run it as written.** The plan has no rehearsal and a rollback that loses data, and there is cheap work that would fix both.
+
+**Options**
+1. Run as planned on Friday at 6pm.
+2. Run with changes: rehearse first, batch the backfill, and use a rollback that doesn't lose orders.
+3. Postpone until the missing facts are known.
+
+Option 2 is the likely answer. Option 3 is the fallback if the rehearsal can't be done.
+
+**Premortem: imagine it failed. Each risk cites the plan.**
+
+1. **The rollback loses real data.**
+   - Source: "Rollback: restore last night's backup."
+   - Any orders written between last night's backup and the moment of rollback are gone. A Friday 6pm run means a full business day of orders, plus whatever arrives during the migration.
+   - The plan doesn't say the restore has been tested, how long it takes on 4M rows, or what happens to writes while it runs.
+   - This is the most serious gap. The rollback is hard to reverse and destroys data.
+
+2. **There is no staging run.**
+   - Source: "No staging run is planned."
+   - Nothing has shown that migrate.sql executes cleanly. Nothing has shown how long it takes or that the backfill logic is right.
+   - Every other risk here is one a rehearsal would reveal, so this is the root cause.
+
+3. **The single UPDATE is a long transaction.**
+   - Source: "backfill from the customers table in one UPDATE."
+   - One statement touching up to 4M rows can hold row locks for its whole duration and block writes to orders. It can also bloat the transaction log or undo space and cause replication lag.
+   - If it fails near the end, the whole thing rolls back and the time is wasted.
+   - Exact behavior depends on the engine, which the plan doesn't name.
+
+4. **The ALTER may lock or rewrite the table.**
+   - Source: "add a NOT NULL column `region` with default 'unknown'."
+   - Some engines and versions rewrite the whole table or take a long exclusive lock for this. Others do it instantly.
+   - I can't tell which applies, because the engine and version are not in the plan. This is unverified, not a confirmed problem.
+
+5. **The backfill can silently leave rows as 'unknown'.**
+   - Source: the default 'unknown' combined with "backfill from the customers table."
+   - Orders with no matching customer, or customers with a null region, will keep 'unknown' or fail the join.
+   - The plan has no check for how many rows end up 'unknown', and no definition of success. The migration could finish "successfully" with bad data.
+
+6. **The plan names no success check, abort point or owner.**
+   - Source: the plan text, which has no such section.
+   - Nothing says who watches it, how long to wait before giving up, or what threshold means abort.
+   - I'm inferring this from what's absent. Treat it as a gap to confirm, not a documented failure.
+
+**Dropped.** I considered application compatibility, such as code that inserts into orders without `region`. The plan gives no evidence either way, so I left it out. Check it in the rehearsal.
+
+**Verify before running. I couldn't do these.**
+- Restore last night's backup to a scratch instance and time it. Confirm it actually restores.
+- Run migrate.sql against that restored copy. Record the duration, lock behavior and row counts.
+- Prove the check can fail: count orders with no customer match and confirm the 'unknown' count is reported.
+
+**Stop signals, written first**
+- Stop planning once the rehearsal has run end to end once and the timings and 'unknown' count are known.
+- Abort the real run if the rehearsed duration is exceeded by a set margin you pick in advance.
+- Don't keep adjusting the script after a clean rehearsal. Rerun it once, and if results match, proceed.
+
+**Suggested changes**
+- Rehearse on a restored copy first.
+- Backfill in batches, for example by primary key ranges, so locks stay short and you can resume.
+- Take a fresh backup, or a point-in-time recovery marker, immediately before the run. Plan the rollback around it, and add a way to undo the schema change without losing newer orders.
+- Pick a window when write volume is low, and decide who is on call.
+
+**Not recommended yet:** building a reusable migration tool. One migration doesn't show that need.
+
+I can turn this into a step-by-step run sheet with the rehearsal, batch size and abort criteria once you tell me the database engine and version.
