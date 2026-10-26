@@ -1,0 +1,34 @@
+{
+ "K01": {
+  "arm": "control",
+  "case": "f2"
+ },
+ "K02": {
+  "arm": "skill",
+  "case": "f3"
+ },
+ "K03": {
+  "arm": "control",
+  "case": "f4"
+ },
+ "K04": {
+  "arm": "control",
+  "case": "f3"
+ },
+ "K05": {
+  "arm": "skill",
+  "case": "f2"
+ },
+ "K06": {
+  "arm": "skill",
+  "case": "f4"
+ },
+ "K07": {
+  "arm": "skill",
+  "case": "f1"
+ },
+ "K08": {
+  "arm": "control",
+  "case": "f1"
+ }
+}

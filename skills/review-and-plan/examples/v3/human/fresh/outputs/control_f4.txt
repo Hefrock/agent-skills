@@ -1,0 +1,24 @@
+I would not run this tonight as written. The plan rests on two things that haven't been checked, and the drop can't be undone if either is wrong.
+
+**Problems**
+
+1. **The foreign key blocks the drop.** `audit_log` has a nullable foreign key column pointing at `legacy_users.id`. Depending on your database, a plain `DROP TABLE` will either fail because of the constraint, or succeed only if you use `CASCADE`. `CASCADE` would drop the constraint, and in some setups more than that. Either way, the existing `audit_log` rows keep whatever values are in that column. After the drop, those values point at nothing, so you lose the ability to resolve who they referred to. I don't know whether any rows have non-null values, so check that first.
+
+2. **"No writes for 14 months" doesn't mean "unused."** I haven't checked query logs for reads. Reports, cron jobs, an analytics export, or a rarely used admin screen could still be selecting from this table. A table with no writes can still be read.
+
+3. **The backup is untested.** It was taken last night, but a restore has never been tested. Until you've restored it somewhere, you can't count on it as your way back. A backup you've never restored may be corrupt, incomplete, or too slow to restore in the time you can afford.
+
+**Before you run it**
+
+- Check read activity. Use query logs, `pg_stat_user_tables` or your database's equivalent, or application code search, covering at least one full business cycle (month-end and quarter-end jobs are the usual surprises). Also grep the code, ORM models, ETL jobs, and BI tools for `legacy_users`.
+- Inspect the `audit_log` dependency. Count rows where the foreign key column is non-null. Decide whether to keep that data (for example by copying the user info into `audit_log`, or archiving it) or to accept that it becomes unresolvable. Check for other dependents too: views, triggers, functions, and other foreign keys.
+- Test the restore. Restore last night's backup into a scratch environment and confirm that `legacy_users` is intact and the row counts match.
+- Take a dedicated copy of the table right before the change, for example a `pg_dump -t legacy_users` or a `CREATE TABLE ... AS SELECT` into an archive schema. It is small and quick, and it gives you a targeted way back that doesn't depend on a full restore.
+
+**A safer way to do it**
+
+Don't drop it tonight. Rename the table (`ALTER TABLE legacy_users RENAME TO legacy_users_deprecated_2026_10`), or revoke access to it, and watch for errors for a week or two. If anything breaks, you can rename it back instantly. Once it has stayed quiet through that window and the restore test has passed, do the real drop, and drop or null out the foreign key on `audit_log` as a deliberate step before it.
+
+If you want to go ahead tonight anyway, the minimum is: confirm no reads in the logs, confirm what the `audit_log` rows reference, and restore-test the backup first. Doing all of that in one evening is possible, but I wouldn't skip any of it.
+
+I can't tell you from what I have whether the table is safe to drop. It may well be, but the three unknowns above are exactly the ones that would hurt if they turn out badly.

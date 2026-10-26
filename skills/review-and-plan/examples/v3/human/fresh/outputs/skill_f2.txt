@@ -1,0 +1,5 @@
+Yes, add it. The same failure has now happened twice (2026-09-30 and 2026-10-18), both fixed by hand, so the need has recurred. The formatter command already exists in the Makefile, so the hook only has to call it. A local hook is easy to remove, so being wrong costs little.
+
+Keep it small: have the hook call the existing Makefile target rather than duplicate the formatter's logic.
+
+I don't know whether CI runs the same formatter command or version as the Makefile. If they differ, the hook could pass locally and CI could still fail. Check that before you rely on it.

@@ -49,6 +49,9 @@ sys.path.insert(0, HERE)
 import jsonl_io  # noqa: E402
 
 DEFAULT_SHOW_FIELDS = ("input", "output")
+# Case fields that would hand the scorer a real id, a category or a score (or
+# overwrite the blind id), so they can never be shown.
+RESERVED_FIELDS = ("blind_id", "id", "category", "score")
 DEFAULT_THRESHOLD = 0.7
 DEFAULT_PRIORITY_N = 15
 DEFAULT_MINUTES = 35
@@ -121,6 +124,10 @@ def cmd_prepare(args) -> int:
         print("Refusing: no usable rows in cases or judge results.", file=sys.stderr)
         return 2
     show_fields = tuple(f.strip() for f in args.show_fields.split(",") if f.strip())
+    reserved = [f for f in show_fields if f in RESERVED_FIELDS]
+    if reserved:
+        print(f"Refusing: --show-fields {reserved} would show the scorer a real id, category or score (or overwrite the blind id). Put what you want shown in a differently named case field.", file=sys.stderr)
+        return 2
     queue, key, missing = build_queue(cases, judge_rows, show_fields, args.threshold, args.priority_n, args.seed)
     if not queue:
         print("Refusing: no judge result id matches any case id.", file=sys.stderr)
@@ -138,7 +145,10 @@ def cmd_prepare(args) -> int:
     with open(os.path.join(args.workdir, KEY), "w", encoding="utf-8") as f:
         json.dump(key, f, indent=1, ensure_ascii=False)
     print(f"Prepared {len(queue)} items in {args.workdir} (showing fields: {', '.join(shown)}).")
-    print(f"First {min(args.priority_n, len(queue))} are the judge's near-threshold cases. Do NOT open {KEY} until you finish scoring.")
+    if args.priority_n >= len(queue):
+        print(f"All {len(queue)} items fall in the near-threshold block (--priority-n {args.priority_n} >= item count), so the order is a plain shuffle: no near-threshold-first ordering and no category interleave. Do NOT open {KEY} until you finish scoring.")
+    else:
+        print(f"First {args.priority_n} are the judge's near-threshold cases. Do NOT open {KEY} until you finish scoring.")
     return 0
 
 
@@ -250,7 +260,7 @@ def confirm_extreme(parsed, ask=input):
 def render_item(item: dict, show_fields) -> str:
     chunks = []
     for f in show_fields:
-        if f in item:
+        if f in item and f not in RESERVED_FIELDS:
             body = item[f]
             if not isinstance(body, str):
                 body = json.dumps(body, indent=2, ensure_ascii=False)
@@ -320,7 +330,7 @@ def cmd_score(args) -> int:
                 if parsed2 is None:
                     print("Not a score between 0.0 and 1.0; nothing changed.")
                 else:
-                    append_score(args.workdir, last["blind_id"], parsed2[0], parsed2[1])
+                    append_score(args.workdir, last["blind_id"], parsed2[0], parsed2[1], revised=True)
                     print("Re-score saved. Returning to the current item.")
                 print("\nCurrent item again. Score 0.0-1.0, 'b', or 'q'.")
                 continue
@@ -435,6 +445,10 @@ def cmd_export(args) -> int:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     print(f"Wrote {len(rows)} of {len(queue)} human scores to {args.out}.")
+    first, latest = load_first_scores(args.workdir), load_latest_scores(args.workdir)
+    changed = [b for b in latest if b in key and first.get(b, {}).get("score") != latest[b]["score"]]
+    if changed:
+        print(f"Note: {len(changed)} score(s) were changed after the first entry (by `b` or `rescore`). --which first reports the first entry, which ignores the change even if it fixed a slip; --which latest reports the revision. Say which you used.")
     if len(rows) < len(queue):
         print("Partial export is fine: calibrate_judge.py compares only ids present in both files.")
     print(f"Next: python calibrate_judge.py <judge_results.jsonl> {args.out}")

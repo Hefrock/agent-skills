@@ -276,6 +276,67 @@ class TestExtremeGuard(Fixture):
         self.assertEqual(hs.confirm_extreme((0.5, "x"), ask=lambda p: self.fail("asked")), (0.5, "x"))
 
 
+class TestPincerFixes(Fixture):
+    """Follow-ups from the 2026-10-26 repo-pincer audit of agent-eval."""
+
+    def test_reserved_show_fields_refused(self):
+        for bad in ("id", "category", "score", "blind_id", "input,id"):
+            work = os.path.join(self.dir, "w_" + bad.replace(",", "_"))
+            r = run("prepare", self.cases, self.judge, "--workdir", work, "--seed", "1", "--show-fields", bad)
+            self.assertEqual(r.returncode, 2, bad)
+            self.assertIn("Refusing", r.stderr)
+            self.assertFalse(os.path.exists(os.path.join(work, "queue.jsonl")), bad)
+
+    def test_render_item_never_shows_reserved_fields(self):
+        item = {"blind_id": "b1", "id": "REAL_ID", "category": "CAT", "score": 0.5, "input": "visible"}
+        shown = hs.render_item(item, ("id", "category", "score", "blind_id", "input"))
+        for leak in ("REAL_ID", "CAT", "b1", "0.5"):
+            self.assertNotIn(leak, shown)
+        self.assertIn("visible", shown)
+
+    def test_b_correction_is_flagged_revised(self):
+        self.assertEqual(self.prepare().returncode, 0)
+        run("score", "--workdir", self.work, stdin="0.5\nb\n0.9 fixed slip\nq\n")
+        rows = read_jsonl(os.path.join(self.work, "scores.jsonl"))
+        self.assertNotIn("revised", rows[0])
+        self.assertTrue(rows[1]["revised"])
+
+    def test_export_notes_changed_scores_and_first_ignores_them(self):
+        self.assertEqual(self.prepare().returncode, 0)
+        run("score", "--workdir", self.work, stdin="0.5\nb\n0.9\nq\n")
+        out = os.path.join(self.dir, "h.jsonl")
+        r_first = run("export", "--workdir", self.work, "--out", out, "--which", "first")
+        self.assertIn("changed after the first entry", r_first.stdout)
+        self.assertEqual(read_jsonl(out)[0]["score"], 0.5)
+        r_latest = run("export", "--workdir", self.work, "--out", out)
+        self.assertIn("changed after the first entry", r_latest.stdout)
+        self.assertEqual(read_jsonl(out)[0]["score"], 0.9)
+
+    def test_export_silent_when_nothing_changed(self):
+        self.assertEqual(self.prepare().returncode, 0)
+        run("score", "--workdir", self.work, stdin="0.5\n0.6\nq\n")
+        r = run("export", "--workdir", self.work, "--out", os.path.join(self.dir, "h.jsonl"))
+        self.assertNotIn("changed after the first entry", r.stdout)
+
+    def test_same_score_revision_is_not_reported_as_a_change(self):
+        self.assertEqual(self.prepare().returncode, 0)
+        run("score", "--workdir", self.work, stdin="0.5\nb\n0.5 same\nq\n")
+        r = run("export", "--workdir", self.work, "--out", os.path.join(self.dir, "h.jsonl"))
+        self.assertNotIn("changed after the first entry", r.stdout)
+
+    def test_priority_message_when_block_covers_everything(self):
+        work = os.path.join(self.dir, "w_all")
+        r = run("prepare", self.cases, self.judge, "--workdir", work, "--seed", "1", "--priority-n", "20")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("plain shuffle", r.stdout)
+        self.assertNotIn("First 20", r.stdout)
+
+    def test_priority_message_when_block_is_partial(self):
+        r = self.prepare()
+        self.assertIn("First 3 are the judge's near-threshold cases", r.stdout)
+        self.assertNotIn("plain shuffle", r.stdout)
+
+
 class TestRescore(Fixture):
     def scored_workdir(self):
         self.assertEqual(self.prepare().returncode, 0)

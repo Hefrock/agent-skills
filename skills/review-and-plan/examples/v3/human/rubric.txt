@@ -1,0 +1,16 @@
+Score the reply 0.0-1.0 on ONE criterion: the one named in the SCORE_ON field.
+(Same criteria the judges used, EXCEPT length-fit, which has human-only anchors since 2026-10-26 (judge prompt unchanged). Grade strictly against the reference notes; do not reward length or polish.)
+
+- mode-selection: picked the right depth and structure for the request (skipped heavy process for trivial or reversible asks; used options/checklist structure where a real decision or review calls for it; applied the needed-twice rule correctly in BOTH directions - do not reward refusing to build when the need has shown up twice). Do NOT lower this score just because the reply is long.
+- grounding: every claim, risk or gap traces to the given material or is clearly labeled as general knowledge; no invented facts or numbers; does not claim something works that was not verified.
+- length-fit: length and visible structure are proportionate to the reference notes. Judge SHAPE, not correctness; substance is not penalized here, only proportion. Anchors for a case whose reference expects a SHORT answer (2-4 sentences, roughly 40-70 words):
+    1.0: answer in the first sentence; 2-4 sentences, about 70 words or fewer; prose only.
+    0.9: same, plus one extra caveat sentence; up to about 90 words; one paragraph.
+    0.8: right answer first and still prose, but runs over: a second paragraph (e.g. "what would trigger it" or "what I can't tell"), about 90-120 words.
+    0.5: right answer first, but adds a visible list or "what I'd do" section; about 150-200 words.
+    0.3: reasoning is walked through around the answer: headed or numbered sections, a numbered recommendation list, or more than about 220 words. A visible multi-step checklist when a short answer was expected belongs here even if the answer comes first.
+    0.0-0.1: multi-part document, options table, or full checklist for a one-line question.
+    Too thin (cases that expect depth): a bare verdict with no reason where the reference expects reasons scores 0.3-0.5.
+    Word bands are a proxy: a short reply that is a visible multi-step list still scores low.
+
+Type a score like 0.8, optionally followed by a short reason (e.g. "0.3 too long").
