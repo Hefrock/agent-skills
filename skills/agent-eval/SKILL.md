@@ -60,6 +60,8 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
    ```
    `human_scores.jsonl` only needs the 5-10 IDs you actually hand-scored (same JSONL schema as any `score_eval.py` results file) — it compares whichever IDs appear in both files. See [`examples/README.md`](./examples/README.md)'s calibration example for a worked case where this catches a judge fooled by confident, verbose wrong answers. `--update-log` appends a row to `${CLAUDE_PLUGIN_ROOT}/references/llm-judge-prompt.md`'s calibration table automatically, replacing the "not yet calibrated" placeholder on the first real run — don't edit that table by hand. Add `--action "what you changed"` to replace the auto-generated "Action taken" text with your own note; `|` and newlines in it are escaped, so free text is safe.
 
+   To hand-score blind rather than in a spreadsheet, use `${CLAUDE_PLUGIN_ROOT}/scripts/human_score.py`. `prepare` freezes a shuffled queue (the judge's near-threshold cases first; judge scores, categories and real ids are never shown), `score` is a resumable interactive loop, `rescore` appends a revision without overwriting your original, and `export` writes the `human_scores.jsonl` that `calibrate_judge.py` reads. `prepare` needs a judge results file for ordering; if the judge has not run yet, pass a placeholder file with every score 0.5 so no judge information exists before you score. Report `export --which first` (your original blind scores) as the calibration figure and report revisions separately, since they are judgment changes. A score of exactly 0.0 or 1.0 is read back for confirmation, because a mistyped 0.0 once skewed a real run; `--no-confirm-extremes` turns that off for scripted input. The tool cannot hide what a reply itself reveals (for example its length, when length is the criterion), so spot-check a few items yourself.
+
 6. **Aggregate and report using `${CLAUDE_PLUGIN_ROOT}/scripts/score_eval.py`.** Don't manually tally pass rates — run the script against the results file:
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/score_eval.py results.jsonl
@@ -128,6 +130,7 @@ Turns "does this actually work" into a repeatable, evidence-based answer instead
 | `scripts/run_judge.py` | LLM-as-judge runner against `references/llm-judge-prompt.md` |
 | `scripts/run_pairwise.py` | Pairwise comparison runner (two prompts/models/outputs) |
 | `scripts/calibrate_judge.py` | Checks judge scores against `examples/calibration_human_scores.jsonl` |
+| `scripts/human_score.py` | Blind, resumable human scoring in installments (`prepare` / `score` / `rescore` / `status` / `export`); produces the `human_scores.jsonl` that `calibrate_judge.py` reads |
 | `scripts/bootstrap_stats.py` | Bootstrap CI + BH-corrected significance test implementation, shared by `score_eval.py` |
 | `scripts/jsonl_io.py` | Shared JSONL read/write helpers used across the other scripts |
 | `scripts/test_*.py` | Unit test suite (stdlib unittest), one file per script above |

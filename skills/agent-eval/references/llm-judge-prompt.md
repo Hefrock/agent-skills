@@ -45,7 +45,8 @@ Grade the output against each criterion below on a 0.0-1.0 scale:
 <!-- Update after each spot-check (see agent-eval step 5): hand-score 5-10 cases, compare to judge, note mean delta -->
 | Date | Cases checked | Mean delta vs human | Action taken |
 |---|---|---|---|
-| — | — | — | not yet calibrated |
+| 2026-10-26 | 17 | 0.203 | At threshold (0.203 vs 0.2; blind first-pass, n=17, 1 data-entry typo excluded, 1 rater, review-and-plan v3 judge A). Gap is concentrated in control-arm length-fit (4 items, human 0.8-0.9 vs judge 0.30-0.50); after 5 judgment revisions mean delta was 0.131. Next: add anchors to the length-fit rubric, not a judge-prompt rewrite. Pending: 3 rescores, Gemini judge. |
+| 2026-10-26 | 8 | 0.131 | Anchors HOLD on a fresh held-out set (pre-registered: hold if mean <= 0.15 and no item > 0.4; max item 0.40 exactly, thin margin). Length-fit only, human first-pass, judge A (Opus), judge prompt unchanged; f1 control the outlier (human 0.6 vs judge 0.2). n=8, one rater. No judge-prompt change. |
 
 ## Known biases to guard against
 
