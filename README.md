@@ -17,7 +17,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 
 | Skill | What it does |
 |---|---|
-| [`agent-eval`](./skills/agent-eval) | Turns "does this agent actually work?" into a repeatable score: rubrics, LLM-as-judge grading, and regression sets that catch when a prompt change made things worse. |
+| [`agent-eval`](./skills/agent-eval) | Turns "does this agent actually work?" into a repeatable score: rubrics, LLM-as-judge grading, and regression sets that catch when a prompt change made things worse, plus blind human scoring to check the judge itself. |
 | [`agent-redteam`](./skills/agent-redteam) | Generates adversarial test cases to check that an agent fails safely — refuses, hedges, or degrades gracefully — instead of confidently getting it wrong. Pairs with `agent-eval` for scoring. |
 | [`repo-pincer`](./skills/repo-pincer) | Reverse-engineers a codebase: reads what the docs claim, reads what the code actually does, and reports exactly where they disagree. |
 | [`issue-reconciler`](./skills/issue-reconciler) | Finds GitHub issues that are actually already resolved but never got closed — a merged PR that said "Closes #N" but didn't take effect, or a skill that quietly got built with nobody linking the PR. Proposes closures with evidence; never closes anything on its own. |
