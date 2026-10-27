@@ -1,0 +1,17 @@
+{"id": "skill:q6", "score": 0.9, "category": "mode-selection", "rationale": "human score"}
+{"id": "control:q5", "score": 0.9, "category": "grounding", "rationale": "human score"}
+{"id": "control:q1", "score": 0.8, "category": "grounding", "rationale": "human score"}
+{"id": "control:q7", "score": 0.9, "category": "grounding", "rationale": "This is thorough but a bit too long to read"}
+{"id": "control:q4", "score": 0.9, "category": "length-fit", "rationale": "human score"}
+{"id": "skill:q5", "score": 0.7, "category": "grounding", "rationale": "grounding is not fully attributed to knowledge grounding."}
+{"id": "skill:q8", "score": 0.9, "category": "length-fit", "rationale": "Provenance was helpful and lenght was reasonable"}
+{"id": "control:q6", "score": 0.6, "category": "mode-selection", "rationale": "too long"}
+{"id": "skill:q1", "score": 0.8, "category": "grounding", "rationale": "Good advice. grounding not exclusively attributed to primary sourcing. Clear disclosures helpful"}
+{"id": "control:q3", "score": 0.8, "category": "length-fit", "rationale": "Appropritely pauses work and askes to log. Lenght is a bit too long."}
+{"id": "control:q2", "score": 0.8, "category": "mode-selection", "rationale": "Great length. Human should decide whether to build or use a preexisiting MCP server."}
+{"id": "skill:q7", "score": 0.9, "category": "grounding", "rationale": "human score"}
+{"id": "skill:q3", "score": 0.9, "category": "length-fit", "rationale": "succinct and clear"}
+{"id": "skill:q4", "score": 0.9, "category": "length-fit", "rationale": "human score"}
+{"id": "control:q8", "score": 0.8, "category": "length-fit", "rationale": "too log"}
+{"id": "control:r3", "score": 0.8, "category": "length-fit", "rationale": "too long"}
+{"id": "skill:r3", "score": 0.9, "category": "length-fit", "rationale": "The length is more appropriate"}

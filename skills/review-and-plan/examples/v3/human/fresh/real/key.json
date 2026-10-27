@@ -1,0 +1,34 @@
+{
+ "b109100": {
+  "id": "f2:skill",
+  "category": "length-fit"
+ },
+ "b972580": {
+  "id": "f1:skill",
+  "category": "length-fit"
+ },
+ "b520007": {
+  "id": "f3:skill",
+  "category": "length-fit"
+ },
+ "b708982": {
+  "id": "f2:control",
+  "category": "length-fit"
+ },
+ "b471894": {
+  "id": "f3:control",
+  "category": "length-fit"
+ },
+ "b446304": {
+  "id": "f4:control",
+  "category": "length-fit"
+ },
+ "b458157": {
+  "id": "f4:skill",
+  "category": "length-fit"
+ },
+ "b301517": {
+  "id": "f1:control",
+  "category": "length-fit"
+ }
+}

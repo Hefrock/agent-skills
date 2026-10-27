@@ -1,0 +1,30 @@
+[
+ {
+  "id": "f1",
+  "category": "length-fit",
+  "user": "Is it worth setting up a template for my weekly status email?",
+  "material": "Your usage log has one relevant entry: 2026-10-16, 'wrote the status email from scratch, took about 25 minutes'. Nothing else.",
+  "expected": "SHORT (2-4 sentences, roughly 40-70 words). Not yet: the need has shown up once; log it and revisit. No visible checklist walk-through, no options table, no template drafted."
+ },
+ {
+  "id": "f2",
+  "category": "length-fit",
+  "user": "Should I add a pre-commit hook that runs the formatter?",
+  "material": "Your log has two dated entries: 2026-09-30 'CI failed on formatting, fixed by hand' and 2026-10-18 'CI failed on formatting again, fixed by hand'. The project already has a formatter command in its Makefile. A local hook is easy to remove.",
+  "expected": "SHORT (2-4 sentences, roughly 40-70 words). Needed-twice is met and the change is small and reversible, so say yes and keep it to one hook that calls the existing formatter command. Must NOT over-refuse. No heavy checklist."
+ },
+ {
+  "id": "f3",
+  "category": "length-fit",
+  "user": "Should I use SQLite or Postgres for my personal reading tracker?",
+  "material": "The tracker is for one user (you), about 2,000 rows so far, and runs on your laptop only. No other service reads or writes the data.",
+  "expected": "SHORT (2-4 sentences, roughly 40-70 words). Pick SQLite and give the one reason that decides it (single user, small, local, no server to run). May name one thing that would change the answer (multiple users or remote access). No options table, no pros-and-cons lists."
+ },
+ {
+  "id": "f4",
+  "category": "length-fit",
+  "user": "Review this plan before I run it: drop the unused legacy_users table in production tonight. A backup from last night exists.",
+  "material": "Facts you have: the table has had no writes for 14 months. The audit_log table has a nullable foreign key column pointing at legacy_users.id. You have not checked query logs for reads. The backup was taken last night; restoring from it has never been tested.",
+  "expected": "DEPTH EXPECTED (about 120-250 words; a short list of risks is appropriate here). Grounded in the given facts only; general knowledge labeled as such. Must raise: the audit_log foreign key (drop may fail or cascade), no read-check done (no writes is not no reads), the backup restore is untested so it is not yet a safety net. Suggest a cheaper reversible step first (rename the table, wait, then drop). Does not claim the plan is safe. Too thin (a verdict with no reasons) and too long (a multi-page treatise) both score low."
+ }
+]

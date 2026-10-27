@@ -1,0 +1,25 @@
+Recommendation: do not run this tonight. Hold the drop until three checks are done. None is expensive, and the drop can't be undone by the plan as written.
+
+Review caveat: this is a solo review. I wrote the assessment and the premortem myself, with no independent agent, so it is weaker than it looks. I also have only the four facts you gave me, not the schema, the code, or the logs.
+
+Risks, each tied to what you told me:
+
+1. **audit_log has a foreign key to legacy_users.id.** The column is nullable, but the constraint still exists. Depending on the database, the drop will either fail outright, or succeed with CASCADE and silently remove the constraint (or, in some engines, more than that). If audit_log rows are populated in that column, you lose the link between audit history and the users it describes. Whether any rows are non-null is something I don't know. Check it.
+
+2. **"No writes for 14 months" is not "unused."** You haven't checked query logs for reads. Reporting jobs, an annual process, a join in a view, or an ORM model could all read the table without writing to it. A 14-month write gap is real evidence, but it only covers writes. (The read risk is in your facts; the specific examples are general knowledge.)
+
+3. **The backup has never been restored.** Right now it is a file, not a recovery path. If risk 1 or 2 goes wrong tonight, your rollback is an untested assumption. The fact that it was taken last night is also a small issue: anything written to related tables after that point would not be in it. (The untested restore is from your facts; the staleness point is general knowledge.)
+
+4. **Production, tonight, with no stated rollback window.** I don't know your traffic pattern or who is on call. That is a gap in what I know, not a finding.
+
+Before you run it:
+
+- Query the logs or stats for reads over a meaningful period, such as a full year to catch annual jobs. Also search the code, views, and stored procedures for references to legacy_users. Done when: you can name zero readers, or you know exactly who they are.
+- Count non-null legacy_users references in audit_log, and decide whether that history matters. Also list any other foreign keys, views, or triggers that depend on the table. Done when: you know what the drop would break or sever.
+- Restore last night's backup to a scratch environment and confirm legacy_users comes back intact. Done when: the restore succeeds and a row count matches.
+
+Lower-risk alternative: instead of dropping, rename the table (for example legacy_users_deprecated) or revoke access to it, and wait a release cycle or two. If something breaks, the fix is a rename back. Drop it for real once nothing has complained. Note that a rename may still interact with the foreign key and any views, so check that too.
+
+Stop signals: if the read check finds no readers and the restore test passes, go to the rename step. If the read check finds any reader, stop and take that finding to its owner before touching the table. Don't keep re-running checks looking for a clean answer.
+
+What I could not check: the actual schema, the query logs, the code, your database engine's drop and cascade behavior, and anything about tonight's operational context.
