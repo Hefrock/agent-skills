@@ -21,9 +21,11 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from health_score import (
+    compare_runs,
     compute_health_score,
     warehouse_integrity,
     maturity,
+    resolution,
     _count_open_question_entries,
     _scoped,
 )
@@ -100,14 +102,29 @@ class HealthScoreTests(unittest.TestCase):
         self.assertAlmostEqual(self.result["components"]["provenance"], 9 / 11)
 
     def test_resolution_matches_hand_count(self):
-        # 11 Knowledge/ notes; has-open-questions.md contributes exactly 2
-        # bullet entries, everything else contributes 0. 1 - 2/11.
-        self.assertAlmostEqual(self.result["components"]["resolution"], 1 - 2 / 11)
+        # 11 Knowledge/ notes; only has-open-questions.md has any open
+        # question (2 entries), so 10 of 11 pages have zero.
+        self.assertAlmostEqual(self.result["components"]["resolution"], 10 / 11)
+
+    def test_resolution_does_not_floor_at_zero_on_dense_vaults(self):
+        # The retired formula (1 - entries/pages) hit 0% at >=1 question per
+        # page. 3 pages at 2 questions each plus 1 settled page must still
+        # score 1/4, and an all-questions vault must score 0 without
+        # going negative.
+        q = "## Open questions\n- a\n- b\n"
+        dense = {
+            "Knowledge/a.md": {"frontmatter": {}, "body": q, "links": []},
+            "Knowledge/b.md": {"frontmatter": {}, "body": q, "links": []},
+            "Knowledge/c.md": {"frontmatter": {}, "body": q, "links": []},
+            "Knowledge/d.md": {"frontmatter": {}, "body": "no questions", "links": []},
+        }
+        self.assertAlmostEqual(resolution(dense), 1 / 4)
+        del dense["Knowledge/d.md"]
+        self.assertEqual(resolution(dense), 0.0)
 
     def test_resolution_counts_entries_not_just_presence(self):
-        # Direct test of the subtle part: a page with 2 open questions
-        # contributes 2, not 1 - this is what makes "floored at 0 but not
-        # capped at 1" in the SKILL.md formula make sense at all.
+        # Entries are counted per bullet, so a page with 2 questions is
+        # distinguishable from one with 1 (resolution() only needs ==0).
         body = self.notes["Knowledge/has-open-questions.md"]["body"]
         self.assertEqual(_count_open_question_entries(body), 2)
 
@@ -155,6 +172,35 @@ class HealthScoreTests(unittest.TestCase):
     def test_warehouse_integrity_none_when_zero_linked_docs(self):
         self.assertIsNone(warehouse_integrity({"total_linked_docs": 0, "corrupt": 0, "missing": 0, "dangling": 0, "drifted": 0}))
         self.assertIsNone(warehouse_integrity(None))
+
+    # ── Run-over-run movement ──────────────────────────────────────────────
+
+    @staticmethod
+    def _run(score, **components):
+        base = {"connectedness": 0.9, "maturity": 0.3, "freshness": 0.8,
+                "provenance": 0.95, "resolution": 0.1, "warehouse_integrity": None}
+        base.update(components)
+        return {"score": score, "components": base}
+
+    def test_compare_runs_leads_with_regressions_and_ignores_noise(self):
+        prev = self._run(72.0)
+        cur = self._run(71.4, maturity=0.35, freshness=0.7, provenance=0.951)
+        m = compare_runs(cur, prev)
+        self.assertEqual([n for n, *_ in m["regressed"]], ["freshness"])
+        self.assertEqual([n for n, *_ in m["improved"]], ["maturity"])
+        self.assertIn("provenance", m["steady"])  # +0.001 is below MOVE_EPSILON
+        self.assertEqual(m["score_delta"], -0.6)
+
+    def test_compare_runs_excluded_component_is_unavailable_not_a_move(self):
+        prev = self._run(72.0, warehouse_integrity=1.0)
+        cur = self._run(72.0)  # warehouse now None
+        m = compare_runs(cur, prev)
+        self.assertEqual(m["unavailable"], ["warehouse_integrity"])
+        self.assertEqual(m["regressed"], [])
+
+    def test_compare_runs_worst_regression_first(self):
+        m = compare_runs(self._run(60.0, connectedness=0.5, freshness=0.7), self._run(72.0))
+        self.assertEqual([n for n, *_ in m["regressed"]], ["connectedness", "freshness"])
 
     # ── Scope helper ────────────────────────────────────────────────────────
     # NOTE: this tests prefix-based scoping, which is what actually excludes
