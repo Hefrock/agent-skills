@@ -71,6 +71,14 @@ class OverlapTests(unittest.TestCase):
         self.assertEqual(result["status"], "unchecked")
         self.assertNotEqual(result["status"], "pass")
 
+    def test_empty_source_text_is_unchecked_never_pass(self):
+        # The warehouse leaves a 0-byte .txt when it cannot extract text
+        # (e.g. EPUB, extraction_method: unsupported-type). Pasted text
+        # measured against that used to come back 'pass'.
+        for blank in ("", "  \n\t"):
+            result = check_note(prose("src", 400), blank)
+            self.assertEqual(result["status"], "unchecked")
+
     def test_classify_boundaries(self):
         base = {"body_chars": 100, "source_chars": 1000, "outside_words": 100, "quote_chars": 0}
         self.assertEqual(classify({**base, "copied_outside_quotes_pct": 20.0, "longest_run_words": 0})["status"], "pass")
