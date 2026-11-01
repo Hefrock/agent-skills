@@ -12,7 +12,10 @@ Three measurements, all reported — none replaces judgment:
   - copied_outside_quotes_pct: share of the note's words (excluding
     blockquote lines and quoted spans of 20+ characters) that sit inside an
     8-word run also present in the source. Intended excerpts don't count.
-  - longest_run_words: longest unbroken copied run, quotations included.
+  - longest_run_words: longest unbroken copied run in the wording outside
+    quotations. Quoted passages are governed by the quote budget below, not
+    by this limit: on 2026-10-31 a note with 2.8% copied wording warned
+    only because one deliberate 89-word excerpt counted as a "run".
   - quote_chars: characters inside quotations (a quote budget).
 
 Thresholds are provisional (fail >35% copied or a 120-word run; warn >20%,
@@ -100,13 +103,12 @@ def measure(body: str, source_text: str) -> dict:
     outside_text, quote_chars = split_quotes(body)
     outside = tokens(outside_text)
     outside_cov = _covered(outside, src)
-    all_cov = _covered(tokens(body), src)
     return {
         "body_chars": len(body),
         "source_chars": len(source_text),
         "outside_words": len(outside),
         "copied_outside_quotes_pct": round(100.0 * sum(outside_cov) / len(outside), 1) if outside else 0.0,
-        "longest_run_words": _longest_run(all_cov),
+        "longest_run_words": _longest_run(outside_cov),
         "quote_chars": quote_chars,
     }
 
