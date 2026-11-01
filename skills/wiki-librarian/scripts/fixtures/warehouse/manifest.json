@@ -1,0 +1,11 @@
+{
+  "schema": "fixture",
+  "docs": {
+    "aaaa1111": {
+      "text_path": "text/2026/example-paper-aaaa1111.txt"
+    },
+    "bbbb2222": {
+      "text_path": "text/2026/example-paper-bbbb2222.txt"
+    }
+  }
+}

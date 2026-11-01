@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from check_vault import run, is_system_file, parse_frontmatter, resolve_link
 
+FIXTURE_WAREHOUSE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "warehouse")
 FIXTURE_VAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "vault")
 NOW = datetime(2026, 7, 20, tzinfo=timezone.utc)
 
@@ -50,7 +51,7 @@ def find_notes(findings, key="note"):
 class CheckVaultTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.result = run(FIXTURE_VAULT, now=NOW)
+        cls.result = run(FIXTURE_VAULT, now=NOW, warehouse_root=FIXTURE_WAREHOUSE)
 
     def test_scanned_all_fixture_notes(self):
         self.assertEqual(self.result["notes_scanned"], 22)
@@ -139,13 +140,23 @@ class CheckVaultTests(unittest.TestCase):
 
     def test_dumped_warehouse_note_detected(self):
         gaps = self.result["schema_gaps"]["law10_not_distilled"]
-        by_note = {f["note"]: f["body_chars"] for f in gaps}
-        self.assertEqual(set(by_note), {"Sources/Papers/warehouse-dumped.md"})
-        self.assertGreater(by_note["Sources/Papers/warehouse-dumped.md"], 4000)
+        self.assertEqual({f["note"] for f in gaps}, {"Sources/Papers/warehouse-dumped.md"})
+        self.assertEqual(gaps[0]["status"], "fail")
 
     def test_distilled_warehouse_note_not_flagged(self):
-        notes = find_notes(self.result["schema_gaps"]["law10_not_distilled"])
-        self.assertNotIn("Sources/Papers/warehouse-distilled.md", notes)
+        schema = self.result["schema_gaps"]
+        flagged = find_notes(schema["law10_not_distilled"]) | find_notes(schema["law10_review"])
+        self.assertNotIn("Sources/Papers/warehouse-distilled.md", flagged)
+
+    def test_law10_without_warehouse_is_unchecked_not_pass(self):
+        # No warehouse path: every doc_id note must surface for review, never
+        # silently pass and never count as a hard gap.
+        result = run(FIXTURE_VAULT, now=NOW)
+        schema = result["schema_gaps"]
+        self.assertEqual(schema["law10_not_distilled"], [])
+        review = {f["note"]: f["status"] for f in schema["law10_review"]}
+        self.assertEqual(review, {"Sources/Papers/warehouse-distilled.md": "unchecked",
+                                  "Sources/Papers/warehouse-dumped.md": "unchecked"})
 
     def test_law10_check_ignores_long_notes_without_doc_id(self):
         # A long body with no doc_id (i.e. not warehouse-linked) must never
@@ -154,16 +165,36 @@ class CheckVaultTests(unittest.TestCase):
         # the fixture has no long non-warehouse note to exercise this with.
         from check_vault import check_schema_gaps
 
-        long_body = "x " * 3000  # ~6000 chars, well over the threshold
         notes = {
             "Knowledge/long-but-not-warehoused.md": {
                 "frontmatter": {"type": "concept", "status": "draft", "confidence": "high", "updated": "2026-07-01"},
-                "body": long_body,
+                "body": "x " * 3000,
                 "links": [],
             }
         }
-        gaps = check_schema_gaps(notes)
+        gaps = check_schema_gaps(notes, FIXTURE_WAREHOUSE)
         self.assertEqual(gaps["law10_not_distilled"], [])
+        self.assertEqual(gaps["law10_review"], [])
+
+    def test_long_original_note_is_not_flagged_by_length(self):
+        # The reason the 4000-character cap was dropped: a long note that
+        # does not copy its source is fine. ~8000 chars of text that never
+        # appears in the fixture source must pass the overlap check.
+        from check_vault import check_schema_gaps
+
+        body = " ".join(f"original{i} remark{i % 7} idea{i % 11}" for i in range(800))
+        self.assertGreater(len(body), 8000)
+        notes = {
+            "Sources/Papers/long-original.md": {
+                "frontmatter": {"type": "source", "status": "draft", "confidence": "high",
+                                "updated": "2026-07-01", "doc_id": "sha256:aaaa1111"},
+                "body": body,
+                "links": [],
+            }
+        }
+        gaps = check_schema_gaps(notes, FIXTURE_WAREHOUSE)
+        self.assertEqual(gaps["law10_not_distilled"], [])
+        self.assertEqual(gaps["law10_review"], [])
 
     # ── System-file exemption (Laws 6, 7, 8) — the actual regression lock ──
 

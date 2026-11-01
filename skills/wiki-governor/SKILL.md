@@ -44,7 +44,7 @@ Hold the vault to `knowledge-os/constitution.md`. Map the librarian's and wareho
 | 7 — No islands | zero inbound **and** outbound links | librarian orphan check |
 | 8 — Preserve provenance | every concept page carries a `Captured from [[journal]]` or `Source: [[…]]` backlink | librarian schema check |
 | 9 — One run, one log | today's run log (`Journal/Runs/YYYY-MM-DD.md`) has a synthesis/audit log entry | governor |
-| 10 — Distill, don't dump | warehouse-linked notes (`doc_id` present) have a body under ~4000 characters | librarian schema check |
+| 10 — Distill, don't dump | warehouse-linked notes (`doc_id` present) have no overlap-check failure against their warehoused source (unchecked notes listed, not passed) | librarian schema check |
 
 Output a compliance table: law, pass/fail, and the specific pages violating it. Law 9 is governor's own distinctive check — it's about the governance run itself, so nothing else is positioned to verify it.
 
@@ -54,7 +54,7 @@ Output a compliance table: law, pass/fail, and the specific pages violating it. 
 
 **Laws 2, 3, 6, 7, and 8 exempt `Templates/`** — scaffolding, not knowledge: placeholders like `updated: YYYY-MM-DD` and `[[Journal/Daily/YYYY-MM-DD]]` are intentional (see the constitution's "Templates are scaffolding" clause). Never report a `Templates/` file against these laws, count it in a health denominator, or let a `type:`-based retrieval pick it up as a real note.
 
-**Law 10 (distill, don't dump)** is checked via a body-length heuristic on notes carrying a `doc_id` (`wiki-librarian`'s Check 6.5, reference implementation in `skills/wiki-librarian/scripts/check_vault.py`) — a threshold, not a semantic judgment of whether a note is genuinely distilled, so treat a `pass` here as "no obvious dump detected," not certainty. A note that pads a real dump with commentary to stay under the character limit would slip through; that's a real limitation of a purely mechanical check, not something to paper over.
+**Law 10 (distill, don't dump)** is checked by measuring how much of a `doc_id` note's wording is copied from its warehoused source (`wiki-librarian`'s Check 6.5, reference implementation in `skills/wiki-librarian/scripts/check_vault.py` with `--warehouse`, using `law10_overlap.py`). It replaced a ~4000-character cap, which flagged long original write-ups and passed short pasted passages. Still a mechanical threshold, not a judgment that a note is well distilled, so treat a `pass` as "no copying detected," not certainty. Paraphrased dumping is not caught. A note whose source has no extracted text, or any run without a warehouse checkout, is **unchecked** — report those, and never count them as passing.
 
 ### Phase 3 — Health score
 
