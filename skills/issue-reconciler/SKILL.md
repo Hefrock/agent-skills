@@ -21,22 +21,28 @@ exactly why it's a script and not part of the conversational methodology.
 
 **Pass 2 (judgment, conversational)** catches everything Pass 1 structurally can't:
 an issue whose ask was fulfilled without anyone ever using a closing keyword at all.
-This is the more common case in practice, not the edge case — confirmed empirically
-against this repo's own history: running Pass 1 against every open issue and the last
-100 merged PRs here found **zero** matches, because not one of those PRs ever used
-"Closes #N" syntax. And yet issue #6 ("Build wiki-teacher skill," filed months ago) is
-still open despite `skills/wiki-teacher/` existing, fully built, right now. Pass 1
-alone would never find that — it has no PR to point to, because the PR that built it
-never said it was closing anything. Only a judgment pass, checking the issue's actual
-ask against actual repo state, catches it.
+This is the more common case in practice, not the edge case — running Pass 1
+against every open issue and all 189 merged PRs here found **zero** matches, because
+none of those PRs used "Closes #N" syntax. Only a judgment pass, checking the issue's
+actual ask against actual repo state, can find the rest.
+
+It is also where the false positives live. Issue #6 ("Build wiki-teacher skill") looks
+resolved at a glance: `skills/wiki-teacher/` exists. It is not. The skill that exists
+is a `/checkin` project-accountability tool; #6 asked for quizzes, spaced repetition,
+`/study`, `/flashcards` and `/study-plan`, none of which is built. A name match is
+not a scope match. Pass 2 must compare the issue's listed responsibilities or
+acceptance criteria against what the artifact actually does, not just whether
+something with the same name exists.
 
 ## How this works
 
 ```bash
-gh issue list --state open --json number,title,body,createdAt,labels > issues.json
-gh pr list --state merged --json number,title,body,mergedAt > merged_prs.json
+gh issue list --state open --limit 500 --json number,title,body,createdAt,labels > issues.json
+gh pr list --state merged --limit 500 --json number,title,body,mergedAt > merged_prs.json
 python ${CLAUDE_PLUGIN_ROOT}/scripts/find_closing_references.py --issues issues.json --prs merged_prs.json
 ```
+
+**Always pass `--limit`.** `gh` returns only 30 rows by default, so the bare commands silently scan the newest 30 PRs and miss the rest (this repo had 189 merged PRs when that was found on 2026-10-31). The script warns on stderr when an input has exactly 30 rows.
 
 (No GitHub API client lives in this skill — it consumes JSON that whatever GitHub
 tooling the host already has produces, `gh` CLI or an MCP server's issue/PR list
@@ -55,8 +61,10 @@ fooled by a host tool with this same quirk.)
      `## Status` section saying deferred/blocked/not being worked on. These are
      tracked on purpose — age alone is not evidence of staleness for them.
    - **Does its actual ask match current reality?** For an issue that names a
-     specific skill, file, or feature, check whether that thing exists now
-     (`skills/<name>/`, a described flag or function in a named script). For an
+     specific skill, file, or feature (`skills/<name>/`, a described flag or
+     function in a named script), check whether it exists now *and* covers each
+     responsibility or acceptance criterion the issue lists — read the artifact,
+     not just its name. For an
      issue describing a bug or gap, check whether recent merged PRs — even ones
      that never used a closing keyword — describe fixing the same thing.
 3. **Report findings in two tiers**, never as one flat list:
