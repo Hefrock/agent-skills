@@ -100,3 +100,19 @@ Four replies per case from the pre-edit `SKILL.md` (git HEAD) were graded in one
 - **The absolute 0.9 bar is batch-dependent.** In a stricter batch even the old skill scores 0.889 on judge B. Read grounding as a relative check (edited vs old, same batch), which passes.
 - q5 is the weakest case for the edited skill on both judges (0.88 / 0.85 vs 0.91 / 0.89), still within noise at n=4.
 - Same limits as before: self-written cases, all-Claude judges and runners, no human calibration, text-only.
+
+### v3 human check (2026-10-26)
+One rater blind-scored the nine v3 cases on the same three criteria, comparing the **edited skill** with the **no-skill control**. Data and commands to re-check the numbers are in `v3/human/`.
+
+**Scope.** The old-`SKILL.md` replies behind the headline "length-fit 0.31 to 0.95" were not in the human set, so that old-to-new change has **not** been human-checked. That headline compares two judging batches, and the control arm itself moved from 0.59 (v2 batch) to 0.36 (v3 batch) on identical replies, the cross-batch noise described above. The human check is of edited skill against control, both in the v3 batch.
+
+| length-fit (q3, q4, q8, r3) | edited skill | control (no skill) | gap |
+|---|---|---|---|
+| judge A, v3 batch | 0.95 | 0.36 | 0.59 |
+| human, blind first pass | 0.90 | 0.83 | 0.07 |
+| human, after six revisions (whether the rater had seen the judge's scores by then was not recorded) | 0.88 | 0.50 | 0.38 |
+
+- **Direction agrees; size does not.** The rater and the judges agree the edited skill fits better. The gap is 0.07 or 0.38 depending on whether proportion or substance was scored first: the first pass rated the long control replies on substance (0.8 to 0.9), the judge on proportion (0.30 to 0.50). The revisions applied the rubric's proportion rule.
+- **Calibration.** Over all three criteria, the mean difference from judge A was 0.203 on 17 blind first-pass items (at the 0.2 line; one typing slip excluded). Length-fit anchors were then added to the human rubric and tested on 8 new replies written afterwards: 0.131, within the pre-registered 0.15 (the largest single item hit the 0.4 limit exactly).
+- **Depth cases unchanged.** On a new plan-review question both arms ran about 550 words against a reference of 120 to 250, so the v3 edit shortened Quick answers but not that kind of reply.
+- Supersedes "no human calibration" in the limits above. Remaining limits: one rater, same model family for runners and judges, small n; three run-1 scores still to redo and a cross-family (Gemini) judge still to run.

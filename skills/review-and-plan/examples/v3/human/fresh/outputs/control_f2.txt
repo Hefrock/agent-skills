@@ -1,0 +1,11 @@
+Yes, add it. The log shows the same failure twice: CI failed on formatting on 2026-09-30 and again on 2026-10-18, and you fixed it by hand both times. A repeated manual fix is worth automating.
+
+The cost is low. The Makefile already has a formatter command, so the hook only needs to call it. A local hook is also easy to remove, so if it turns out to be annoying you can delete it.
+
+Two caveats:
+- Two incidents is a small sample. It's enough to justify a cheap fix like this, but I wouldn't build anything more elaborate on it.
+- A local hook only helps on machines where it's installed. It won't stop a formatting failure from a fresh clone, or from a commit made with `--no-verify`. CI remains the real check.
+
+I'd keep the hook simple: run the Makefile formatter target, and either let it auto-fix or fail the commit. Auto-fixing is less annoying, but it can leave changes unstaged, so check how your formatter behaves before choosing.
+
+If formatting failures show up in CI again after the hook is in, the cause is something the hook doesn't cover, such as another machine or a bypassed hook. At that point it would be worth looking at a CI-side auto-format step.

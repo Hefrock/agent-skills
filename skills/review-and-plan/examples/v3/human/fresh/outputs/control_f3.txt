@@ -1,0 +1,10 @@
+Use SQLite.
+
+Your situation is the case SQLite is built for: one user, about 2,000 rows, a laptop only, and no other service touching the data.
+
+- **Scale:** 2,000 rows is tiny. SQLite handles millions of rows without trouble, so you won't outgrow it.
+- **No server:** Postgres means running and maintaining a server process, and handling users, ports, upgrades and backups. For a single-user local app that's overhead with no benefit.
+- **Portability and backup:** The whole database is one file. You can copy it, sync it or version it, and back it up by copying it.
+- **Concurrency:** Postgres's main advantages are many simultaneous writers, network access and heavier features. None of those apply, because no other service reads or writes the data.
+
+You'd have a reason to switch to Postgres if the tracker later becomes a multi-user or hosted app, or if other services need to read and write the data. If that happens, migrating 2,000 rows is easy, so you aren't locking yourself in by starting with SQLite.

@@ -68,6 +68,9 @@ jobs:
       - name: agent-eval — unit-test the calibration tool (stdlib unittest)
         run: python skills/agent-eval/scripts/test_calibrate_judge.py
 
+      - name: agent-eval — unit-test the blind human-scoring tool (stdlib unittest)
+        run: python skills/agent-eval/scripts/test_human_score.py
+
       - name: agent-eval — verify the calibration example still trips the action-needed gate
         # Self-check, same rationale as the regression-example check above:
         # this worked example is designed to exceed the calibration

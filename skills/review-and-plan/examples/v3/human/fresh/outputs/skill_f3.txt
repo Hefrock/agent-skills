@@ -1,0 +1,3 @@
+Use SQLite. It is a single user, about 2,000 rows, a laptop only, and nothing else touches the data. That is well inside what SQLite handles, and it avoids running a database server for no benefit. SQLite is a single file you can back up by copying it.
+
+What I don't know is whether you plan to add a second writer or put it on a server later. If that happens, switching to Postgres is the trigger to revisit this, and 2,000 rows is small enough that migrating then would be cheap. I answered this directly without an independent review, so treat it as a solo judgment.

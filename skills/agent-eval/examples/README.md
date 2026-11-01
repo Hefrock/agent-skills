@@ -166,6 +166,49 @@ calibration cadence too, same as `score_eval.py`'s `--fail-under`. Add
 `--update-log references/llm-judge-prompt.md` to append this run to the
 calibration log automatically instead of editing the table by hand.
 
+## Blind human scoring — a real calibration run
+
+The calibration example above is fictional. This one is real: 18 replies from the `review-and-plan` v3 eval, scored blind by one person with `scripts/human_score.py` (so the person never sees the judge's score, the category or the real id), then compared with judge A. The data is in [`../../review-and-plan/examples/v3/human/`](../../review-and-plan/examples/v3/human/README.md). From the repo root:
+
+```bash
+H=skills/review-and-plan/examples/v3/human
+python skills/agent-eval/scripts/human_score.py prepare $H/run1/cases.jsonl $H/run1/judge_A.jsonl --workdir hs --show-fields score_on,user,material,expected,output
+```
+
+```
+Prepared 18 items in hs (showing fields: score_on, user, material, expected, output).
+First 15 are the judge's near-threshold cases. Do NOT open key.json until you finish scoring.
+```
+
+`score --workdir hs --rubric $H/rubric.txt --show-fields score_on,user,material,expected,output` is then an interactive, resumable loop, and `export --workdir hs --out human_scores.jsonl --which first` writes the file `calibrate_judge.py` reads. `--show-fields` refuses `id`, `category`, `score` and `blind_id`, because showing any of them would unblind the scorer:
+
+```
+Refusing: --show-fields ['id'] would show the scorer a real id, category or score (or overwrite the blind id). Put what you want shown in a differently named case field.
+```
+
+To re-check the logged result without scoring anything yourself, use the saved first-pass scores. `human_first_excl.jsonl` leaves out one score that was a typing slip (a 0.0 meant as about 0.9); the 0.0/1.0 read-back in `score` now catches that kind of slip as it happens.
+
+```bash
+python skills/agent-eval/scripts/calibrate_judge.py $H/run1/judge_A.jsonl $H/run1/human_first_excl.jsonl
+```
+
+```
+Calibration: 17 case(s) checked, mean delta 0.203 (threshold 0.2)
+
+Per-case (worst agreement first):
+  control:q8: judge=0.30 human=0.80 delta=0.50
+  control:r3: judge=0.30 human=0.80 delta=0.50
+  control:q3: judge=0.35 human=0.80 delta=0.45
+  control:q4: judge=0.50 human=0.90 delta=0.40
+  control:q1: judge=0.50 human=0.80 delta=0.30
+  control:q6: judge=0.90 human=0.60 delta=0.30
+  (11 more lines, all with delta 0.25 or less, omitted here)
+
+⚠ ACTION NEEDED: mean delta 0.203 exceeds 0.2 — revise the judge prompt
+```
+
+Exit code 1, right at the line. The gap was not spread evenly: the four largest are all the no-skill control's length scores, where the person scored the long replies on substance (0.8 to 0.9) and the judge on proportion (0.30 to 0.50). That points at the rubric, not the judge prompt, so the action taken was to add anchors to the human length-fit rubric (`rubric.txt` there) and test them on eight new replies written afterwards (mean delta 0.131, within a limit fixed in advance). The logged rows are in `references/llm-judge-prompt.md`. Limits: one rater, and the replies and both judges come from the same model family.
+
 ## Magnitude-drop example — a regression that never crosses the pass/fail line
 
 `--fail-on-regression` alone only catches a case *crossing* the pass/fail

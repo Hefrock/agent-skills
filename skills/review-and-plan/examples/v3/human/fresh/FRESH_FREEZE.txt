@@ -1,0 +1,2 @@
+419db61352e30926b56933222a887ae8cfecb17144a2aaf5e7fe13141cf5437f  fresh_cases.json
+frozen 2026-10-26, before any reply exists

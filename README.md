@@ -1,4 +1,17 @@
-# Agent Skills
+```          
+                                    888                  888      d8b 888 888          
+                                    888                  888      Y8P 888 888          
+                                    888                  888          888 888          
+ 8888b.   .d88b.   .d88b.  88888b.  888888      .d8888b  888  888 888 888 888 .d8888b  
+    "88b d88P"88b d8P  Y8b 888 "88b 888         88K      888 .88P 888 888 888 88K      
+.d888888 888  888 88888888 888  888 888  888888 "Y8888b. 888888K  888 888 888 "Y8888b. 
+888  888 Y88b 888 Y8b.     888  888 Y88b.            X88 888 "88b 888 888 888      X88 
+"Y888888  "Y88888  "Y8888  888  888  "Y888       88888P' 888  888 888 888 888  88888P' 
+              888                                                                      
+         Y8b d88P                                                                      
+          "Y88P"                                                                       
+```                                                                                                                                                                                       
+
 
 [![CI](https://github.com/Hefrock/agent-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Hefrock/agent-skills/actions/workflows/ci.yml)
 
@@ -17,7 +30,7 @@ Each skill is just a folder: a `SKILL.md` file with instructions, plus scripts/r
 
 | Skill | What it does |
 |---|---|
-| [`agent-eval`](./skills/agent-eval) | Turns "does this agent actually work?" into a repeatable score: rubrics, LLM-as-judge grading, and regression sets that catch when a prompt change made things worse. |
+| [`agent-eval`](./skills/agent-eval) | Turns "does this agent actually work?" into a repeatable score: rubrics, LLM-as-judge grading, and regression sets that catch when a prompt change made things worse, plus blind human scoring to check the judge itself. |
 | [`agent-redteam`](./skills/agent-redteam) | Generates adversarial test cases to check that an agent fails safely — refuses, hedges, or degrades gracefully — instead of confidently getting it wrong. Pairs with `agent-eval` for scoring. |
 | [`repo-pincer`](./skills/repo-pincer) | Reverse-engineers a codebase: reads what the docs claim, reads what the code actually does, and reports exactly where they disagree. |
 | [`issue-reconciler`](./skills/issue-reconciler) | Finds GitHub issues that are actually already resolved but never got closed — a merged PR that said "Closes #N" but didn't take effect, or a skill that quietly got built with nobody linking the PR. Proposes closures with evidence; never closes anything on its own. |
