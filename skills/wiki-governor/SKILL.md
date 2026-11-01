@@ -71,6 +71,8 @@ Compute six sub-metrics, then roll them into one transparent score. Five come fr
 
 `health = Σ (submetric × weight)`, reported as a 0–100 score **and** its components — never the headline alone. Show the delta versus the previous run. Weights are transparent and adjustable; the point is the trend, not the absolute number.
 
+**Report movement, not just the total.** Components near their ceiling (typically provenance, connectedness) carry most of the headline and rarely change, so a ±0.5 headline delta says almost nothing. Against the previous run, list **regressed** components first (worst first), then **improved**, then name the rest as **steady**. A component moves when it changes by at least 0.5 percentage points. A component that was excluded in either run (e.g. warehouse not in use) is "unavailable", never a move. `scripts/health_score.py --previous <earlier --json output>` produces this split deterministically.
+
 **Resolution's formula was changed 2026-09-28.** It used to be `1 − (open questions ÷ total concept pages), floored at 0` — but that ratio only stays under 1 (letting the score move above 0%) if pages average *fewer than one* open question each. A full resync of a real vault (60 pages, 129 open questions, ~2.15/page) found it permanently floored at 0% regardless of actual progress — not a data problem, a formula problem, since more mature pages naturally accumulate more open threads, not fewer. The "% of pages with zero open questions" version can't go negative and moves in both directions as pages get resolved or new draft pages are added. Its own failure mode: rewards pages with *no* recorded open questions at all, which describes both "genuinely settled" and "confidence: low, needs work but nobody's asked the questions yet" — don't read a high score here as proof of depth without checking which case applies.
 
 **Warehouse integrity is conditional, not always-on.** "Warehouse-linked docs" are vault notes carrying a `doc_id` (from `wiki-warehouse`). If none exist, the warehouse isn't in use for this vault — drop the sub-metric entirely and renormalize the remaining five weights to sum to 1.0. Do not score it 0 (unfairly tanks the score for an unused feature) or 1 (falsely implies a clean bill of health). Corrupt/missing/dangling each count as a full penalty — the original or its pointer is actually broken. Drifted counts at half weight, since a drifted path is stale-but-fixable, not a break (see `wiki-warehouse`'s `references/warehouse-schema.md` for the corrupt/missing/dangling/drifted definitions).
@@ -90,7 +92,7 @@ If today's run log (`Journal/Runs/YYYY-MM-DD.md`) doesn't exist yet, create it f
 
 - Maintained: [librarian fixes applied], [synthesizer pages compiled], [warehouse-audit result, or "warehouse: not in use"]
 - Compliance: [N laws passing / M total]; provenance gaps: [[page]], [[page]]
-- Health: [score]/100 ([+/-Δ] vs last run) — connectedness X, maturity Y, freshness Z, provenance P, resolution R, warehouse W (or "warehouse: n/a")
+- Health: [score]/100 ([+/-Δ] vs last run) — regressed: [component a→b, …] (or "none"); improved: [component a→b, …]; steady: [components]; all six values: connectedness X, maturity Y, freshness Z, provenance P, resolution R, warehouse W (or "warehouse: n/a")
 - Top knowledge gaps: [gap], [gap], [gap]
 ```
 
