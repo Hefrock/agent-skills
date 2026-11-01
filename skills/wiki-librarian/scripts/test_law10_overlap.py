@@ -52,7 +52,7 @@ class OverlapTests(unittest.TestCase):
         m = measure(body, SOURCE)
         self.assertEqual(m["copied_outside_quotes_pct"], 0.0)
         self.assertGreater(m["quote_chars"], 0)
-        self.assertGreaterEqual(m["longest_run_words"], 30)  # runs still count quotes
+        self.assertEqual(m["longest_run_words"], 0)  # quoted passages do not count toward run limits
 
     def test_inline_quote_span_is_excluded_from_copied_pct(self):
         span = " ".join(f"src{i}" for i in range(12))
@@ -60,11 +60,27 @@ class OverlapTests(unittest.TestCase):
         self.assertNotIn("src3", outside)
         self.assertGreater(quote_chars, 20)
 
-    def test_long_verbatim_run_fails_even_inside_quotes(self):
-        body = prose("mine", 400) + "\n> " + " ".join(f"src{i}" for i in range(130))
+    def test_long_unquoted_verbatim_run_fails(self):
+        body = prose("mine", 400) + "\n" + " ".join(f"src{i}" for i in range(130))
         result = check_note(body, SOURCE)
         self.assertEqual(result["status"], "fail")
         self.assertTrue(any("verbatim run" in r for r in result["reasons"]))
+
+    def test_single_long_excerpt_in_quotes_is_not_a_run_violation(self):
+        # Regression: a real note (2.8% copied) warned only because one
+        # deliberate ~89-word excerpt counted as a verbatim run.
+        body = prose("mine", 400) + "\n> " + " ".join(f"src{i}" for i in range(130))
+        result = check_note(body, SOURCE)
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["longest_run_words"], 0)
+
+    def test_quote_stuffed_dump_is_still_caught_by_the_quote_budget(self):
+        # The guard that replaces the in-quote run limit: a pasted passage
+        # laid out as a blockquote exceeds the 1500-char quote budget.
+        body = prose("mine", 100) + "\n> " + " ".join(f"src{i}" for i in range(400))
+        result = check_note(body, SOURCE)
+        self.assertEqual(result["status"], "warn")
+        self.assertTrue(any("in quotations" in r for r in result["reasons"]))
 
     def test_no_source_text_is_unchecked_never_pass(self):
         result = check_note("short note", None)
