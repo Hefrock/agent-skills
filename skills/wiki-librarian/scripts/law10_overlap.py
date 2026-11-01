@@ -134,7 +134,9 @@ def classify(m: dict) -> dict:
 
 def check_note(body: str, source_text):
     """Full result for one note. source_text None means no text to compare."""
-    if source_text is None:
+    # Blank counts as missing: the warehouse writes a 0-byte .txt for types it
+    # cannot extract (e.g. EPUB), and measuring against '' would pass a dump.
+    if source_text is None or not source_text.strip():
         warn = len(body) > FALLBACK_WARN_CHARS
         return {
             "status": "unchecked",
