@@ -100,6 +100,16 @@ class FindStaleClosingReferences(unittest.TestCase):
         self.assertEqual(findings[0]["pr_merged_at"], "2026-07-10")
 
 
+class TruncationWarnings(unittest.TestCase):
+    def test_exactly_default_limit_warns(self):
+        rows = [{"number": i} for i in range(30)]
+        self.assertEqual(len(fcr.truncation_warnings([], rows)), 1)
+        self.assertEqual(len(fcr.truncation_warnings(rows, rows)), 2)
+
+    def test_other_sizes_do_not_warn(self):
+        self.assertEqual(fcr.truncation_warnings([{"number": 1}] * 29, [{"number": 1}] * 189), [])
+
+
 class Cli(unittest.TestCase):
     def setUp(self):
         self._paths = []
@@ -114,6 +124,13 @@ class Cli(unittest.TestCase):
             json.dump(data, f)
         self._paths.append(path)
         return path
+
+    def test_cli_warns_on_default_sized_input(self):
+        issues_path = self.make_json_file([])
+        prs_path = self.make_json_file([{"number": i, "title": "t", "body": ""} for i in range(30)])
+        proc = run_script("--issues", issues_path, "--prs", prs_path)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("likely truncated", proc.stderr)
 
     def test_report_output(self):
         issues_path = self.make_json_file([{"number": 6, "title": "Build wiki-teacher skill"}])

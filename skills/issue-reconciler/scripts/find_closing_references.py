@@ -20,8 +20,8 @@ reading scan_diff.py's --log-dir output rather than re-scanning). Reusing this
 script across hosts means it never needs its own auth/rate-limit handling.
 
 Usage:
-    gh issue list --state open --json number,title,body,createdAt,labels > issues.json
-    gh pr list --state merged --json number,title,body,mergedAt > merged_prs.json
+    gh issue list --state open --limit 500 --json number,title,body,createdAt,labels > issues.json
+    gh pr list --state merged --limit 500 --json number,title,body,mergedAt > merged_prs.json
     python find_closing_references.py --issues issues.json --prs merged_prs.json
     python find_closing_references.py --issues issues.json --prs merged_prs.json --json
 
@@ -77,6 +77,19 @@ def find_stale_closing_references(issues: list[dict], merged_prs: list[dict]) ->
     return findings
 
 
+GH_DEFAULT_LIMIT = 30  # gh issue/pr list return this many rows unless --limit is given
+
+
+def truncation_warnings(issues: list, merged_prs: list) -> list[str]:
+    """Warn when an input has exactly gh's default row count: almost certainly
+    a list fetched without --limit, so older PRs/issues were never scanned."""
+    out = []
+    for name, rows in (("issues", issues), ("merged PRs", merged_prs)):
+        if len(rows) == GH_DEFAULT_LIMIT:
+            out.append(f"{name} input has exactly {GH_DEFAULT_LIMIT} rows - likely truncated by gh's default limit; re-fetch with --limit 500.")
+    return out
+
+
 def print_report(findings: list[dict], json_out: bool) -> None:
     if json_out:
         print(json.dumps(findings, indent=2))
@@ -113,6 +126,8 @@ def main() -> int:
         print(f"issue-reconciler: could not read input: {e}", file=sys.stderr)
         return 2
 
+    for warning in truncation_warnings(issues, merged_prs):
+        print(f"issue-reconciler: warning: {warning}", file=sys.stderr)
     findings = find_stale_closing_references(issues, merged_prs)
     print_report(findings, args.json)
     return 0
