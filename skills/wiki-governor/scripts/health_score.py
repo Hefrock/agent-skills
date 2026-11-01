@@ -148,9 +148,8 @@ def provenance(notes):
 
 def _count_open_question_entries(body):
     """Count individual bullet entries under '## Open questions', not just
-    whether the section exists — the SKILL.md formula (1 - ratio, floored
-    at 0 but explicitly NOT capped at 1) only makes sense if this can
-    exceed 1 per page, i.e. it's counting entries, not presence."""
+    whether the section exists. A page whose section is present but empty
+    counts as zero open questions, same as a page with no section."""
     m = OPEN_QUESTIONS_SECTION_RE.search(body)
     if not m:
         return 0
@@ -158,13 +157,19 @@ def _count_open_question_entries(body):
 
 
 def resolution(notes):
-    """1 - (total open-question entries / total concept pages), floored at 0."""
+    """% of Knowledge/ concept pages with zero open questions.
+
+    Replaces the pre-2026-09-28 formula (1 - entries/pages, floored at 0),
+    which SKILL.md retired because it sat at 0% on any vault averaging one
+    or more open question per page. This version stays in [0, 1] and moves
+    both ways. Its failure mode (SKILL.md Phase 3): it cannot tell "settled"
+    from "nobody has asked yet", so read it next to maturity.
+    """
     knowledge_notes = _scoped(notes, ("Knowledge/",))
     if not knowledge_notes:
         return None
-    total_entries = sum(_count_open_question_entries(notes[p]["body"]) for p in knowledge_notes)
-    ratio = total_entries / len(knowledge_notes)
-    return max(0.0, 1.0 - ratio)
+    settled = sum(1 for p in knowledge_notes if _count_open_question_entries(notes[p]["body"]) == 0)
+    return settled / len(knowledge_notes)
 
 
 def warehouse_integrity(warehouse_stats):
@@ -213,6 +218,39 @@ def compute_health_score(vault_root, now=None, warehouse_stats=None, weights=Non
     return {"score": round(score, 1), "components": components, "weights_used": weights_used}
 
 
+MOVE_EPSILON = 0.005  # half a percentage point: below this a component counts as steady
+
+
+def compare_runs(current, previous):
+    """Split components into regressed / improved / steady / new versus the previous run.
+
+    Why: most of the headline is carried by components that rarely move, so
+    the headline delta says little. SKILL.md Phase 3 asks the report to lead
+    with regressions and name what moved. `previous` is an earlier
+    compute_health_score() result (or its --json output). A component that is
+    None in either run (excluded, e.g. warehouse not in use) is reported
+    under "unavailable", never as a move.
+    """
+    out = {"regressed": [], "improved": [], "steady": [], "unavailable": []}
+    for name, now_v in current["components"].items():
+        before = previous["components"].get(name)
+        if now_v is None or before is None:
+            out["unavailable"].append(name)
+            continue
+        delta = now_v - before
+        if delta <= -MOVE_EPSILON:
+            out["regressed"].append((name, before, now_v))
+        elif delta >= MOVE_EPSILON:
+            out["improved"].append((name, before, now_v))
+        else:
+            out["steady"].append(name)
+    out["regressed"].sort(key=lambda t: t[2] - t[1])
+    out["improved"].sort(key=lambda t: t[1] - t[2])
+    prev_score, score = previous.get("score"), current.get("score")
+    out["score_delta"] = None if prev_score is None or score is None else round(score - prev_score, 1)
+    return out
+
+
 def main():
     import argparse
     import json
@@ -220,17 +258,32 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("vault", help="Path to the vault root")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--previous", help="JSON from an earlier `--json` run; adds regressions-first movement")
     args = parser.parse_args()
 
     result = compute_health_score(args.vault)
+    movement = None
+    if args.previous:
+        with open(args.previous) as f:
+            movement = compare_runs(result, json.load(f))
     if args.json:
-        print(json.dumps(result, indent=2))
+        print(json.dumps({**result, **({"movement": movement} if movement else {})}, indent=2))
         return
 
     if result["score"] is None:
         print("No scoreable content found in vault.")
         return
-    print(f"Health: {result['score']}/100\n")
+    print(f"Health: {result['score']}/100" + (f" ({movement['score_delta']:+} vs previous)" if movement and movement["score_delta"] is not None else "") + "\n")
+    if movement:
+        for label in ("regressed", "improved"):
+            for name, before, now_v in movement[label]:
+                print(f"  {label.upper()}: {name} {before:.2f} -> {now_v:.2f}")
+        if not movement["regressed"] and not movement["improved"]:
+            print("  No component moved.")
+        print(f"  steady: {', '.join(movement['steady']) or '-'}")
+        if movement["unavailable"]:
+            print(f"  unavailable: {', '.join(movement['unavailable'])}")
+        print()
     for k, v in result["components"].items():
         if v is None:
             print(f"  {k}: n/a (excluded, weight redistributed)")
