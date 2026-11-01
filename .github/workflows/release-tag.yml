@@ -1,0 +1,119 @@
+name: Release tag
+
+# Tags main with the marketplace version once CI is green for that exact commit.
+# Currently manual (workflow_dispatch, dry run by default); see the `on:` block.
+# Replaces the manual "git tag vX.Y.Z && git push" step in CONTRIBUTING.md.
+#
+# Why workflow_run and not a job in ci.yml: this fires only after the whole CI
+# workflow has finished, and the `conclusion == 'success'` guard means a red
+# main never gets a tag.
+
+on:
+  # Stage 1: manual only, dry run by default, to read a real log before any
+  # automatic trigger exists. Stage 2 (follow-up PR) enables this block:
+  #
+  # workflow_run:
+  #   workflows: ["CI"]
+  #   types: [completed]
+  #   branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to evaluate (default: tip of main)"
+        required: false
+      dry_run:
+        description: "Report what would be tagged without pushing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+# One tagger at a time so two quick merges cannot race on the same tag list.
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag version if CI is green
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    steps:
+      - name: Resolve commit
+        id: sha
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_SHA: ${{ inputs.sha }}
+          INPUT_DRY: ${{ inputs.dry_run }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          REF_SHA: ${{ github.sha }}
+        run: |
+          # Values arrive via env, never interpolated into the script text.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            sha="${INPUT_SHA:-$REF_SHA}"
+            printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::sha must be a full 40-char commit id"; exit 1; }
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "dry=$INPUT_DRY" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
+            echo "dry=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Decide and tag
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          DRY: ${{ steps.sha.outputs.dry }}
+        run: |
+          set -euo pipefail
+
+          version=$(python3 -c 'import json; print(json.load(open(".claude-plugin/marketplace.json"))["metadata"]["version"])')
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::marketplace.json version '$version' is not X.Y.Z; refusing to tag"
+            exit 1
+          fi
+          tag="v$version"
+
+          # Only ever tag a commit that is on main's history.
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::notice::$SHA is not on main; nothing to tag"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            existing=$(git rev-list -n1 "$tag")
+            if [ "$existing" = "$SHA" ]; then
+              echo "::notice::$tag already points at $SHA; nothing to do"
+            else
+              echo "::notice::$tag already exists at ${existing:0:7}; $SHA did not bump the version, so no new release"
+            fi
+            exit 0
+          fi
+
+          # Versions must only go up: refuse a tag lower than the highest existing one.
+          highest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)
+          if [ -n "$highest" ] && [ "$(printf '%s\n%s\n' "$highest" "$tag" | sort -V | tail -n1)" != "$tag" ]; then
+            echo "::error::$tag is lower than existing $highest; version went backwards (merge collision?). Not tagging."
+            exit 1
+          fi
+
+          if [ "$DRY" = "true" ]; then
+            echo "::notice::DRY RUN: would create and push $tag at $SHA"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$tag" "$SHA"
+          git push origin "refs/tags/$tag"
+          echo "::notice::Tagged $tag at $SHA"
