@@ -35,10 +35,20 @@ update` included. This repo shipped a real governance-scope fix (Laws 6/7/8)
 that sat live on `main` for two days without reaching an installed vault,
 purely because this step was skipped — see `knowledge-os/sitrep.md`.
 
-After bumping `metadata.version`, tag the commit that ships it:
-`git tag vX.Y.Z && git push origin vX.Y.Z`. Without a tag, nothing durably
+You do not need to tag by hand. The `Release tag` workflow
+(`.github/workflows/release-tag.yml`) tags the merge commit `vX.Y.Z` once CI has
+succeeded on `main` for that exact commit. It does nothing when the version was
+not bumped, skips a commit that is not on `main`, and fails loudly if the
+version is not `X.Y.Z` or is lower than an existing tag (usually two PRs that
+bumped to the same number — rebase and pick the next one). To preview or to tag
+a specific commit, run it from the Actions tab (`dry_run` is on by default; pass a
+full 40-character `sha` to target a commit). Without a tag, nothing durably
 records which commit shipped which marketplace version — `v0.20.0` itself
 was retroactively tagged for this reason once the gap was noticed.
+
+Two limits to know: GitHub keeps only one queued run per concurrency group, so
+a burst of merges can skip tagging a middle version (dispatch it by hand if so),
+and the job's own tag pushes do not trigger other workflows.
 
 ## Keep it portable
 

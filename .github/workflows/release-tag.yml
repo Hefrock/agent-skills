@@ -1,21 +1,19 @@
 name: Release tag
 
 # Tags main with the marketplace version once CI is green for that exact commit.
-# Currently manual (workflow_dispatch, dry run by default); see the `on:` block.
-# Replaces the manual "git tag vX.Y.Z && git push" step in CONTRIBUTING.md.
+# Runs automatically after CI succeeds on main, and can be dispatched by hand
+# (dry run by default) to preview or to tag a specific commit.
+# Replaces the manual "git tag vX.Y.Z && git push" step that CONTRIBUTING.md used to describe.
 #
 # Why workflow_run and not a job in ci.yml: this fires only after the whole CI
 # workflow has finished, and the `conclusion == 'success'` guard means a red
 # main never gets a tag.
 
 on:
-  # Stage 1: manual only, dry run by default, to read a real log before any
-  # automatic trigger exists. Stage 2 (follow-up PR) enables this block:
-  #
-  # workflow_run:
-  #   workflows: ["CI"]
-  #   types: [completed]
-  #   branches: [main]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       sha:
