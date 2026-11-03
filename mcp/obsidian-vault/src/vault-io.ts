@@ -80,7 +80,11 @@ export async function vaultPathForWrite(notePath: string): Promise<string> {
 export async function readNote(notePath: string): Promise<{ frontmatter: Record<string, unknown>; body: string; raw: string }> {
   const full = vaultPath(notePath);
   const raw = await fs.readFile(full, "utf-8");
-  const { data, content } = matter(raw);
+  // #206 — pass an options object: gray-matter 4.0.3 caches parses by input
+  // string only when called with no options, and a cached entry is returned
+  // even for input whose first parse threw, so a malformed note read twice
+  // came back the second time with empty frontmatter instead of an error.
+  const { data, content } = matter(raw, {});
   return { frontmatter: data, body: content, raw };
 }
 
