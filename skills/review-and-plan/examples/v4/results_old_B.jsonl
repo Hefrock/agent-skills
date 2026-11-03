@@ -1,0 +1,16 @@
+{"id": "a1", "score": 0.92, "category": "already-exists", "rationale": "Short answer that names the existing eval and its baseline, recommends the before/after run, and applies the needed-twice rule without excess."}
+{"id": "a2", "score": 0.9, "category": "already-exists", "rationale": "Says mastery and attempt recording already exist, identifies the rolling-window trim as the difference, and applies needed-twice to defer a full log."}
+{"id": "a3", "score": 0.9, "category": "already-exists", "rationale": "Cautious trial recommendation grounded in the empty skip patterns, redaction off, and empty excluded projects, with a proportionate step list."}
+{"id": "f1", "score": 0.85, "category": "length-fit", "rationale": "Correct not-yet verdict in one compact paragraph."}
+{"id": "f2", "score": 0.75, "category": "length-fit", "rationale": "Says yes, keeps it small, and flags what was not verified, slightly over length."}
+{"id": "f3", "score": 0.7, "category": "length-fit", "rationale": "Picks SQLite with the deciding reason and a change condition, at about 120 words, a little over the target."}
+{"id": "f4", "score": 0.4, "category": "length-fit", "rationale": "Covers the FK, the unchecked reads, the untested backup, and the rename-first step, but at about 480 words with a numbered checklist it exceeds the target."}
+{"id": "q1", "score": 0.8, "category": "grounding", "rationale": "Quick mode expected, but this is a roughly 800-word premortem with six detailed risks, although its risks are mostly tied to the doc and it states the review was solo."}
+{"id": "q2", "score": 1.0, "category": "mode-selection", "rationale": "Concise not-yet answer: log it, with existing routes mentioned and a trigger for building."}
+{"id": "q3", "score": 1.0, "category": "length-fit", "rationale": "Concise not-yet answer: log it and revisit, with no extra structure."}
+{"id": "q4", "score": 0.9, "category": "length-fit", "rationale": "Says yes, keeps it small, and names the twice bar, in a compact reply."}
+{"id": "q5", "score": 0.8, "category": "grounding", "rationale": "Plan and general risks are labeled and the solo review is stated, but the 'about 18 hours' of lost orders is an invented figure."}
+{"id": "q6", "score": 0.9, "category": "mode-selection", "rationale": "Gives a clear pick, reasons from the given facts, and lists what it does not know, at a moderate length."}
+{"id": "q7", "score": 0.85, "category": "grounding", "rationale": "Hits the race, slower CI, and src versus wheel risks and does not claim the fix works, but adds extra stop-signal and merge-criteria material and runs long."}
+{"id": "q8", "score": 0.85, "category": "length-fit", "rationale": "Mostly says not yet and is short, but the final line about skipping the wait undercuts the needed-twice rule."}
+{"id": "r3", "score": 0.8, "category": "length-fit", "rationale": "Concise not-yet verdict that names the trigger for building."}
