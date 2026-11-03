@@ -3,7 +3,7 @@
 Three arms in ONE blind batch, so batch-to-batch judge drift cannot masquerade as a skill effect
 (v3 found identical control replies moving 0.59 -> 0.36 across batches):
     old      = SKILL.md at OLD_COMMIT (the skill before this edit)
-    new      = SKILL.md in the working tree (the edit)
+    new      = SKILL.md at NEW_COMMIT (the edit; reverted afterwards because rule 1 fired, see v4/RESULT.md)
     control  = no skill
 Cases: the 9 v2 cases (q1-q8, r3), the 4 frozen fresh cases (f1-f4, read only), and 3 new
 "already exists" cases (a1-a3, frozen in v4/A_FREEZE.txt before any reply existed).
@@ -29,6 +29,7 @@ V4 = os.path.join(ROOT, "v4")
 JUDGE = os.path.join(V4, "judge")
 FRESH = os.path.join(ROOT, "v3", "human", "fresh", "fresh_cases.json")
 OLD_COMMIT = "5e222c6"
+NEW_COMMIT = "6613327"  # the pre-registration commit, which carried the edited SKILL.md
 ARMS = ("old", "new", "control")
 SEED = 20261103
 SHORT = ["q3", "q4", "q8", "r3", "f1", "f2", "f3"]  # length-fit cases where a short answer is right
@@ -179,9 +180,8 @@ def all_cases():
 
 
 def skill_text(arm):
-    if arm == "old":
-        return subprocess.check_output(["git", "show", "%s:skills/review-and-plan/SKILL.md" % OLD_COMMIT], text=True)
-    return open(v2.SKILL).read()
+    commit = OLD_COMMIT if arm == "old" else NEW_COMMIT
+    return subprocess.check_output(["git", "show", "%s:skills/review-and-plan/SKILL.md" % commit], text=True)
 
 
 def prompt(arm, c):
