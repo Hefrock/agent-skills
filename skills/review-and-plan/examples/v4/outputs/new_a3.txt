@@ -1,0 +1,17 @@
+Short answer: not on your private repos yet. Try it on one low-stakes repo first, and only if the main gap below is closed.
+
+Why, from the excerpts:
+
+- Secret redaction is off by default. `CLAUDE_MEM_REDACT_ENABLED` and `CLAUDE_MEM_REDACT_GENERIC_ENABLED` are both 'false', and the generic one is what would catch `password=`, `*_TOKEN=`, `*_API_KEY=` and bearer headers. `CLAUDE_MEM_SKIP_BASH_PATTERNS` is empty, and its own comment says "Empty = capture every command." The README says it captures tool usage observations automatically. So out of the box, shell commands and tool output from your private repos, secrets included, would be written to its memory store.
+- Observations are summarized by a provider (`CLAUDE_MEM_PROVIDER: 'claude'`), so that content is also sent to a model. I can't tell from the excerpts where the memory store lives or whether anything leaves your machine beyond that call.
+- `CLAUDE_MEM_EXCLUDED_PROJECTS` is empty by default. That setting is the control that would keep your most sensitive repos out.
+
+If you try it, set these before the first session:
+1. Turn on both redaction flags.
+2. Add your sensitive repo paths to `CLAUDE_MEM_EXCLUDED_PROJECTS`.
+3. Add skip patterns for commands that print credentials.
+4. Start with one non-critical repo.
+
+Two caveats on the evidence. This is a solo read, with no independent review. I read only the README line, the install snippet, the directory listing and a slice of the defaults file. I did not read the capture code, the storage code or the redaction implementation, so I can't say how good the redaction is or where the data is kept. The regex-based redaction is also best-effort, so treat it as risk reduction rather than a guarantee.
+
+I don't know how much cross-session memory would help your workflow. If you often re-explain context at the start of a session, that's the need it serves. If you don't, skip it. If you do try it, a reasonable check is to look in the store after a week for anything that looks like a credential. If you find one, uninstall it. Put a date on that check, such as 2026-11-10.

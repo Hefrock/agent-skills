@@ -1,0 +1,9 @@
+Mostly no, because ste-prep already has this. `web/js/mastery.js` has `recordAttempt`, per-standard levels, an `isMastered` rule (4 of the last 5 correct, at least 2 of those at level 2 or higher) and step-up and step-down constants. All of it is stored in `LearnerState` under `ste.v1.state`. The `web/` layout line in the README lists "mastery rules, tests", and `web/test/mastery.test.mjs` covers them.
+
+The one real difference from your description of DeepTutor is that ste-prep does not log every attempt. It keeps only a rolling window of the last 5 per standard (`e.recent.splice(...)` trims the rest). A permanent full log would be new, but I wouldn't build it yet. The only related need on record is the TODO line about tuning difficulty definitions and mastery thresholds after a pilot with a real student, which is one mention and about tuning. If the pilot shows you want history older than 5 attempts, log that as the first sighting. Build it once it shows up a second time, for example when you also need it for review scheduling or for analysing misconceptions. At that point it would be a small change: an append-only array alongside `recent`, with a schema bump.
+
+Limits on this answer:
+- I know DeepTutor only from your one-line description, not from its code.
+- I saw only excerpts of `mastery.js`, with lines 9-19 and 38-138 elided, so I haven't confirmed that the level step logic works as the constants suggest.
+- I didn't read `review.js` or the tests.
+- This was a solo judgment with no independent review.

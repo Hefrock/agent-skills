@@ -1,0 +1,9 @@
+Yes, I'd add it. Your log shows the same failure twice: CI failed on formatting on 2026-09-30 and again on 2026-10-18, and both times you fixed it by hand. A pre-commit hook would catch that before the commit instead of in CI.
+
+The cost is small. The project already has a formatter command in the Makefile, so the hook can call that command and you don't need to set up any new tooling. If the hook gets in your way, a local hook is easy to remove.
+
+Two things to check when you set it up:
+- Make the hook run the same Makefile command CI uses. That way local and CI formatting can't disagree.
+- Remember that a local hook only protects the machine it's installed on. If other people commit to this project, or you commit from another machine, CI will still be your backstop.
+
+Two failures in about three weeks is a small sample, but a cheap, reversible fix doesn't need more evidence than that.

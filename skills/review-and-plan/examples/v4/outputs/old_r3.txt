@@ -1,0 +1,7 @@
+Not yet. Your log shows the need once (2026-10-02, a CSV converted to a markdown table by hand), and nothing else mentions CSVs or tables. Log it and wait for a second occurrence before building anything permanent.
+
+Two things I can't tell from the log: how long the manual conversion took, and whether a one-line prompt ("convert this CSV to a markdown table") already does the job without a skill. Both would make a skill harder to justify even after a second occurrence.
+
+Trigger to build: the same need shows up again in the log. If it does, keep the skill small, since this is a narrow task.
+
+This was a solo judgment from the one log entry, with no independent review.

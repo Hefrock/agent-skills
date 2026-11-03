@@ -1,0 +1,48 @@
+Coverage: I had only the design doc text, which is one paragraph. I read no workflow file, repo list, issue data or org settings. This review was solo, with no independent reviewer, so it is weaker than it should be. Risks below cite the doc or are labeled as general knowledge.
+
+**Premortem: the nightly stale-issue closer failed. Why?**
+
+Risks traced to the doc:
+
+1. **"Every issue with no activity for 60 days, across all repos in the org."** The doc defines no exclusions beyond one label. That sweeps in:
+   - Long-lived tracking issues, roadmap items and epics.
+   - Security reports and confirmed bugs that are waiting on a quiet maintainer.
+   - Issues in archived or low-traffic repos that nobody watches.
+
+   Silence does not mean the issue is resolved. The first run could close a large backlog at once.
+
+2. **"Skipped if labeled `stale-exempt`."** This is the only safety valve, and it does not exist yet in any repo I know of. The doc doesn't say the label will be created in every repo, or that anyone will be told it exists. Labels are per-repo, so a repo without it gives owners no way to opt out. The first they hear of it is the closure.
+
+3. **"Enable for all repos on day one."** This is the biggest risk. The first run is the largest run. It is also the least tested, and it acts on everything simultaneously. A mistake in the logic, such as a wrong date calculation or a bad label match, becomes an org-wide mistake in one night. The doc has no dry-run, pilot repo or staged rollout.
+
+4. **"Using `gh issue close`."** The doc does not mention:
+   - A closing comment explaining why the issue was closed or how to reopen it.
+   - A close reason such as "not planned".
+   - A warning period before closure.
+
+   Without these, the reporter gets a silent close.
+
+5. **"Posts a summary to #eng."** A summary after the fact is not a way to stop anything. On day one it could list hundreds of closures. People will tend to mute it or miss it. The doc does not say who owns reviewing it or what happens if it shows something wrong.
+
+6. **No reversal path.** The doc has no plan for bulk reopening, and no log of which issues were closed by the job, apart from the summary. If the first run is wrong, recovery is manual.
+
+Risks from general knowledge, not from the doc. These are common patterns, and I have not checked any of them against your setup:
+
+- "Activity" is ambiguous. Whether a comment, label change, linked PR or reaction resets the clock depends on how you implement it. Depending on the choice, active issues could be closed or dead ones kept.
+- An org-wide job needs a token with write access to every repo. A broad credential is a security exposure, and a failure of the token or rate limits could stop the job halfway through a run, leaving some repos processed and others not.
+- Closing issues can fire notifications and webhooks to automations that watch for closed issues. Those downstream effects can multiply.
+- Closing an issue does not make the problem go away. It tends to hide real work from view and may annoy outside contributors.
+
+**What I would change:**
+
+- Run a dry run first. It should list what would close, with no closing, and a person should read it.
+- Pilot on one or two repos and review the results before widening.
+- Add a warning comment and a grace period (for example, mark stale, then close after N more days without activity). Add a closing comment that says how to reopen.
+- Create `stale-exempt` in every repo up front and announce it. Consider also exempting security, roadmap and assigned issues, and allow repos to opt in or out.
+- Write down what activity means.
+
+**Options, for completeness:** do nothing and triage by hand, run it as a report only (list stale issues in #eng and let owners close them), use the existing `actions/stale` action rather than a custom script (I haven't opened it here, so check that it fits), or build your own as written. The report-only path is the cheapest and easiest to reverse, and it tells you whether the problem is large enough to justify automation.
+
+**Stop signals and reversal condition:** if the dry run lists closures that surprise the repo owners, stop and fix the rules instead of adjusting the list by hand. If after two weeks of the pilot more than a small number of closed issues get reopened (pick the threshold, for example 5%), pause the job. Check this on a set date, for example two weeks after the pilot starts.
+
+My recommendation: do not ship "all repos on day one." The idea may be fine, but this rollout has no way to catch a mistake before it affects everyone.

@@ -1,0 +1,3 @@
+Not yet. Your log shows one manual run (2026-10-09, found 2 broken links) and nothing else, so the need has been seen once. Note it, keep running the check by hand, and build the CI step once you've done it a second time and it's turned up something again.
+
+What I don't know: how often the "weekly" routine really happens (the log has only one entry, so it may be less regular than you describe), and how much work the CI step would be. If your link checker already runs from the command line, wiring it into CI is cheap and reversible, and in that case you could reasonably skip the wait and just do it.

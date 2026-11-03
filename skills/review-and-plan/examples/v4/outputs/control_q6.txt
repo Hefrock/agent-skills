@@ -1,0 +1,16 @@
+Use HTTP cache headers behind the CDN. It fits what you've described better than the other two options, and it is the only one that adds no new moving parts.
+
+Why:
+- The CDN is already there, so you only need to set Cache-Control on the catalog responses. Most of the ~2k reads/min would then never reach your three app instances.
+- Reads are modest and the catalog changes only a few times a day. That is the ideal case for a short TTL.
+- Redis would mean deploying and running a new service. At this read volume that cost isn't justified.
+- In-process LRU gives you three separate caches, one per instance. After a catalog change they would go stale at different times, so users behind the load balancer could see different data from one request to the next. It also does nothing to cut the traffic reaching the instances.
+
+Suggested setup:
+- Send `Cache-Control: public, max-age=60, stale-while-revalidate=300` (or `s-maxage` if you want the CDN TTL to differ from the browser's). Pick the TTL based on how stale the catalog is allowed to be.
+- Add an ETag or Last-Modified header so revalidation is cheap.
+- Have the admin tool purge the catalog URL(s) on the CDN after each change. That keeps updates visible quickly, and you can use a longer TTL.
+
+What I can't tell from what I know: whether the catalog endpoint is the same for every user. If it varies by user, region, or auth (prices, entitlements, personalised results), a shared CDN cache is unsafe unless the cache key and `Vary` are set correctly, or only the shared part is cached. I also don't know how stale the catalog may be after an edit, and whether your CDN supports purge by URL or tag. Those three answers could change the TTL and purge plan, but not the overall recommendation.
+
+If you later find the origin is still a bottleneck, such as heavy cache misses or expensive queries, add a small in-process cache for the underlying query. Reach for Redis only if you need cache state shared across instances.

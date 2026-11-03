@@ -1,0 +1,58 @@
+Premortem: it's three months after launch and this design has caused an incident. These are the most likely ways it got there, based only on the design text you gave me.
+
+**Most likely failures**
+
+1. **Mass closure on day one.** Enabling it for every repo at once means the first run closes the entire backlog of issues older than 60 days. Every such issue across the org is closed in one night, and the #eng summary is probably the first time anyone sees the scale. This is the biggest risk, and the rollout line is the cause.
+
+2. **"No activity" is undefined.** The doc doesn't say what counts as activity. If it means `updated_at`, then bot comments, label changes, project-board moves and linked-PR events could keep issues open forever. If it means only human comments, active work gets closed. Either choice is wrong in some cases, and a wrong guess closes real issues silently.
+
+3. **Wrong kinds of issues get closed.** Staleness is not the same as irrelevance. Likely victims are:
+   - Long-lived tracking and epic issues.
+   - Roadmap and feature-request issues.
+   - Security reports and CVE follow-ups.
+   - Issues that are blocked on a dependency or an external team.
+   - Issues assigned to someone or attached to a milestone.
+
+   The only protection is the `stale-exempt` label, and it's opt-in. Owners can't exempt an issue until they know it's at risk, and nothing tells them in advance.
+
+4. **No warning period.** Closing at 60 days with no earlier "this will be closed" notice gives owners no chance to object. It also means an issue that is quiet for a long weekend and a holiday can be closed with no chance to react.
+
+5. **Scale and rate limits.** "All repos in the org" with `gh issue close` in a loop can hit GitHub API secondary rate limits, especially on the first run. A failure partway through leaves some repos processed and others not. With a nightly cron it's unclear whether a re-run is safe. If the token is a single PAT or app, a rate-limit lockout could also affect other automation that shares it.
+
+6. **Permissions and blast radius.** To close issues in every repo, the token needs write access to every repo. That's a broad credential in a scheduled workflow. Archived repos, forks, repos with issues disabled, and repos owned by other teams are not addressed.
+
+7. **Hard to undo.** Closing is reversible, but nothing records which issues the job closed or why. Reopening hundreds of issues by hand is painful. Closed issues can also trigger notifications, automations, and project-board changes, and those side effects may not reverse cleanly. The doc doesn't say whether closing uses a reason such as `not_planned`, or whether it leaves a comment explaining the closure.
+
+8. **The summary goes to a channel nobody acts on.** A nightly post to #eng becomes noise within a week. People can't object to a closure they only learn about afterward, and the summary doesn't say how to get an issue reopened or exempted.
+
+9. **Team behavior shifts.** People may start adding `stale-exempt` to everything, which defeats the purpose. Others may start commenting "bump" to keep issues alive. Reporters who find their issue closed with no explanation may stop filing issues.
+
+**Missing from the design**
+- A dry-run mode.
+- A rollout plan other than "everything, day one".
+- A definition of "activity".
+- A pre-close warning and a grace period.
+- An exemption model beyond one label (for example milestones, assignees, or per-repo opt-out).
+- A cap on the number of closures per run.
+- A rollback or audit log.
+- Error handling and idempotency.
+- Ownership: who gets paged or asked when this goes wrong?
+
+**What I'd change before building**
+1. **Start in dry-run.** Run it for a week or two, with the output listing what would be closed, and have a few repo owners review the list.
+2. **Roll out in stages.** Begin with two or three willing repos, then widen. Use an allowlist or opt-in at first, then flip to opt-out.
+3. **Add a warning step.** Label and comment at day 45-50 ("will close in 10 days unless there's activity"), and close at 60 only if the warning went unanswered. Use `--reason "not planned"` and a comment that explains how to reopen.
+4. **Define activity explicitly.** Probably human comments, plus linked PR activity, but decide it deliberately. Exclude bot events.
+5. **Widen the default exemptions.** Skip issues that are assigned, in a milestone, labeled security, or labeled as a tracking issue. Keep `stale-exempt` as the manual override.
+6. **Add a per-run cap and backoff.** Something like "close at most N issues per run" limits the damage from a bad run. Handle rate limits and make re-runs safe.
+7. **Keep a record.** Write the list of closed issues, with repo and number, to a run artifact so a bulk reopen is possible.
+8. **Make the summary actionable.** Link each closed issue and say how to reopen it or exempt it in future.
+9. **Scope the credential.** Use a GitHub App with only the issues write permission, and name an owner for the workflow.
+
+**Open questions for you**
+- What counts as activity for this policy?
+- How many open issues over 60 days old exist today? That's your day-one blast radius, and it's worth counting before you decide on rollout.
+- Do any repos have compliance or customer-facing issue trackers where auto-closing would cause a problem?
+- Who owns this job when it misbehaves?
+
+If you only change one thing, change the day-one, all-repos rollout. A dry run plus a small first group would catch most of the problems above before they matter.

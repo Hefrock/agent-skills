@@ -1,0 +1,7 @@
+Use SQLite.
+
+Your setup is one user, about 2,000 rows, one laptop, and no other service touching the data. SQLite fits that well. It is a single file with nothing to install, run, or keep alive. Backing it up means copying the file. At this size, speed won't be a concern.
+
+Postgres is worth it when you need several clients writing at once, access over a network, or heavy concurrency. You have none of those. With Postgres you would take on a server process, a port, a user and password, and upgrades, and you would get nothing in return.
+
+You could outgrow SQLite later, for example if you add a web app that other people use. Moving from SQLite to Postgres is a routine migration, so you don't need to plan for it now.

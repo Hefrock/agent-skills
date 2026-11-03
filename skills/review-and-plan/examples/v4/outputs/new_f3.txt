@@ -1,0 +1,10 @@
+Use SQLite.
+
+Your setup is one user, about 2,000 rows, one laptop, and no other service touching the data. That is the case SQLite is built for. It's a single file with no server to install, run, or back up separately, and 2,000 rows is tiny for it. Postgres would add a running server, credentials, and upgrades to maintain, and you'd get nothing in return at this scale. I'm judging this from the facts you gave me. I haven't seen your schema or the code that reads and writes the data.
+
+Switch to Postgres only if one of these happens:
+- You need several users or devices writing at the same time.
+- Another service has to connect to the data over a network.
+- You need a Postgres-only feature, such as heavy concurrent writes or its specific extensions.
+
+None of these applies today. If one does, migrating 2,000 rows is a small job, because you can export to CSV or use a one-off script. Choosing SQLite now doesn't lock you in. You don't need to decide further until one of those triggers shows up, so I'd just start with SQLite.

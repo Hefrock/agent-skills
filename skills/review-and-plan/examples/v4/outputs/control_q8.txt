@@ -1,0 +1,17 @@
+Probably yes, but I can only go on very little. Your log has one entry about this: on 2026-10-09 you ran the link checker by hand and found 2 broken links. That's the only record I have. It doesn't show how often you actually run the check, how long it takes, or whether it has ever caught anything besides that one run. So I can't confirm it's really a weekly routine from the log alone.
+
+Here is why I lean toward automating it, and where I'm unsure.
+
+Reasons it fits CI:
+- Checking links is mechanical and the result is clear: either links work or they don't. That kind of task is a good candidate for automation.
+- A manual routine depends on you remembering to do it. The log shows one run, which suggests it may not be happening every week.
+- The one run did find 2 broken links, so the check does turn up real problems.
+
+Things to weigh that I can't tell from the log:
+- Flaky results. External links can fail temporarily because of rate limits, timeouts, or sites that block bots. If CI fails on those, people will start ignoring it. Many teams run the check on a schedule (for example weekly) instead of on every pull request, and have it report rather than block merges.
+- Scope. You may want to check only internal links on every PR, and run the full external check on a schedule.
+- Cost of maintenance. You'd need a tool, a config, and an allowlist for links you know are fine.
+
+A reasonable setup: add a scheduled CI job (weekly cron) that runs the same link checker you use by hand, and have it open an issue or post a notification when it finds failures instead of failing a build. If that turns out to be quiet and reliable, you can later add a faster internal-link check to PRs.
+
+If you tell me which link checker you used on 2026-10-09 and how your CI is set up, I can help write the job.

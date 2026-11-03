@@ -1,0 +1,5 @@
+Not yet. Your log shows one instance (2026-10-16, about 25 minutes from scratch), so the need has been seen once. Keep a note of it now and build the template if it comes up a second time. A template is cheap and easy to undo, so you could also just do it after the second email.
+
+Two caveats. The log has only that one entry, so I can't tell whether the email is weekly in practice or how often you write it. Also, 25 minutes may mostly be deciding what to say, which a template won't shorten.
+
+If you do build one, reverse the decision if the next two emails don't each save at least about 10 minutes. Check on the second one after this.

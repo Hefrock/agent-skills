@@ -1,0 +1,26 @@
+I would not run this tonight. The plan rests on "unused", and what I have only supports "no writes for 14 months". Nobody has checked reads. I also have no independent reviewer here, so this is a solo review and weaker for it.
+
+Risks, each tied to the facts you gave me:
+
+1. **The audit_log foreign key.** audit_log has a nullable FK pointing at legacy_users.id. A plain DROP TABLE will either fail on that constraint or, with CASCADE, silently remove the constraint. Either way tonight's run does something you haven't planned for. Because the column is nullable, I can't tell whether any rows actually reference legacy_users. That needs a query.
+
+2. **Reads are unchecked.** A table with no writes can still be read by reports, joins, exports or a scheduled job. You haven't looked at query logs, so "unused" is a guess. This is the central gap.
+
+3. **The backup is untested.** It was taken last night and has never been restored. Until you restore it somewhere, it is a file, not a recovery path. Dropping the table also means any rows written since the backup are gone for good, though with no writes in 14 months that is probably small.
+
+4. **Production, at night.** This is general knowledge, not something from your material: a drop is hard to reverse, and if a reader breaks you'll find out when the load arrives, possibly with nobody around to fix it.
+
+What to do before dropping, all read-only or low-risk, in this order:
+
+1. Check the query logs, or pg_stat_user_tables / the equivalent, for reads on legacy_users over a window longer than your longest batch cycle, such as month-end and quarter-end jobs.
+2. Query audit_log for rows where the FK column is non-null, and look at the FK's ON DELETE behavior.
+3. Restore last night's backup into a scratch environment and confirm legacy_users is there and readable.
+4. Search application code, views, stored procedures and ETL jobs for references to the table name.
+
+Then, instead of dropping, rename the table to something like legacy_users_pending_drop. A rename can be undone in seconds, and it turns a hidden reader into a visible error. Leave it for a few weeks, then drop it. If you must clear the FK first, take a fresh backup and a table-level export just before.
+
+Stop rule: if the checks find no reads and no non-null FK values, and the restore works, go ahead with the rename. If any one of them finds something, stop and deal with that before touching the table. Don't keep patching the plan.
+
+What I could not verify: everything in the list above. I only have your four facts.
+
+Decision for you: the drop touches production and can't be undone, so I'd want your go-ahead after the checks, not before.

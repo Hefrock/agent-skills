@@ -1,0 +1,7 @@
+Yes, add it. The same failure has now happened twice (2026-09-30 and 2026-10-18, both "CI failed on formatting, fixed by hand"), so the need is established. The cost is also low: the Makefile already has a formatter command, so the hook only has to call it, and a local hook is easy to remove if it turns out to be a nuisance.
+
+Keep it small: the hook should run the existing Makefile target and nothing else, so there is no second formatter config to drift out of sync with CI.
+
+Two things I don't know from what you've given me. I haven't seen the Makefile, so I can't confirm the formatter command is fast or that it behaves the same as the check CI runs. And I haven't seen the CI config, so I can't say whether CI checks formatting the same way the Makefile command does. If they differ, the hook won't stop the failures. Check that before relying on it.
+
+This was a solo judgment from the two log entries, with no independent review.

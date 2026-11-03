@@ -1,0 +1,11 @@
+Probably not, at least not yet. The only evidence of demand I have is one entry in your log: on 2026-10-10 you looked up the nixpkgs option for services.openssh.settings. A single lookup in that log doesn't show a recurring need, and a custom MCP server is a real commitment. You'd have to build it, keep it working as nixpkgs changes, and fit it into your workflow.
+
+I can't tell from this whether that one lookup was slow or painful, or whether you've done similar lookups that never got logged. If you have, that changes the picture.
+
+What I'd do instead:
+
+- Keep using the existing routes for now. search.nixos.org, `man configuration.nix`, and `nixos-option` all cover option lookups.
+- Keep logging lookups for a few weeks. If you see many entries, especially ones where finding the answer took a while, building the server starts to make sense.
+- If you do build it, start with a small version that wraps option search only, before trying to cover packages, modules, and everything else.
+
+If you tell me how often you do these lookups and what the current friction is, I can give you a firmer answer.

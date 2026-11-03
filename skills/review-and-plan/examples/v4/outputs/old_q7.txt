@@ -1,0 +1,23 @@
+I would not merge this yet. The sleep probably hides the flake instead of fixing it, and five local passes don't tell you much about CI.
+
+Coverage: I only have your description of the problem. I haven't seen the test body, the wheel contents or the CI logs. This review is solo, with no independent agent, so treat it as weaker for that. Risks below cite your description. The ones that come from general knowledge are labeled as such.
+
+Risks, most serious first:
+
+1. **Five local passes are weak evidence.** You said the failure is intermittent and shows up in CI only, and that the CI runner is slower than your laptop. Your laptop is the fast environment, where the race probably never fired, so it would likely have passed five times before your change too. Those runs can't show the fix works. To check, revert the sleep and run the test locally another five times. If it also passes, the five runs tell you nothing. Better still, reproduce the flake first, for example by loop-running the test under CPU load or with the thread artificially delayed. Then show that the fix removes it.
+
+2. **A fixed 2-second wait is a guess about timing.** The test starts a background thread and asserts on shared state. The sleep only works if the thread always finishes within 2 seconds. A slower runner, or a busy CI box, can exceed that. This risk comes from your description of the slower runner. The "sleep fixes races" pattern is a well-known cause of flaky tests, but that is general knowledge, not something I saw in your repo.
+
+3. **The sleep may be hiding a real race in the code.** If the assertion on shared state can fail because the thread hasn't finished writing, production callers could hit the same race. A sleep in the test would then mask a bug in the code. I can't tell from what you gave me whether the race is in the test or in `src/`. That is the first thing to find out.
+
+4. **You may be testing different code from what CI runs.** Your local checkout runs `src/`, but CI installs the package from a built wheel. If the wheel differs from `src/` (stale build, missing file, different version), a local pass says nothing about the CI run. I haven't seen the wheel, so I can't say whether it differs. I'd check that the wheel CI builds contains your current code.
+
+5. **The sleep adds 2 seconds to every run, and the flake could come back.** Each CI run pays that cost. If the wait ever falls short again, it will fail intermittently, which is harder to diagnose than a plain failure. This is general knowledge.
+
+What I'd do instead of the sleep:
+- Make the test wait on a signal rather than on the clock. Use a `threading.Event` or `join()` on the thread, or poll the condition with a timeout (for example up to 10 seconds, returning as soon as it's true). That is fast when the thread finishes quickly and tolerant when it doesn't.
+- If the code under test offers no hook to wait on, adding one (a done event or a join method) is probably worth it. Don't go further than that unless the same need comes up again.
+
+Stop signals for investigating: stop when you can make the test fail on demand and then pass reliably after the change. Stop if the fix touches code outside the test and the thread's synchronization. If two reruns in CI show no new failures, merge. Don't keep tuning the timing.
+
+What I couldn't check: the test code, the wheel and the CI logs. If you can share the test and one failing CI log, I can say whether the cause is in the test or in `src/`.

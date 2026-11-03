@@ -1,0 +1,14 @@
+Use HTTP cache headers behind the CDN. It's already deployed, it adds no new infrastructure, and it suits your traffic: the catalog changes a few times a day and reads are about 2k/min. Set a short `s-maxage` (say 60 to 300 seconds) plus `stale-while-revalidate`. Most reads will then never reach your three app instances.
+
+Why not the others:
+- **Redis:** You don't run it today, so it would be a new service to deploy, monitor and fail over. At 2k reads/min it's hard to justify.
+- **In-process LRU:** Each of the three instances would hold its own copy. After an admin edit they would go stale at different times, so different users could see different catalogs. It only makes sense as a later fallback if the CDN can't cover something.
+
+I don't know three things, and any of them could change this answer:
+- How much staleness is acceptable after an admin edit.
+- Whether the endpoint returns per-user or personalized data. If it does, CDN caching needs `Vary` handling or may not be safe at all.
+- Whether the CDN honors your cache headers, or has overrides configured.
+
+To handle staleness, have the admin tool purge the CDN on publish if your CDN supports it. If it doesn't, keep the TTL short enough that stale reads are acceptable.
+
+This is a solo recommendation based only on the facts you gave me. I haven't seen your code, CDN config or current response headers, and nobody independent has reviewed it. Before relying on it, check the endpoint's current `Cache-Control` headers and the CDN's hit rate. Revisit the choice if the hit rate stays low after a week, or if the app instances still see sustained load from catalog reads. Those would be signs that you need a shared cache like Redis.

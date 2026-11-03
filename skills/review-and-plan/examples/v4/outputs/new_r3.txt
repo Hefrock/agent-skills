@@ -1,0 +1,7 @@
+Not yet. The log shows the need once (2026-10-02, a CSV converted to a markdown table by hand), and nothing else mentions CSVs or tables. A skill is something permanent, so wait for a second occurrence.
+
+Do this instead: keep converting by hand, and add a line to the usage log each time it happens. If a second entry shows up, build it, and keep it small. A skill that converts CSV to markdown is mostly a short instruction, since a model can already do the conversion.
+
+Two caveats. I only have that single log entry, so I don't know how often you do this outside the log. I also haven't checked whether an existing skill or tool already covers it, so check that before building anything. This is a solo judgment with no independent review.
+
+If you do build it, set a reversal condition and a date. For example, if it hasn't been used at least twice in the 60 days after it's built, remove it.

@@ -1,0 +1,7 @@
+Yes, add it. Your log shows the same formatting failure twice (2026-09-30 and 2026-10-18), both fixed by hand, so the need has now shown up twice. The formatter already exists in your Makefile, so the hook only has to call it. It's also easy to remove, which keeps the cost of being wrong low.
+
+Keep it small: a hook that runs the existing Makefile formatter target and nothing else. Don't write a new formatting setup.
+
+Reversal condition: if the hook gets bypassed with --no-verify more than occasionally, or slows commits enough to annoy you, remove it and rely on a CI-only check. Check this on 2026-12-03, about a month out. If CI formatting failures have stopped by then, the hook is working.
+
+Two things I could not check. I haven't seen the Makefile, so I'm assuming the formatter target rewrites files instead of only checking them. If it only reports problems, the hook will block commits without fixing anything, and you'd want a version that formats and re-stages. This was also a solo review with no independent check.

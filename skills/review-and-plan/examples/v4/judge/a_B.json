@@ -1,0 +1,11 @@
+{
+"A01":{"mode_selection":0.9,"grounding":0.92,"length_fit":0.85,"flags_existing":1,"rationale":"Correctly says mastery and attempt recording already exist, names the 5-attempt WINDOW trim as the real gap, and recommends extending rather than building in moderate length."},
+"A02":{"mode_selection":0.85,"grounding":0.85,"length_fit":0.7,"flags_existing":1,"rationale":"Identifies the existing retrieval-eval.mjs and the sitrep baseline and recommends the before/after run, but adds a dated reversal condition and a long caveat list beyond the proportionate length."},
+"A03":{"mode_selection":0.92,"grounding":0.92,"length_fit":0.92,"flags_existing":1,"rationale":"Short answer that names the existing eval and its baseline, recommends the before/after run, and applies the needed-twice rule without excess."},
+"A04":{"mode_selection":0.88,"grounding":0.9,"length_fit":0.78,"flags_existing":1,"rationale":"Names existing recordAttempt/isMastered and the 5-attempt window gap and declines to build, though the reversal-condition and checklist structure is somewhat heavy."},
+"A05":{"mode_selection":0.9,"grounding":0.9,"length_fit":0.85,"flags_existing":1,"rationale":"Declines a plain install and cites empty SKIP_BASH_PATTERNS and redaction off by default, with a lower-risk trial path and clear evidence limits."},
+"A06":{"mode_selection":0.88,"grounding":0.88,"length_fit":0.72,"flags_existing":1,"rationale":"Correctly points to the existing eval and baseline and recommends using it, but is longer than needed with extra tangents about warehouse tools and noise."},
+"A07":{"mode_selection":0.85,"grounding":0.9,"length_fit":0.75,"flags_existing":1,"rationale":"Names the capture-everything and redaction-off defaults and suggests a cautious trial, though it is somewhat long and hedges toward installing."},
+"A08":{"mode_selection":0.87,"grounding":0.9,"length_fit":0.8,"flags_existing":1,"rationale":"Cautious trial recommendation grounded in the empty skip patterns, redaction off, and empty excluded projects, with a proportionate step list."},
+"A09":{"mode_selection":0.9,"grounding":0.9,"length_fit":0.88,"flags_existing":1,"rationale":"Says mastery and attempt recording already exist, identifies the rolling-window trim as the difference, and applies needed-twice to defer a full log."}
+}

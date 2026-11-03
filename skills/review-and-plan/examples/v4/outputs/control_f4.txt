@@ -1,0 +1,16 @@
+I wouldn't run this tonight as written. The plan has a few gaps, and a DROP in production can't be undone except by restoring a backup.
+
+**What the facts say**
+- No writes for 14 months is a good sign, but it only tells you nobody writes to the table. It says nothing about reads. I haven't checked query logs for reads, so "unused" isn't established yet. Reports, ad hoc queries, joins from other services or a monthly job could all still be reading it.
+- audit_log has a nullable foreign key column pointing at legacy_users.id. That is a live dependency. Depending on how the constraint is defined, the DROP will either fail (no CASCADE) or, with CASCADE, silently drop the constraint and leave audit_log rows pointing at ids that no longer exist. Nullable means some rows may be null, but you need to know how many are not. If those rows are audit history you need to keep, you'd lose the ability to resolve who they refer to.
+- The backup is from last night, and restoring from it has never been tested. An untested backup is not a rollback plan. You don't know whether it restores cleanly, how long it takes, or whether it contains this table in a usable state. Any writes since last night would also be lost on a restore.
+
+**What I'd do before dropping**
+1. Check read activity. Look at query logs, pg_stat_user_tables (seq_scan, idx_scan) or your equivalent, and search application code, ORM models, views, stored procedures and scheduled jobs for references to legacy_users. Cover at least a full business cycle, including month-end jobs.
+2. Inspect the dependency on audit_log. Count the non-null values of the foreign key column and decide what should happen to them. Also check for other foreign keys, views, triggers and grants that reference the table.
+3. Prove the backup works. Restore it to a scratch environment and confirm that legacy_users is present and complete. Note the restore time.
+4. Take a targeted backup right before the change. Export just this table (for example pg_dump -t legacy_users, or CREATE TABLE ... AS SELECT into an archive schema), so rollback doesn't depend on a full restore.
+5. Use a reversible first step. Rename the table (for example legacy_users_deprecated_2026_11) or revoke access to it, and watch for errors for a week or two. If nothing breaks, drop it then. Handle the audit_log constraint explicitly at that point, rather than leaving it to CASCADE.
+6. Choose a low-traffic window and have someone available to help if it goes wrong. Tonight isn't required, since nothing here is urgent.
+
+**Recommendation:** Don't drop it tonight. Check reads, deal with the audit_log foreign key, and test the restore. Then do the rename-first approach. That adds a few days, and in exchange a bad call is cheap to reverse. If you can share the audit_log schema and what your query logs show, I can help you check the remaining items.

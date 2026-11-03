@@ -1,0 +1,25 @@
+Coverage: I have only the plan text you pasted. I read no schema, no migrate.sql, no database config and no backup tooling. This review is solo; no second reviewer or subagent was available, so it is weaker than an independent one. Risks below cite the plan's wording, or are labeled as general knowledge about databases.
+
+Verdict: don't run it as written. The plan has no staging run and its only rollback is a nightly backup. It also bundles a schema change and a 4M-row backfill into one Friday-evening window.
+
+Risks traced to the plan text
+
+1. "No staging run is planned." Nothing in the plan shows that migrate.sql works on production-shaped data, or how long it takes. Any syntax error, missing join key or constraint violation would first appear in production.
+2. "one UPDATE" over 4M rows. This is a single transaction. General knowledge: in Postgres it rewrites every row and holds row locks until commit. In MySQL it can hold locks and grow undo logs. Either way it can block writers to orders for the whole run and bloat storage. I don't know your engine, so I can't say which of these applies.
+3. "Rollback: restore last night's backup." This loses every order written between that backup and the restore. The migration starts at 6pm Friday, so at least a full day of orders is at risk. A restore on a 4M-row table is also slow, and the plan says nothing about whether anyone has tested one.
+4. "NOT NULL column `region` with default 'unknown'", then a backfill from customers. This ordering means every row is first written as 'unknown', and the backfill then rewrites it. General knowledge: on older engine versions, adding a NOT NULL column with a default rewrites the whole table under a lock. Newer versions (Postgres 11+, MySQL 8 instant add) do not. The plan doesn't name the version.
+5. "backfill from the customers table." The plan doesn't say what happens to orders with no matching customer, or customers whose region is null. Those rows would silently stay 'unknown'. Because 'unknown' is also the default, you couldn't later tell a failed backfill from a legitimate unknown.
+6. "Friday 6pm." General knowledge: a Friday-evening start means a failure is found when staffing is thinnest and traffic may still be high. The plan names no owner for monitoring, no go/no-go point and no abort criterion.
+
+What I don't know, and which changes the answer: your database engine and version, whether orders is written to continuously, how large the backup gap actually is, and whether a restore has ever been tested.
+
+Safer shape, as options
+
+- Do nothing yet: keep the plan, but add a staging rehearsal. This is the cheapest fix.
+- Do it by hand first: on a restored copy of last night's backup, run the migration. That one step gives you timing, the real error cases and a tested restore.
+- Split it into steps: (a) add the column as nullable with no default, or use your engine's instant add; (b) backfill in batches of, say, 10k to 50k rows by primary key, with pauses; (c) check for remaining nulls and unmatched orders; (d) add the NOT NULL constraint and default afterwards. Each step is separately reversible, and no step holds a long lock.
+- Before the window: take a fresh backup or snapshot immediately beforehand, so a restore loses minutes rather than a day. Move the run to a low-traffic time with someone watching.
+
+Stop signals, written before you start: abort and roll back if the staging run exceeds your agreed window, if lock waits or replication lag pass a threshold you set beforehand, or if the unmatched-row count after backfill is above what you accepted. Don't fix and rerun in production mid-window; abort, diagnose on staging, and reschedule.
+
+Reversal condition: if the staging rehearsal shows the full migration finishes in under a few minutes with no blocking locks, the single-UPDATE plan is probably acceptable, and the batching can be dropped. Check that after the rehearsal, before the Friday window.

@@ -1,0 +1,11 @@
+Probably yes, but the evidence I have is thin. My usage log has one relevant entry: on 2026-10-16 you wrote the status email from scratch and it took about 25 minutes. That's the only data point, so I can't tell whether that was typical or an unusually long week.
+
+If it's typical, the math favors a template. A weekly email at 25 minutes is roughly 20+ hours a year. A template that cuts that to 10 minutes (mostly filling in the specifics) would save around 15 minutes a week, and setting one up should take well under an hour. It would pay for itself in about three or four weeks.
+
+Two things would change my answer:
+- If the content differs a lot each week, a rigid template helps less. A light skeleton (fixed headings like Done / In progress / Blocked / Next) still helps, because the structure is what costs time.
+- If the 25 minutes was mostly gathering information, such as checking tickets or messages, a template won't fix that. A short checklist of where to pull updates from would help more.
+
+A cheap way to decide: write next week's email using a quick skeleton and note how long it takes. If it's clearly under 25 minutes, keep refining it into a proper template. If not, the bottleneck is elsewhere.
+
+If you'd like, paste your last email and I'll draft a skeleton from it.

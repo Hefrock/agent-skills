@@ -1,0 +1,24 @@
+Coverage: I read nothing directly. This review rests only on the four facts you gave me. I did not check query logs, the schema, or the backup. The review is solo, with no independent agent, so treat it as weaker for that.
+
+I wouldn't run this tonight as written. The plan rests on "unused", and nothing you've told me shows that.
+
+- **No writes for 14 months doesn't mean unused.** You haven't checked query logs for reads. Reports, joins, or a quarterly job could still read this table. A read-only dependency is invisible to a write check.
+- **audit_log has a nullable foreign key to legacy_users.id.** This is the one concrete dependency in your facts. Depending on the database, the DROP will either fail or need CASCADE. If it cascades, it may drop the constraint, or the audit_log rows, or fail partway. I don't know your engine or the constraint's ON DELETE behavior. Even if the drop succeeds, audit_log would lose the ability to resolve those user IDs. That matters if the log is ever used for compliance or investigation.
+- **The backup is untested.** A backup that has never been restored is a hope, not a rollback. The drop is irreversible without it, so this is the biggest risk. It also covers only last night's state, so anything written to other tables since then isn't recovered by it. This is general-knowledge reasoning, not something in your material.
+
+Options:
+1. Do nothing: costs only storage and clutter, and is fully reversible.
+2. Rename the table (for example to legacy_users_deprecated) tonight, and drop it in 2-4 weeks. If something reads it, it breaks loudly and you rename it back in seconds.
+3. Revoke read and write permissions instead of renaming. It has the same effect, but the table stays in place.
+4. Drop it tonight. This is the plan as written.
+
+My pick is option 2, after a quick check. Before tonight:
+- Search the query logs (or turn on logging if there are none) for any reads of legacy_users.
+- Look up how audit_log's foreign key is defined, and decide whether those IDs need to stay resolvable.
+- Restore the backup into a scratch environment and confirm legacy_users is there. This is worth doing regardless of this change.
+
+Stop signal: if the query logs show no reads and the restore works, the check is done. Don't keep auditing past that.
+
+Reversal condition: after the rename, if nothing breaks in 30 days, drop the table. Put a date on that now. If anything errors on the old name, restore it and find the reader first.
+
+Ask me before you run any of the destructive steps. I'd keep the drop out of tonight's window.

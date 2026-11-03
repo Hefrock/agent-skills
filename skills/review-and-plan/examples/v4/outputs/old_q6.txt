@@ -1,0 +1,13 @@
+Use HTTP cache headers behind the CDN. It fits what you've described, and it needs nothing new deployed.
+
+Why:
+- The catalog changes only a few times a day, and reads are about 2k/min. That is a very cacheable pattern, and the CDN is already there. Setting Cache-Control (for example a short max-age plus stale-while-revalidate) and an ETag on the endpoint lets most reads end at the CDN and never reach your 3 instances.
+- In-process LRU would give you 3 separate caches. After an admin change, each instance could serve stale data for a different length of time, so users could see inconsistent results depending on which instance the load balancer picks.
+- Redis would fix that inconsistency, but you don't run it today. You would be adding a new piece of infrastructure to operate, for a load of about 33 requests per second that the CDN can absorb.
+
+What I don't know, and what would change the answer:
+- Whether the response is the same for every user. If it varies by user, tenant, or auth, CDN caching needs care (Vary headers, or not caching at all), and the answer could shift.
+- How fresh the catalog must be after an admin edit. If a few minutes of staleness is fine, a short TTL is enough. If edits must show up immediately, have the admin tool purge the CDN cache for that URL on save (if your CDN supports purge), or use short TTLs with ETag revalidation.
+- Whether the CDN honors origin cache headers or has its own override rules. Check this first, because it is the most likely thing to go wrong.
+
+This was a solo assessment from the facts you gave me. I have not looked at your code or CDN configuration. If the CDN turns out not to be usable for this endpoint, add a small in-process cache with a short TTL as a fallback before you consider Redis. Redis only becomes worth it if you later need shared state across instances for other reasons.

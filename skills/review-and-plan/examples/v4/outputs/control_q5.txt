@@ -1,0 +1,54 @@
+Premortem: assume it is Saturday morning and this migration went badly. These are the most likely reasons, ordered by how likely and how costly each one is.
+
+1. The ALTER locks the orders table and checkout stops.
+Adding a NOT NULL column with a default to a 4M-row table behaves very differently by database. I can't see which one you run, so check this first.
+- Postgres 11 and later: adding a constant default is a metadata-only change and is fast. Postgres 10 and earlier rewrites the whole table under an ACCESS EXCLUSIVE lock.
+- MySQL: the result depends on the version and the algorithm. INSTANT is available in 8.0.12 and later. Older versions copy the table.
+- Even in the fast cases, the ALTER has to queue for its lock behind any long-running transaction. While it waits, every new query on orders queues behind it. That alone can look like an outage.
+Mitigation: confirm the engine and version, set lock_timeout (or the equivalent) so the ALTER fails fast instead of queuing, and run it outside peak hours. Friday 6pm is likely dinner-time traffic for an orders table.
+
+2. The single-statement backfill is the biggest risk.
+One UPDATE across 4M rows runs as one transaction. Expect these problems:
+- It holds row locks on every order for the whole run, so concurrent writes (new orders, status changes) block or deadlock.
+- It generates a very large amount of WAL or binlog. That can lag or break replicas and fill the disk.
+- In Postgres it also creates 4M dead tuples, which bloats the table and slows queries until vacuum catches up.
+- If it fails or you kill it at minute 40, everything rolls back, and the rollback itself can take as long as the work did.
+Mitigation: backfill in batches of roughly 5k to 50k rows by primary key range, commit between batches, and throttle based on replica lag. Run it as a resumable job.
+
+3. The backfill logic probably doesn't match the data.
+The plan says to backfill from customers, but it doesn't say how orders joins to customers or what happens when there is no match.
+- Orders with a NULL or orphaned customer_id (guest checkouts, deleted customers) won't get a region from the join.
+- If the join is on a non-unique key, the UPDATE may fail or pick an arbitrary row.
+- If customers.region is itself NULL or messy, you'll end up with a mix of real regions and 'unknown'.
+- Is region the customer's current region or the region at order time? If a customer moved, historical orders get the wrong value.
+- Without an index on the join key, the UPDATE can become a very slow nested loop.
+Mitigation: write down the join and its match rules, and run a count query first showing how many orders will resolve and how many will fall back to 'unknown'.
+
+4. The default of 'unknown' hides problems and can break the application.
+- Rows that never get backfilled look valid, so reports will silently contain an 'unknown' bucket.
+- The old app version is still running during the migration. If its INSERTs don't set region, they'll get 'unknown' while you backfill, and the backfill may overwrite or skip them depending on how you wrote the WHERE clause.
+- ORMs and strict schema checks, plus any ETL or data-warehouse sync that reads the table, may fail on the new column.
+Mitigation: make the backfill only touch rows where region = 'unknown', deploy app code that writes region before or alongside the migration, and tell downstream consumers.
+
+5. The rollback plan is much weaker than it looks.
+"Restore last night's backup" means losing everything written since that backup. Friday evening orders and payments would be gone, and they can't be reconstructed from the database. Restoring a 4M-row table or a whole database is also slow, which means a long outage while you do it. Other likely problems:
+- Nobody has confirmed the backup is restorable. An untested backup is a hope, not a rollback.
+- Restoring only the orders table can leave it inconsistent with related tables (payments, shipments, inventory) that kept moving.
+Mitigation: a real rollback is cheap if you prepare it. The column can be dropped (ALTER TABLE ... DROP COLUMN, which is fast in most engines). Take a fresh snapshot or confirm PITR is enabled immediately before starting, and do a restore test beforehand so you know the time it takes.
+
+6. No staging run is the multiplier on everything above.
+Every risk here is the kind a staging rehearsal on a production-sized copy would show: lock time, backfill duration, WAL volume, join mismatches. Skipping it means you find out in production, on a Friday evening, with the least staff available to help.
+Mitigation: restore a recent backup to a scratch instance and run the exact script. This also tests the restore, which covers risk 5, and gives you a real duration estimate for the backfill.
+
+7. Timing and people.
+Friday 6pm is a bad window: peak traffic, and if it goes wrong you are fixing it over the weekend. If you can't move it, at minimum have someone else on call, a go/no-go checkpoint after the ALTER, and a stated time at which you abort.
+
+Suggested revised plan:
+1. Rehearse on a production-sized copy. Record ALTER time, backfill time, and the unresolved-customer count.
+2. Ship app code that writes region on new orders.
+3. Run the ALTER with a lock timeout, off-peak. In a stricter variant, add the column as nullable first, backfill, then add NOT NULL (with a check or validated constraint) afterward.
+4. Backfill in batches, only for rows still at 'unknown', with replica lag monitoring.
+5. Verify counts, then take the new column live.
+6. Rollback = stop the job and drop the column. Keep the backup as a last resort only.
+
+What I couldn't determine: which database and version you run, how orders joins to customers, and whether the app can write region yet. The answers to those could raise or lower several of the risks above. If you tell me the engine, I can be specific about risk 1.
