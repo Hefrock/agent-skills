@@ -1,0 +1,32 @@
+This was a solo review. No other reviewer or tools were available, so it is weaker than an independent one. I only have the plan text, not the schema, the Postgres/MySQL/etc. version, or the customers table. Risks that come from the plan are marked "plan". Risks that come from general database knowledge are marked "general".
+
+**Don't run it as written.** Four risks are serious, and the plan's rollback doesn't cover them.
+
+**Risks from the plan text**
+
+1. **The rollback loses data (plan).** The rollback is "restore last night's backup." The migration runs Friday at 6pm, so any order written between last night's backup and the failure is lost on restore. That is up to about 18 hours of production orders. The plan doesn't say whether the backup has ever been restored, how long a restore takes for 4M rows, or whether the app is down during it. It also doesn't say what happens to orders taken while the migration or restore is running.
+
+2. **No staging run (plan).** The plan says "No staging run is planned." So the first time anyone sees the real runtime, lock behavior, or errors is on production. Every other risk below could have been found on a copy.
+
+3. **One UPDATE across 4M rows (plan).** The backfill is a single statement. In most engines that means one long transaction. It can hold row locks on the whole table, bloat the transaction log or undo space, and add replication lag. If it fails near the end, everything rolls back and you've spent the downtime for nothing. Batching, say 10k to 50k rows per statement, avoids this. How badly it behaves depends on the engine, which I don't know.
+
+4. **"NOT NULL DEFAULT 'unknown'" and a backfill from customers (plan).** The default means every row gets 'unknown' at the moment the column is added. The backfill then overwrites it. Two problems follow. Any order with no matching customer, or a customer with a null region, silently stays 'unknown', and the plan has no check for how many that will be. The plan also doesn't say how orders join to customers or whether that key is indexed. An unindexed join in a 4M-row UPDATE can be very slow.
+
+5. **Friday 6pm timing (plan).** If it goes wrong, the people who could fix it are heading into the weekend. Evening is also often peak traffic for an orders table. The plan names no owner, no monitoring, and no point at which you abort.
+
+**Risks from general database knowledge (not in the plan)**
+
+6. **Adding a column with a default can rewrite or lock the table, depending on the engine and version (general).** Some engines add it as a metadata-only change. Others copy or rewrite all 4M rows while blocking writes. I can't tell which applies here without knowing your database and version.
+
+7. **App compatibility (general).** If the application inserts into orders without supplying `region`, the default covers it. If it uses `SELECT *` or strict column lists, or an ORM that caches the schema, the new column could break something. Code that runs between the column add and the backfill will see 'unknown' for every order.
+
+**What I'd change before Friday**
+
+- Run the whole script on a restored copy of production, or at least a recent snapshot. Record the timings.
+- Test the restore itself, and write down how long it takes.
+- Split the change into steps: add the column as nullable, backfill in batches, then add NOT NULL and the default once you've verified the data.
+- Count orders with no matching customer or no customer region before you start, and decide what value those should get.
+- Take a fresh backup immediately before you run it, and pick a quieter time with someone on call.
+- Write down in advance what makes you stop and roll back, for example a backfill that runs past a set time or a lock wait above a set threshold.
+
+**What I couldn't check:** your database engine and version, your table's indexes, your traffic pattern, and how long your backup restore takes. Risks 4 and 6 in particular depend on those. If you tell me the engine, I can say which of them actually applies.

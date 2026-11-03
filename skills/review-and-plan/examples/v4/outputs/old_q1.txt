@@ -1,0 +1,32 @@
+Review limits: this was a solo review. I had only the design doc text, no repo data, no tools, and no second reviewer, so it is weaker than an independent check. Each risk below cites the part of the doc it comes from. Risks from general knowledge are labeled as such.
+
+Premortem: it is three weeks after launch and this went badly. Most likely causes, in order of how worried I am:
+
+1. Mass closure of live work on day one. (Doc: "closes every issue with no activity for 60 days, across all repos in the org" and "enable for all repos on day one".) Every issue already older than 60 days gets closed in the first nightly run. The doc gives no count, so I can't say how many that is. In any org with old repos it is likely a large number, and it hits every repo at once. Long-running epics, tracked bugs, accepted feature requests and compliance or security items can all be quiet for 60 days and still be valid. The "stale-exempt" label is the only protection (doc: "Issues labeled `stale-exempt` are skipped"), and no one has had a reason to apply it yet. This is the largest risk, and the rollout line makes it worse.
+
+2. Silence is treated as meaning "done". (Doc: the only criterion is "no activity for 60 days".) The design has no warning step and no grace period. Nobody gets told before an issue closes, and the doc doesn't say how an issue gets reopened. Reporters and owners find out after the fact, if at all. General knowledge: stale bots usually label first, then close after a comment and a waiting period, because the warning is what lets people save issues.
+
+3. Wrong definition of "activity", and no scoping. (Doc: "no activity" is undefined, and the rule is "every issue" with no filter.) The doc doesn't say whether activity means comments, label changes, linked PR commits, project-board moves or reactions. If it counts only comments, an issue with an active linked PR or a milestone looks stale. Nothing excludes assigned issues, milestoned issues, issues in a project, pull requests, or security-related issues. Also, the doc names only one exemption label, and it must exist in every repo and be known to every team.
+
+4. Mechanism not verified. (Doc: "using `gh issue close`".) The doc doesn't say how the job finds the issues, since `gh issue close` only closes a known issue. Unchecked assumptions here:
+   - The token has write access to every repo in the org, including archived repos, which are read-only.
+   - Rate limits and pagination hold up across a whole org. General knowledge: the search and list APIs cap results and rate-limit heavy callers.
+   - The job's definition of "no activity" matches GitHub's own `updated` timestamp, which also changes on edits, label changes and bot comments.
+   - A repo with a bot that touches issues never goes stale.
+   - If the job fails partway, a rerun does the right thing.
+   None of this is tested in the doc. I also don't know whether `gh issue close` records a reason such as "not planned" versus "completed". That setting affects reporting.
+
+5. No dry run and no cap. (Doc: the summary goes to #eng, but only after the run.) The summary is posted as a record, not a checkpoint. There is no preview mode, no per-run limit, and no kill switch. A bad first run can't be stopped partway, and closing an issue is easy to undo only one issue at a time. A mass reopen would be tedious and could send a notification to every subscriber of each closed issue. General knowledge: closures notify reporters, assignees and subscribers, so a bad run also generates a burst of email.
+
+6. Summary channel and ownership. (Doc: "Posts a summary to #eng".) A list of hundreds of closures in #eng will be ignored or muted, and the people who own the closed issues may not be in #eng at all (external reporters, other teams). The doc also names no owner for the job or for appeals.
+
+Smaller points: the doc doesn't say what happens to issues closed in error versus ones that were later reopened, whether the job runs under a bot identity, or whether new repos are picked up automatically. I'm not treating these as confirmed problems, only as open questions.
+
+What I'd change before building:
+- Replace "day one for all repos" with a dry run first (log what would close, close nothing), then one or two pilot repos, then widen.
+- Add a warning label and comment, then close after a waiting period (for example 14 days) if there's still no activity.
+- Define "activity" explicitly, and exempt assigned, milestoned and linked-PR issues.
+- Add a per-run cap and a way to stop the job.
+- Test the token's access and the pagination across the org before the first real run.
+
+What would settle the open questions: the number of issues currently older than 60 days across the org, and a check of how the token and rate limits behave on a few repos. I don't have either.

@@ -1,0 +1,7 @@
+Not yet. Your log shows one rename job (12 screenshots by hand on 2026-10-14), so the need has been seen once. Log it, and don't build a script yet.
+
+If it comes up a second time, write a small script then and keep it simple. Before that, check whether your OS already does this. macOS and Windows both let you change the screenshot save location and name format, and bulk-rename tools exist too. I haven't looked at your setup, so I can't say whether any of that fits.
+
+Reversal condition: if the log shows another manual rename batch by 2026-12-03, build the small script. If it doesn't, drop the idea.
+
+One limit on this answer: it rests on a single log entry. I don't know how long the rename took or what naming scheme you used, so the cost of doing it by hand is a guess.

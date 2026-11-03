@@ -1,0 +1,3 @@
+Yes, worth it now. The need has shown up twice (9 screenshots on 2026-09-12, 12 on 2026-10-14), which meets the "needed twice" bar. It's also cheap and reversible: a one-off shell loop, nothing outward-facing.
+
+Keep it small, a few lines in a shell loop or a short script, not a tool. I don't know your naming scheme or where the screenshots land, so the pattern is yours to pick. Test it on a copy of a few files first, since renames are easy to get wrong.

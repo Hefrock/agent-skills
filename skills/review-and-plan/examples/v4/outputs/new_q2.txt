@@ -1,0 +1,5 @@
+Not yet. Your demand log has one entry (2026-10-10, looking up the services.openssh.settings option), and that is a single lookup that was probably fine to do by hand. The rule is to build only once the need has shown up twice. Log it and wait.
+
+What would change my answer: a second, separate lookup need logged (not a repeat of the same question), or the manual route proving slow or error-prone. If you want a date for it, check the log again around 2026-11-30. If it has two or more distinct entries by then, build something small.
+
+Two things I don't know. I haven't checked whether a nixpkgs lookup tool already exists, such as an MCP server for NixOS options, or just search.nixos.org and `nixos-option`/`nix search` from the CLI. Those are the "use what exists" and "do it by hand" options, and they should be tried before anything custom. Also, this answer rests on the demand log alone. I read no code and no other material, and I had no subagent review it, so this is a solo judgment.

@@ -1,0 +1,17 @@
+Not as a new build. The repo already has this, so the question is whether to extend it.
+
+`mcp/obsidian-vault/test/retrieval-eval.mjs` already computes recall@5 and MRR for `search_notes` against a real vault, using hand-written queries with known-correct note paths. `knowledge-os/sitrep.md` says it has been run once: 20 queries, recall@5 0.950 (19/20), MRR 0.932. That matches your description of `kb eval`, a question set run against a knowledge base that reports retrieval quality. Building a second one would duplicate it.
+
+What the repo doesn't have yet is the before/after comparison. The sitrep calls the current result "a first baseline, not a before/after comparison." The script's header says that comparison is the real acceptance check, run once before a `search_notes` change and once after. That comparison is the only part of the idea that is still open.
+
+My recommendation is to do nothing new now. Next time you change `search_notes` (BM25F weights, the chunker, the warehouse path), run the existing script before and after and record both numbers. That is the first real use of the tool, and it costs a few minutes by hand.
+
+I would hold off on borrowing anything from DeepTutor until that comparison has been needed twice. Only one need has shown up so far, which is the baseline itself. A second run would show whether the script is awkward in practice, for example whether it needs a stored query file, a diff of two reports, or a CI hook. The header says it is deliberately kept out of CI because nobody else has the vault content, so a CI hook would be the wrong fix.
+
+Reversal condition: if two `search_notes` changes have gone through a hand-run before/after and the manual comparison was error-prone or skipped, add a small report-diff helper. Check this on 2026-12-03, or after the next two search changes, whichever comes first.
+
+What I couldn't check:
+- I haven't read DeepTutor's `kb eval`. I only have your one-line description, so I can't say whether it has features worth copying, such as graded relevance, answer-quality scoring or a fixture format.
+- I read only the first lines of `retrieval-eval.mjs`, plus the file list, the README headings and the sitrep row. I haven't seen its query file format or its output, so I can't say how easy a before/after comparison is today.
+- 20 queries on one vault is a thin baseline. A 19/20 recall figure can move a lot on a single query, so treat small differences between runs with caution.
+- This review was solo, with no independent subagent pass.

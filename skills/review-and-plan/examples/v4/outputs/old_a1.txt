@@ -1,0 +1,5 @@
+Agent-skills already has one. `mcp/obsidian-vault/test/retrieval-eval.mjs` reports recall@5 and MRR for `search_notes` against a real vault with a hand-written query set. `knowledge-os/sitrep.md` says it has been run once, giving recall@5 of 0.950 (19/20) and MRR of 0.932. So I wouldn't add a second one, and "inspired by `kb eval`" doesn't change that. The only thing I know about `kb eval` is your one-line description, and I haven't seen DeepTutor's code.
+
+The sitrep calls that run a first baseline, not a before/after comparison, and the script header says the before/after comparison is the real acceptance check. The next step is therefore to run the existing script before and after the next `search_notes` change, not to build anything new. If that comparison turns out to be awkward to run, log it. Revisit only when the need shows up a second time, for example wanting the eval in CI (it deliberately has no fixtures) or wanting it to cover the warehouse retrieval tools.
+
+This was a solo read of the excerpts, with no independent review and no check of the live repo state.

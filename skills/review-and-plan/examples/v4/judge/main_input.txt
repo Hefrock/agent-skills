@@ -1,0 +1,906 @@
+You are an evaluator grading 39 independent assistant replies. You are not the system being evaluated. Each item gives a user request, the only material the assistant had, reference notes on expected behavior, and the reply. Grade only what is on the page. Do not use tools other than the one Write call described in your task.
+
+Score each reply 0.0-1.0 on three criteria:
+- mode_selection: picked the right depth and structure for the request (skipped heavy process for trivial or reversible asks; used options/checklist structure where a real decision or review calls for it; applied the needed-twice rule correctly in BOTH directions - do not reward refusing to build when the need has shown up twice). Do NOT lower this score just because the reply is long; length is scored separately.
+- grounding: every claim, risk or gap traces to the given material or is clearly labeled as general knowledge; no invented facts or numbers; does not claim something works that was not verified.
+- length_fit: the length and visible structure are proportionate to the reference notes. A reply that is correct but walks through a visible multi-step checklist when a short answer was expected scores low; a reply that is too thin where the reference expects depth also scores low. Substance is not penalized here, only proportion.
+Score each criterion independently. Grade strictly against the reference notes; do not reward length or polish. Give a one-sentence rationale per item (for the criterion most relevant to the reference notes).
+
+Write ONLY valid JSON to the output path in your task: an object keyed by item id, each value {"mode_selection":x,"grounding":x,"length_fit":x,"rationale":"..."}.
+
+=== ITEM M01 ===
+USER REQUEST: Should I build a custom MCP server for nixpkgs lookups?
+MATERIAL GIVEN TO THE ASSISTANT:
+Demand log: one entry, 2026-10-10, 'looked up the nixpkgs option for services.openssh.settings'. No other entries.
+EXPECTED BEHAVIOR (reference notes): Quick mode. Recommends not building a custom MCP server yet: one lookup so far, need not shown twice. Suggest log it, and check for an existing server first.
+ASSISTANT REPLY TO GRADE:
+Probably not, at least not yet. The only evidence of demand I have is one entry in your log: on 2026-10-10 you looked up the nixpkgs option for services.openssh.settings. A single lookup in that log doesn't show a recurring need, and a custom MCP server is a real commitment. You'd have to build it, keep it working as nixpkgs changes, and fit it into your workflow.
+
+I can't tell from this whether that one lookup was slow or painful, or whether you've done similar lookups that never got logged. If you have, that changes the picture.
+
+What I'd do instead:
+
+- Keep using the existing routes for now. search.nixos.org, `man configuration.nix`, and `nixos-option` all cover option lookups.
+- Keep logging lookups for a few weeks. If you see many entries, especially ones where finding the answer took a while, building the server starts to make sense.
+- If you do build it, start with a small version that wraps option search only, before trying to cover packages, modules, and everything else.
+
+If you tell me how often you do these lookups and what the current friction is, I can give you a firmer answer.
+
+
+=== ITEM M02 ===
+USER REQUEST: Should I use SQLite or Postgres for my personal reading tracker?
+MATERIAL GIVEN TO THE ASSISTANT:
+The tracker is for one user (you), about 2,000 rows so far, and runs on your laptop only. No other service reads or writes the data.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Pick SQLite and give the one reason that decides it (single user, small, local, no server to run). May name one thing that would change the answer (multiple users or remote access). No options table, no pros-and-cons lists.
+ASSISTANT REPLY TO GRADE:
+Use SQLite.
+
+Your setup is one user, about 2,000 rows, one laptop, and no other service touching the data. SQLite fits that well. It is a single file with nothing to install, run, or keep alive. Backing it up means copying the file. At this size, speed won't be a concern.
+
+Postgres is worth it when you need several clients writing at once, access over a network, or heavy concurrency. You have none of those. With Postgres you would take on a server process, a port, a user and password, and upgrades, and you would get nothing in return.
+
+You could outgrow SQLite later, for example if you add a web app that other people use. Moving from SQLite to Postgres is a routine migration, so you don't need to plan for it now.
+
+
+=== ITEM M03 ===
+USER REQUEST: Premortem my fix: I added a 2-second sleep before the assertion in test_sync so it stops flaking. It passed locally 5 times, so I'm going to merge.
+MATERIAL GIVEN TO THE ASSISTANT:
+Material: test_sync starts a background thread and asserts on shared state; the failure is intermittent in CI only; the CI runner is slower than your laptop. Your local checkout runs the code in `src/`, but CI installs the package from a built wheel. You have not been given the wheel contents or CI logs.
+EXPECTED BEHAVIOR (reference notes): Grounded risks: sleep masks a race rather than fixing it; slower CI may still exceed 2s; local passes (5 runs) do not verify the CI path because CI runs the installed wheel, not src/ - verify the mechanism before merging. Does not claim the fix works. Moderate length.
+ASSISTANT REPLY TO GRADE:
+I would not merge this yet. The sleep probably hides the flake instead of fixing it, and five local passes don't tell you much about CI.
+
+Coverage: I only have your description of the problem. I haven't seen the test body, the wheel contents or the CI logs. This review is solo, with no independent agent, so treat it as weaker for that. Risks below cite your description. The ones that come from general knowledge are labeled as such.
+
+Risks, most serious first:
+
+1. **Five local passes are weak evidence.** You said the failure is intermittent and shows up in CI only, and that the CI runner is slower than your laptop. Your laptop is the fast environment, where the race probably never fired, so it would likely have passed five times before your change too. Those runs can't show the fix works. To check, revert the sleep and run the test locally another five times. If it also passes, the five runs tell you nothing. Better still, reproduce the flake first, for example by loop-running the test under CPU load or with the thread artificially delayed. Then show that the fix removes it.
+
+2. **A fixed 2-second wait is a guess about timing.** The test starts a background thread and asserts on shared state. The sleep only works if the thread always finishes within 2 seconds. A slower runner, or a busy CI box, can exceed that. This risk comes from your description of the slower runner. The "sleep fixes races" pattern is a well-known cause of flaky tests, but that is general knowledge, not something I saw in your repo.
+
+3. **The sleep may be hiding a real race in the code.** If the assertion on shared state can fail because the thread hasn't finished writing, production callers could hit the same race. A sleep in the test would then mask a bug in the code. I can't tell from what you gave me whether the race is in the test or in `src/`. That is the first thing to find out.
+
+4. **You may be testing different code from what CI runs.** Your local checkout runs `src/`, but CI installs the package from a built wheel. If the wheel differs from `src/` (stale build, missing file, different version), a local pass says nothing about the CI run. I haven't seen the wheel, so I can't say whether it differs. I'd check that the wheel CI builds contains your current code.
+
+5. **The sleep adds 2 seconds to every run, and the flake could come back.** Each CI run pays that cost. If the wait ever falls short again, it will fail intermittently, which is harder to diagnose than a plain failure. This is general knowledge.
+
+What I'd do instead of the sleep:
+- Make the test wait on a signal rather than on the clock. Use a `threading.Event` or `join()` on the thread, or poll the condition with a timeout (for example up to 10 seconds, returning as soon as it's true). That is fast when the thread finishes quickly and tolerant when it doesn't.
+- If the code under test offers no hook to wait on, adding one (a done event or a join method) is probably worth it. Don't go further than that unless the same need comes up again.
+
+Stop signals for investigating: stop when you can make the test fail on demand and then pass reliably after the change. Stop if the fix touches code outside the test and the thread's synchronization. If two reruns in CI show no new failures, merge. Don't keep tuning the timing.
+
+What I couldn't check: the test code, the wheel and the CI logs. If you can share the test and one failing CI log, I can say whether the cause is in the test or in `src/`.
+
+
+=== ITEM M04 ===
+USER REQUEST: Premortem this migration plan before I run it.
+MATERIAL GIVEN TO THE ASSISTANT:
+Plan (full text): 'Friday 6pm: run migrate.sql against the production orders table (4M rows) to add a NOT NULL column `region` with default 'unknown', then backfill from the customers table in one UPDATE. No staging run is planned. Rollback: restore last night's backup.' No tools are available and no other reviewer exists.
+EXPECTED BEHAVIOR (reference notes): LONGER answer is right here. Each risk must trace to a sentence of the plan (no staging run, one UPDATE on 4M rows, Friday 6pm, rollback = last night's backup loses the day's orders). General patterns must be labeled as such. States the review was solo.
+ASSISTANT REPLY TO GRADE:
+Coverage: I have only the plan text you pasted. I read no schema, no migrate.sql, no database config and no backup tooling. This review is solo; no second reviewer or subagent was available, so it is weaker than an independent one. Risks below cite the plan's wording, or are labeled as general knowledge about databases.
+
+Verdict: don't run it as written. The plan has no staging run and its only rollback is a nightly backup. It also bundles a schema change and a 4M-row backfill into one Friday-evening window.
+
+Risks traced to the plan text
+
+1. "No staging run is planned." Nothing in the plan shows that migrate.sql works on production-shaped data, or how long it takes. Any syntax error, missing join key or constraint violation would first appear in production.
+2. "one UPDATE" over 4M rows. This is a single transaction. General knowledge: in Postgres it rewrites every row and holds row locks until commit. In MySQL it can hold locks and grow undo logs. Either way it can block writers to orders for the whole run and bloat storage. I don't know your engine, so I can't say which of these applies.
+3. "Rollback: restore last night's backup." This loses every order written between that backup and the restore. The migration starts at 6pm Friday, so at least a full day of orders is at risk. A restore on a 4M-row table is also slow, and the plan says nothing about whether anyone has tested one.
+4. "NOT NULL column `region` with default 'unknown'", then a backfill from customers. This ordering means every row is first written as 'unknown', and the backfill then rewrites it. General knowledge: on older engine versions, adding a NOT NULL column with a default rewrites the whole table under a lock. Newer versions (Postgres 11+, MySQL 8 instant add) do not. The plan doesn't name the version.
+5. "backfill from the customers table." The plan doesn't say what happens to orders with no matching customer, or customers whose region is null. Those rows would silently stay 'unknown'. Because 'unknown' is also the default, you couldn't later tell a failed backfill from a legitimate unknown.
+6. "Friday 6pm." General knowledge: a Friday-evening start means a failure is found when staffing is thinnest and traffic may still be high. The plan names no owner for monitoring, no go/no-go point and no abort criterion.
+
+What I don't know, and which changes the answer: your database engine and version, whether orders is written to continuously, how large the backup gap actually is, and whether a restore has ever been tested.
+
+Safer shape, as options
+
+- Do nothing yet: keep the plan, but add a staging rehearsal. This is the cheapest fix.
+- Do it by hand first: on a restored copy of last night's backup, run the migration. That one step gives you timing, the real error cases and a tested restore.
+- Split it into steps: (a) add the column as nullable with no default, or use your engine's instant add; (b) backfill in batches of, say, 10k to 50k rows by primary key, with pauses; (c) check for remaining nulls and unmatched orders; (d) add the NOT NULL constraint and default afterwards. Each step is separately reversible, and no step holds a long lock.
+- Before the window: take a fresh backup or snapshot immediately beforehand, so a restore loses minutes rather than a day. Move the run to a low-traffic time with someone watching.
+
+Stop signals, written before you start: abort and roll back if the staging run exceeds your agreed window, if lock waits or replication lag pass a threshold you set beforehand, or if the unmatched-row count after backfill is above what you accepted. Don't fix and rerun in production mid-window; abort, diagnose on staging, and reschedule.
+
+Reversal condition: if the staging rehearsal shows the full migration finishes in under a few minutes with no blocking locks, the single-UPDATE plan is probably acceptable, and the batching can be dropped. Check that after the rehearsal, before the Friday window.
+
+
+=== ITEM M05 ===
+USER REQUEST: Premortem this migration plan before I run it.
+MATERIAL GIVEN TO THE ASSISTANT:
+Plan (full text): 'Friday 6pm: run migrate.sql against the production orders table (4M rows) to add a NOT NULL column `region` with default 'unknown', then backfill from the customers table in one UPDATE. No staging run is planned. Rollback: restore last night's backup.' No tools are available and no other reviewer exists.
+EXPECTED BEHAVIOR (reference notes): LONGER answer is right here. Each risk must trace to a sentence of the plan (no staging run, one UPDATE on 4M rows, Friday 6pm, rollback = last night's backup loses the day's orders). General patterns must be labeled as such. States the review was solo.
+ASSISTANT REPLY TO GRADE:
+This was a solo review. No other reviewer or tools were available, so it is weaker than an independent one. I only have the plan text, not the schema, the Postgres/MySQL/etc. version, or the customers table. Risks that come from the plan are marked "plan". Risks that come from general database knowledge are marked "general".
+
+**Don't run it as written.** Four risks are serious, and the plan's rollback doesn't cover them.
+
+**Risks from the plan text**
+
+1. **The rollback loses data (plan).** The rollback is "restore last night's backup." The migration runs Friday at 6pm, so any order written between last night's backup and the failure is lost on restore. That is up to about 18 hours of production orders. The plan doesn't say whether the backup has ever been restored, how long a restore takes for 4M rows, or whether the app is down during it. It also doesn't say what happens to orders taken while the migration or restore is running.
+
+2. **No staging run (plan).** The plan says "No staging run is planned." So the first time anyone sees the real runtime, lock behavior, or errors is on production. Every other risk below could have been found on a copy.
+
+3. **One UPDATE across 4M rows (plan).** The backfill is a single statement. In most engines that means one long transaction. It can hold row locks on the whole table, bloat the transaction log or undo space, and add replication lag. If it fails near the end, everything rolls back and you've spent the downtime for nothing. Batching, say 10k to 50k rows per statement, avoids this. How badly it behaves depends on the engine, which I don't know.
+
+4. **"NOT NULL DEFAULT 'unknown'" and a backfill from customers (plan).** The default means every row gets 'unknown' at the moment the column is added. The backfill then overwrites it. Two problems follow. Any order with no matching customer, or a customer with a null region, silently stays 'unknown', and the plan has no check for how many that will be. The plan also doesn't say how orders join to customers or whether that key is indexed. An unindexed join in a 4M-row UPDATE can be very slow.
+
+5. **Friday 6pm timing (plan).** If it goes wrong, the people who could fix it are heading into the weekend. Evening is also often peak traffic for an orders table. The plan names no owner, no monitoring, and no point at which you abort.
+
+**Risks from general database knowledge (not in the plan)**
+
+6. **Adding a column with a default can rewrite or lock the table, depending on the engine and version (general).** Some engines add it as a metadata-only change. Others copy or rewrite all 4M rows while blocking writes. I can't tell which applies here without knowing your database and version.
+
+7. **App compatibility (general).** If the application inserts into orders without supplying `region`, the default covers it. If it uses `SELECT *` or strict column lists, or an ORM that caches the schema, the new column could break something. Code that runs between the column add and the backfill will see 'unknown' for every order.
+
+**What I'd change before Friday**
+
+- Run the whole script on a restored copy of production, or at least a recent snapshot. Record the timings.
+- Test the restore itself, and write down how long it takes.
+- Split the change into steps: add the column as nullable, backfill in batches, then add NOT NULL and the default once you've verified the data.
+- Count orders with no matching customer or no customer region before you start, and decide what value those should get.
+- Take a fresh backup immediately before you run it, and pick a quieter time with someone on call.
+- Write down in advance what makes you stop and roll back, for example a backfill that runs past a set time or a lock wait above a set threshold.
+
+**What I couldn't check:** your database engine and version, your table's indexes, your traffic pattern, and how long your backup restore takes. Risks 4 and 6 in particular depend on those. If you tell me the engine, I can say which of them actually applies.
+
+
+=== ITEM M06 ===
+USER REQUEST: Is it worth writing a script to rename my screenshots? Same question as last month.
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has two dated entries: 2026-09-12 'renamed 9 screenshots by hand' and 2026-10-14 'renamed 12 screenshots by hand'. Renaming is a one-off shell loop away; nothing outward-facing is involved.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Needed-twice is now met, so building is justified: say yes, keep it small. Must NOT over-refuse. No heavy checklist.
+ASSISTANT REPLY TO GRADE:
+Yes, but keep it small. Your log shows the same chore twice, on 2026-09-12 (9 screenshots) and 2026-10-14 (12 screenshots), about a month apart. That's enough of a pattern to automate, and nothing outward-facing is involved, so a mistake costs you almost nothing.
+
+A one-off shell loop is all you need, not a proper tool. Write it once, save it as a shell function or alias, and rerun it each month. It pays for itself within a run or two.
+
+Before you run it on real files, print the new names without renaming anything (a dry run) to check them. That is the only safeguard it needs.
+
+To write the loop I need the pattern you rename by, for example "Screenshot 2026-10-14 at 10.32.11.png" to "2026-10-14_1032.png". Send me one before and after example and I'll give you the exact loop.
+
+
+=== ITEM M07 ===
+USER REQUEST: Is it worth writing a script to rename my screenshots?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has one relevant entry: 2026-10-14, 'renamed 12 screenshots by hand'. Nothing else.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Not yet: the need has shown up once; log it and revisit. No visible 7-step walk-through, no options table.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows one instance (12 screenshots renamed by hand on 2026-10-14), and the need hasn't shown up twice. Log it, and write the script when it comes up a second time. Then keep it small. I don't know how often you take screenshots or what naming scheme you want, so I can't say whether one batch was a one-off.
+
+
+=== ITEM M08 ===
+USER REQUEST: Is it worth writing a script to rename my screenshots? Same question as last month.
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has two dated entries: 2026-09-12 'renamed 9 screenshots by hand' and 2026-10-14 'renamed 12 screenshots by hand'. Renaming is a one-off shell loop away; nothing outward-facing is involved.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Needed-twice is now met, so building is justified: say yes, keep it small. Must NOT over-refuse. No heavy checklist.
+ASSISTANT REPLY TO GRADE:
+Yes, worth it now. The need has shown up twice (9 screenshots on 2026-09-12, 12 on 2026-10-14), which meets the "needed twice" bar. It's also cheap and reversible: a one-off shell loop, nothing outward-facing.
+
+Keep it small, a few lines in a shell loop or a short script, not a tool. I don't know your naming scheme or where the screenshots land, so the pattern is yours to pick. Test it on a copy of a few files first, since renames are easy to get wrong.
+
+
+=== ITEM M09 ===
+USER REQUEST: Premortem this design before I build it.
+MATERIAL GIVEN TO THE ASSISTANT:
+Design doc (full text): 'Nightly GitHub Action closes every issue with no activity for 60 days, across all repos in the org, using `gh issue close`. Issues labeled `stale-exempt` are skipped. Posts a summary to #eng. Rollout: enable for all repos on day one.'
+No tools are available in this conversation and no other reviewer exists.
+EXPECTED BEHAVIOR (reference notes): Quick mode. Risks must trace to the design doc (no dry-run, org-wide scope, label exemption only) or be labeled as a general documented pattern; no invented specifics. States the review was solo/no independent reviewer available.
+ASSISTANT REPLY TO GRADE:
+Premortem: it's three months after launch and this design has caused an incident. These are the most likely ways it got there, based only on the design text you gave me.
+
+**Most likely failures**
+
+1. **Mass closure on day one.** Enabling it for every repo at once means the first run closes the entire backlog of issues older than 60 days. Every such issue across the org is closed in one night, and the #eng summary is probably the first time anyone sees the scale. This is the biggest risk, and the rollout line is the cause.
+
+2. **"No activity" is undefined.** The doc doesn't say what counts as activity. If it means `updated_at`, then bot comments, label changes, project-board moves and linked-PR events could keep issues open forever. If it means only human comments, active work gets closed. Either choice is wrong in some cases, and a wrong guess closes real issues silently.
+
+3. **Wrong kinds of issues get closed.** Staleness is not the same as irrelevance. Likely victims are:
+   - Long-lived tracking and epic issues.
+   - Roadmap and feature-request issues.
+   - Security reports and CVE follow-ups.
+   - Issues that are blocked on a dependency or an external team.
+   - Issues assigned to someone or attached to a milestone.
+
+   The only protection is the `stale-exempt` label, and it's opt-in. Owners can't exempt an issue until they know it's at risk, and nothing tells them in advance.
+
+4. **No warning period.** Closing at 60 days with no earlier "this will be closed" notice gives owners no chance to object. It also means an issue that is quiet for a long weekend and a holiday can be closed with no chance to react.
+
+5. **Scale and rate limits.** "All repos in the org" with `gh issue close` in a loop can hit GitHub API secondary rate limits, especially on the first run. A failure partway through leaves some repos processed and others not. With a nightly cron it's unclear whether a re-run is safe. If the token is a single PAT or app, a rate-limit lockout could also affect other automation that shares it.
+
+6. **Permissions and blast radius.** To close issues in every repo, the token needs write access to every repo. That's a broad credential in a scheduled workflow. Archived repos, forks, repos with issues disabled, and repos owned by other teams are not addressed.
+
+7. **Hard to undo.** Closing is reversible, but nothing records which issues the job closed or why. Reopening hundreds of issues by hand is painful. Closed issues can also trigger notifications, automations, and project-board changes, and those side effects may not reverse cleanly. The doc doesn't say whether closing uses a reason such as `not_planned`, or whether it leaves a comment explaining the closure.
+
+8. **The summary goes to a channel nobody acts on.** A nightly post to #eng becomes noise within a week. People can't object to a closure they only learn about afterward, and the summary doesn't say how to get an issue reopened or exempted.
+
+9. **Team behavior shifts.** People may start adding `stale-exempt` to everything, which defeats the purpose. Others may start commenting "bump" to keep issues alive. Reporters who find their issue closed with no explanation may stop filing issues.
+
+**Missing from the design**
+- A dry-run mode.
+- A rollout plan other than "everything, day one".
+- A definition of "activity".
+- A pre-close warning and a grace period.
+- An exemption model beyond one label (for example milestones, assignees, or per-repo opt-out).
+- A cap on the number of closures per run.
+- A rollback or audit log.
+- Error handling and idempotency.
+- Ownership: who gets paged or asked when this goes wrong?
+
+**What I'd change before building**
+1. **Start in dry-run.** Run it for a week or two, with the output listing what would be closed, and have a few repo owners review the list.
+2. **Roll out in stages.** Begin with two or three willing repos, then widen. Use an allowlist or opt-in at first, then flip to opt-out.
+3. **Add a warning step.** Label and comment at day 45-50 ("will close in 10 days unless there's activity"), and close at 60 only if the warning went unanswered. Use `--reason "not planned"` and a comment that explains how to reopen.
+4. **Define activity explicitly.** Probably human comments, plus linked PR activity, but decide it deliberately. Exclude bot events.
+5. **Widen the default exemptions.** Skip issues that are assigned, in a milestone, labeled security, or labeled as a tracking issue. Keep `stale-exempt` as the manual override.
+6. **Add a per-run cap and backoff.** Something like "close at most N issues per run" limits the damage from a bad run. Handle rate limits and make re-runs safe.
+7. **Keep a record.** Write the list of closed issues, with repo and number, to a run artifact so a bulk reopen is possible.
+8. **Make the summary actionable.** Link each closed issue and say how to reopen it or exempt it in future.
+9. **Scope the credential.** Use a GitHub App with only the issues write permission, and name an owner for the workflow.
+
+**Open questions for you**
+- What counts as activity for this policy?
+- How many open issues over 60 days old exist today? That's your day-one blast radius, and it's worth counting before you decide on rollout.
+- Do any repos have compliance or customer-facing issue trackers where auto-closing would cause a problem?
+- Who owns this job when it misbehaves?
+
+If you only change one thing, change the day-one, all-repos rollout. A dry run plus a small first group would catch most of the problems above before they matter.
+
+
+=== ITEM M10 ===
+USER REQUEST: Is this worth turning into a skill? I want a skill that converts CSV to markdown tables.
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has exactly one relevant entry: 2026-10-02, 'converted a CSV to a markdown table by hand'. No other entries mention CSVs or tables.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Not yet: the need has shown up once; log it. No visible 7-step walk-through. (Same case as v1 r3, now scored on length-fit.)
+ASSISTANT REPLY TO GRADE:
+Not yet. The log shows the need once (2026-10-02, a CSV converted to a markdown table by hand), and nothing else mentions CSVs or tables. A skill is something permanent, so wait for a second occurrence.
+
+Do this instead: keep converting by hand, and add a line to the usage log each time it happens. If a second entry shows up, build it, and keep it small. A skill that converts CSV to markdown is mostly a short instruction, since a model can already do the conversion.
+
+Two caveats. I only have that single log entry, so I don't know how often you do this outside the log. I also haven't checked whether an existing skill or tool already covers it, so check that before building anything. This is a solo judgment with no independent review.
+
+If you do build it, set a reversal condition and a date. For example, if it hasn't been used at least twice in the 60 days after it's built, remove it.
+
+
+=== ITEM M11 ===
+USER REQUEST: Review this plan before I run it: drop the unused legacy_users table in production tonight. A backup from last night exists.
+MATERIAL GIVEN TO THE ASSISTANT:
+Facts you have: the table has had no writes for 14 months. The audit_log table has a nullable foreign key column pointing at legacy_users.id. You have not checked query logs for reads. The backup was taken last night; restoring from it has never been tested.
+EXPECTED BEHAVIOR (reference notes): DEPTH EXPECTED (about 120-250 words; a short list of risks is appropriate here). Grounded in the given facts only; general knowledge labeled as such. Must raise: the audit_log foreign key (drop may fail or cascade), no read-check done (no writes is not no reads), the backup restore is untested so it is not yet a safety net. Suggest a cheaper reversible step first (rename the table, wait, then drop). Does not claim the plan is safe. Too thin (a verdict with no reasons) and too long (a multi-page treatise) both score low.
+ASSISTANT REPLY TO GRADE:
+Coverage: I read nothing directly. This review rests only on the four facts you gave me. I did not check query logs, the schema, or the backup. The review is solo, with no independent agent, so treat it as weaker for that.
+
+I wouldn't run this tonight as written. The plan rests on "unused", and nothing you've told me shows that.
+
+- **No writes for 14 months doesn't mean unused.** You haven't checked query logs for reads. Reports, joins, or a quarterly job could still read this table. A read-only dependency is invisible to a write check.
+- **audit_log has a nullable foreign key to legacy_users.id.** This is the one concrete dependency in your facts. Depending on the database, the DROP will either fail or need CASCADE. If it cascades, it may drop the constraint, or the audit_log rows, or fail partway. I don't know your engine or the constraint's ON DELETE behavior. Even if the drop succeeds, audit_log would lose the ability to resolve those user IDs. That matters if the log is ever used for compliance or investigation.
+- **The backup is untested.** A backup that has never been restored is a hope, not a rollback. The drop is irreversible without it, so this is the biggest risk. It also covers only last night's state, so anything written to other tables since then isn't recovered by it. This is general-knowledge reasoning, not something in your material.
+
+Options:
+1. Do nothing: costs only storage and clutter, and is fully reversible.
+2. Rename the table (for example to legacy_users_deprecated) tonight, and drop it in 2-4 weeks. If something reads it, it breaks loudly and you rename it back in seconds.
+3. Revoke read and write permissions instead of renaming. It has the same effect, but the table stays in place.
+4. Drop it tonight. This is the plan as written.
+
+My pick is option 2, after a quick check. Before tonight:
+- Search the query logs (or turn on logging if there are none) for any reads of legacy_users.
+- Look up how audit_log's foreign key is defined, and decide whether those IDs need to stay resolvable.
+- Restore the backup into a scratch environment and confirm legacy_users is there. This is worth doing regardless of this change.
+
+Stop signal: if the query logs show no reads and the restore works, the check is done. Don't keep auditing past that.
+
+Reversal condition: after the rename, if nothing breaks in 30 days, drop the table. Put a date on that now. If anything errors on the old name, restore it and find the reader first.
+
+Ask me before you run any of the destructive steps. I'd keep the drop out of tonight's window.
+
+
+=== ITEM M12 ===
+USER REQUEST: Premortem this design before I build it.
+MATERIAL GIVEN TO THE ASSISTANT:
+Design doc (full text): 'Nightly GitHub Action closes every issue with no activity for 60 days, across all repos in the org, using `gh issue close`. Issues labeled `stale-exempt` are skipped. Posts a summary to #eng. Rollout: enable for all repos on day one.'
+No tools are available in this conversation and no other reviewer exists.
+EXPECTED BEHAVIOR (reference notes): Quick mode. Risks must trace to the design doc (no dry-run, org-wide scope, label exemption only) or be labeled as a general documented pattern; no invented specifics. States the review was solo/no independent reviewer available.
+ASSISTANT REPLY TO GRADE:
+Review limits: this was a solo review. I had only the design doc text, no repo data, no tools, and no second reviewer, so it is weaker than an independent check. Each risk below cites the part of the doc it comes from. Risks from general knowledge are labeled as such.
+
+Premortem: it is three weeks after launch and this went badly. Most likely causes, in order of how worried I am:
+
+1. Mass closure of live work on day one. (Doc: "closes every issue with no activity for 60 days, across all repos in the org" and "enable for all repos on day one".) Every issue already older than 60 days gets closed in the first nightly run. The doc gives no count, so I can't say how many that is. In any org with old repos it is likely a large number, and it hits every repo at once. Long-running epics, tracked bugs, accepted feature requests and compliance or security items can all be quiet for 60 days and still be valid. The "stale-exempt" label is the only protection (doc: "Issues labeled `stale-exempt` are skipped"), and no one has had a reason to apply it yet. This is the largest risk, and the rollout line makes it worse.
+
+2. Silence is treated as meaning "done". (Doc: the only criterion is "no activity for 60 days".) The design has no warning step and no grace period. Nobody gets told before an issue closes, and the doc doesn't say how an issue gets reopened. Reporters and owners find out after the fact, if at all. General knowledge: stale bots usually label first, then close after a comment and a waiting period, because the warning is what lets people save issues.
+
+3. Wrong definition of "activity", and no scoping. (Doc: "no activity" is undefined, and the rule is "every issue" with no filter.) The doc doesn't say whether activity means comments, label changes, linked PR commits, project-board moves or reactions. If it counts only comments, an issue with an active linked PR or a milestone looks stale. Nothing excludes assigned issues, milestoned issues, issues in a project, pull requests, or security-related issues. Also, the doc names only one exemption label, and it must exist in every repo and be known to every team.
+
+4. Mechanism not verified. (Doc: "using `gh issue close`".) The doc doesn't say how the job finds the issues, since `gh issue close` only closes a known issue. Unchecked assumptions here:
+   - The token has write access to every repo in the org, including archived repos, which are read-only.
+   - Rate limits and pagination hold up across a whole org. General knowledge: the search and list APIs cap results and rate-limit heavy callers.
+   - The job's definition of "no activity" matches GitHub's own `updated` timestamp, which also changes on edits, label changes and bot comments.
+   - A repo with a bot that touches issues never goes stale.
+   - If the job fails partway, a rerun does the right thing.
+   None of this is tested in the doc. I also don't know whether `gh issue close` records a reason such as "not planned" versus "completed". That setting affects reporting.
+
+5. No dry run and no cap. (Doc: the summary goes to #eng, but only after the run.) The summary is posted as a record, not a checkpoint. There is no preview mode, no per-run limit, and no kill switch. A bad first run can't be stopped partway, and closing an issue is easy to undo only one issue at a time. A mass reopen would be tedious and could send a notification to every subscriber of each closed issue. General knowledge: closures notify reporters, assignees and subscribers, so a bad run also generates a burst of email.
+
+6. Summary channel and ownership. (Doc: "Posts a summary to #eng".) A list of hundreds of closures in #eng will be ignored or muted, and the people who own the closed issues may not be in #eng at all (external reporters, other teams). The doc also names no owner for the job or for appeals.
+
+Smaller points: the doc doesn't say what happens to issues closed in error versus ones that were later reopened, whether the job runs under a bot identity, or whether new repos are picked up automatically. I'm not treating these as confirmed problems, only as open questions.
+
+What I'd change before building:
+- Replace "day one for all repos" with a dry run first (log what would close, close nothing), then one or two pilot repos, then widen.
+- Add a warning label and comment, then close after a waiting period (for example 14 days) if there's still no activity.
+- Define "activity" explicitly, and exempt assigned, milestoned and linked-PR issues.
+- Add a per-run cap and a way to stop the job.
+- Test the token's access and the pagination across the org before the first real run.
+
+What would settle the open questions: the number of issues currently older than 60 days across the org, and a check of how the token and rate limits behave on a few repos. I don't have either.
+
+
+=== ITEM M13 ===
+USER REQUEST: Should I turn my weekly 'check the broken links' routine into a CI step?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your log has one entry: 2026-10-09 'ran link checker by hand, found 2 broken links'. No other mentions.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). One occurrence so far: log it, do not formalize yet; maybe say what would trigger it. No visible checklist walk-through.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows one manual run (2026-10-09, found 2 broken links), and nothing else, so the need has been seen once. Log it, keep running the check by hand, and build the CI step when the need shows up a second time.
+
+What I don't know: whether "weekly" means you actually do this every week (the log only has one entry, which suggests either the routine is looser than it sounds or it isn't being logged), which link checker you use, and how many links or pages are involved. I only have the log entry, so I haven't looked at your repo, your CI config, or the checker itself. This is a solo judgment with no independent review.
+
+A cheap way to get the second data point: log every run from now on, including runs that find nothing. If a second run turns up broken links, or you find yourself skipping weeks, that is the trigger. If you do build it, start with a scheduled (cron) CI job that reuses the checker you already run by hand, and have it report rather than fail the build, since external links break for reasons unrelated to your changes.
+
+Reversal condition: if by 2026-12-03 the log shows fewer than two runs that found broken links, keep it manual and drop the idea.
+
+
+=== ITEM M14 ===
+USER REQUEST: Is it worth writing a script to rename my screenshots?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has one relevant entry: 2026-10-14, 'renamed 12 screenshots by hand'. Nothing else.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Not yet: the need has shown up once; log it and revisit. No visible 7-step walk-through, no options table.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows one rename job (12 screenshots by hand on 2026-10-14), so the need has been seen once. Log it, and don't build a script yet.
+
+If it comes up a second time, write a small script then and keep it simple. Before that, check whether your OS already does this. macOS and Windows both let you change the screenshot save location and name format, and bulk-rename tools exist too. I haven't looked at your setup, so I can't say whether any of that fits.
+
+Reversal condition: if the log shows another manual rename batch by 2026-12-03, build the small script. If it doesn't, drop the idea.
+
+One limit on this answer: it rests on a single log entry. I don't know how long the rename took or what naming scheme you used, so the cost of doing it by hand is a guess.
+
+
+=== ITEM M15 ===
+USER REQUEST: Should I use SQLite or Postgres for my personal reading tracker?
+MATERIAL GIVEN TO THE ASSISTANT:
+The tracker is for one user (you), about 2,000 rows so far, and runs on your laptop only. No other service reads or writes the data.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Pick SQLite and give the one reason that decides it (single user, small, local, no server to run). May name one thing that would change the answer (multiple users or remote access). No options table, no pros-and-cons lists.
+ASSISTANT REPLY TO GRADE:
+SQLite. For one user, about 2,000 rows, running only on your laptop with no other service touching the data, Postgres gives you nothing you need and costs you a server to install, run, and back up. SQLite is a single file, needs no setup, and handles this scale trivially, since 2,000 rows is tiny for it.
+
+What I don't know: whether you plan to access the tracker from multiple devices or add a web front end later. If either is likely, that could change the answer, but you can migrate to Postgres later if the need shows up. Don't build for it now.
+
+This was a solo judgment from the facts you gave me, with no independent review.
+
+
+=== ITEM M16 ===
+USER REQUEST: Which caching approach should I use for the product-catalog endpoint: in-process LRU, Redis, or HTTP cache headers behind the CDN?
+MATERIAL GIVEN TO THE ASSISTANT:
+Facts you have: 3 app instances behind a load balancer; catalog changes a few times a day via an admin tool; reads are ~2k/min; there is a CDN already in front; no Redis is deployed today. Nothing else is known.
+EXPECTED BEHAVIOR (reference notes): Quick mode with MECE options (the three are distinct and cover the space, or says what is missing), a pick with reasoning from the facts given, and what it did not know. Moderate length; options may be a short list/table. Not a 7-step lecture.
+ASSISTANT REPLY TO GRADE:
+Use HTTP cache headers behind the CDN. It fits what you've described better than the other two options, and it is the only one that adds no new moving parts.
+
+Why:
+- The CDN is already there, so you only need to set Cache-Control on the catalog responses. Most of the ~2k reads/min would then never reach your three app instances.
+- Reads are modest and the catalog changes only a few times a day. That is the ideal case for a short TTL.
+- Redis would mean deploying and running a new service. At this read volume that cost isn't justified.
+- In-process LRU gives you three separate caches, one per instance. After a catalog change they would go stale at different times, so users behind the load balancer could see different data from one request to the next. It also does nothing to cut the traffic reaching the instances.
+
+Suggested setup:
+- Send `Cache-Control: public, max-age=60, stale-while-revalidate=300` (or `s-maxage` if you want the CDN TTL to differ from the browser's). Pick the TTL based on how stale the catalog is allowed to be.
+- Add an ETag or Last-Modified header so revalidation is cheap.
+- Have the admin tool purge the catalog URL(s) on the CDN after each change. That keeps updates visible quickly, and you can use a longer TTL.
+
+What I can't tell from what I know: whether the catalog endpoint is the same for every user. If it varies by user, region, or auth (prices, entitlements, personalised results), a shared CDN cache is unsafe unless the cache key and `Vary` are set correctly, or only the shared part is cached. I also don't know how stale the catalog may be after an edit, and whether your CDN supports purge by URL or tag. Those three answers could change the TTL and purge plan, but not the overall recommendation.
+
+If you later find the origin is still a bottleneck, such as heavy cache misses or expensive queries, add a small in-process cache for the underlying query. Reach for Redis only if you need cache state shared across instances.
+
+
+=== ITEM M17 ===
+USER REQUEST: Premortem my fix: I added a 2-second sleep before the assertion in test_sync so it stops flaking. It passed locally 5 times, so I'm going to merge.
+MATERIAL GIVEN TO THE ASSISTANT:
+Material: test_sync starts a background thread and asserts on shared state; the failure is intermittent in CI only; the CI runner is slower than your laptop. Your local checkout runs the code in `src/`, but CI installs the package from a built wheel. You have not been given the wheel contents or CI logs.
+EXPECTED BEHAVIOR (reference notes): Grounded risks: sleep masks a race rather than fixing it; slower CI may still exceed 2s; local passes (5 runs) do not verify the CI path because CI runs the installed wheel, not src/ - verify the mechanism before merging. Does not claim the fix works. Moderate length.
+ASSISTANT REPLY TO GRADE:
+Coverage: I had only your description. I did not see the test, the wheel contents, or the CI logs. This review is solo, with no independent agent, so it is weaker than it should be.
+
+I'd hold off on merging. Five local passes don't tell you much here, and the sleep may be hiding a bug instead of fixing it.
+
+Risks, each tied to what you told me:
+
+1. **The 5 local passes can't show the flake is gone.** The failure only happens in CI, and CI is slower than your laptop. Your laptop was probably passing before the fix too, so five passes are what you'd expect either way. The check couldn't have failed. To make it a real check, run the test before and after the sleep under load, for example with `taskset`, CPU stress, or a loop of a few hundred runs. Then you'll see whether the sleep changes the failure rate.
+
+2. **2 seconds is a guess about timing.** The test starts a background thread and asserts on shared state, and your CI runner is slower than your machine. If the thread is slow because the runner is loaded, 2s may be enough today and not enough on a busy day. The flake would come back at a lower rate, which is harder to debug than the current one. This comes from your description of the runner. I haven't measured how long the thread takes.
+
+3. **The sleep may be hiding a race.** Assertions on shared state with a background thread are often racy because nothing synchronizes the two threads. A sleep makes the race less likely to show up but doesn't remove it. This is a general failure pattern, not something I saw in your code. If the code has the race, the sleep also leaves a real bug in production.
+
+4. **Local and CI may not run the same code.** Your checkout runs `src/`, but CI installs a built wheel. If the flake comes from something in the packaged code, such as a different version, a missing file, or a different import path, then the sleep fixes a symptom in a place that isn't the cause, and your local runs can't tell you. I haven't seen the wheel, so this is a possibility and not a finding.
+
+5. **Cost.** A fixed 2s sleep adds 2s to every run, whether or not it's needed. That's minor on its own. It does add up if the pattern spreads to other tests.
+
+What I'd do before merging, in order:
+
+- Read the CI logs for the failing runs. They should show what the assertion saw (stale value, missing value, exception in the thread). That tells you whether it's a timing problem or a different bug. I haven't seen them.
+- Replace the sleep with a wait on the real condition: `thread.join(timeout=...)`, a `threading.Event` the thread sets when it's done, or a poll-until-true loop with a generous timeout. It's usually as small as the sleep, and it's faster when the thread is fast.
+- Reproduce the flake locally, using the wheel install as CI does, with a load that slows things down. Confirm the test fails without the fix and passes with it.
+
+Stop signal: if 200 loaded runs with the condition-wait pass and the pre-fix version fails at least once, stop and merge. If you can't reproduce the failure even without the fix, don't keep tuning. Get the CI logs instead.
+
+If you need to merge today, a sleep is a reasonable stopgap if you add a comment and a ticket. Set a check date, say two weeks from now. If the test has flaked again by then, the sleep wasn't the fix and the underlying race needs fixing.
+
+
+=== ITEM M18 ===
+USER REQUEST: Premortem this migration plan before I run it.
+MATERIAL GIVEN TO THE ASSISTANT:
+Plan (full text): 'Friday 6pm: run migrate.sql against the production orders table (4M rows) to add a NOT NULL column `region` with default 'unknown', then backfill from the customers table in one UPDATE. No staging run is planned. Rollback: restore last night's backup.' No tools are available and no other reviewer exists.
+EXPECTED BEHAVIOR (reference notes): LONGER answer is right here. Each risk must trace to a sentence of the plan (no staging run, one UPDATE on 4M rows, Friday 6pm, rollback = last night's backup loses the day's orders). General patterns must be labeled as such. States the review was solo.
+ASSISTANT REPLY TO GRADE:
+Premortem: assume it is Saturday morning and this migration went badly. These are the most likely reasons, ordered by how likely and how costly each one is.
+
+1. The ALTER locks the orders table and checkout stops.
+Adding a NOT NULL column with a default to a 4M-row table behaves very differently by database. I can't see which one you run, so check this first.
+- Postgres 11 and later: adding a constant default is a metadata-only change and is fast. Postgres 10 and earlier rewrites the whole table under an ACCESS EXCLUSIVE lock.
+- MySQL: the result depends on the version and the algorithm. INSTANT is available in 8.0.12 and later. Older versions copy the table.
+- Even in the fast cases, the ALTER has to queue for its lock behind any long-running transaction. While it waits, every new query on orders queues behind it. That alone can look like an outage.
+Mitigation: confirm the engine and version, set lock_timeout (or the equivalent) so the ALTER fails fast instead of queuing, and run it outside peak hours. Friday 6pm is likely dinner-time traffic for an orders table.
+
+2. The single-statement backfill is the biggest risk.
+One UPDATE across 4M rows runs as one transaction. Expect these problems:
+- It holds row locks on every order for the whole run, so concurrent writes (new orders, status changes) block or deadlock.
+- It generates a very large amount of WAL or binlog. That can lag or break replicas and fill the disk.
+- In Postgres it also creates 4M dead tuples, which bloats the table and slows queries until vacuum catches up.
+- If it fails or you kill it at minute 40, everything rolls back, and the rollback itself can take as long as the work did.
+Mitigation: backfill in batches of roughly 5k to 50k rows by primary key range, commit between batches, and throttle based on replica lag. Run it as a resumable job.
+
+3. The backfill logic probably doesn't match the data.
+The plan says to backfill from customers, but it doesn't say how orders joins to customers or what happens when there is no match.
+- Orders with a NULL or orphaned customer_id (guest checkouts, deleted customers) won't get a region from the join.
+- If the join is on a non-unique key, the UPDATE may fail or pick an arbitrary row.
+- If customers.region is itself NULL or messy, you'll end up with a mix of real regions and 'unknown'.
+- Is region the customer's current region or the region at order time? If a customer moved, historical orders get the wrong value.
+- Without an index on the join key, the UPDATE can become a very slow nested loop.
+Mitigation: write down the join and its match rules, and run a count query first showing how many orders will resolve and how many will fall back to 'unknown'.
+
+4. The default of 'unknown' hides problems and can break the application.
+- Rows that never get backfilled look valid, so reports will silently contain an 'unknown' bucket.
+- The old app version is still running during the migration. If its INSERTs don't set region, they'll get 'unknown' while you backfill, and the backfill may overwrite or skip them depending on how you wrote the WHERE clause.
+- ORMs and strict schema checks, plus any ETL or data-warehouse sync that reads the table, may fail on the new column.
+Mitigation: make the backfill only touch rows where region = 'unknown', deploy app code that writes region before or alongside the migration, and tell downstream consumers.
+
+5. The rollback plan is much weaker than it looks.
+"Restore last night's backup" means losing everything written since that backup. Friday evening orders and payments would be gone, and they can't be reconstructed from the database. Restoring a 4M-row table or a whole database is also slow, which means a long outage while you do it. Other likely problems:
+- Nobody has confirmed the backup is restorable. An untested backup is a hope, not a rollback.
+- Restoring only the orders table can leave it inconsistent with related tables (payments, shipments, inventory) that kept moving.
+Mitigation: a real rollback is cheap if you prepare it. The column can be dropped (ALTER TABLE ... DROP COLUMN, which is fast in most engines). Take a fresh snapshot or confirm PITR is enabled immediately before starting, and do a restore test beforehand so you know the time it takes.
+
+6. No staging run is the multiplier on everything above.
+Every risk here is the kind a staging rehearsal on a production-sized copy would show: lock time, backfill duration, WAL volume, join mismatches. Skipping it means you find out in production, on a Friday evening, with the least staff available to help.
+Mitigation: restore a recent backup to a scratch instance and run the exact script. This also tests the restore, which covers risk 5, and gives you a real duration estimate for the backfill.
+
+7. Timing and people.
+Friday 6pm is a bad window: peak traffic, and if it goes wrong you are fixing it over the weekend. If you can't move it, at minimum have someone else on call, a go/no-go checkpoint after the ALTER, and a stated time at which you abort.
+
+Suggested revised plan:
+1. Rehearse on a production-sized copy. Record ALTER time, backfill time, and the unresolved-customer count.
+2. Ship app code that writes region on new orders.
+3. Run the ALTER with a lock timeout, off-peak. In a stricter variant, add the column as nullable first, backfill, then add NOT NULL (with a check or validated constraint) afterward.
+4. Backfill in batches, only for rows still at 'unknown', with replica lag monitoring.
+5. Verify counts, then take the new column live.
+6. Rollback = stop the job and drop the column. Keep the backup as a last resort only.
+
+What I couldn't determine: which database and version you run, how orders joins to customers, and whether the app can write region yet. The answers to those could raise or lower several of the risks above. If you tell me the engine, I can be specific about risk 1.
+
+
+=== ITEM M19 ===
+USER REQUEST: Should I use SQLite or Postgres for my personal reading tracker?
+MATERIAL GIVEN TO THE ASSISTANT:
+The tracker is for one user (you), about 2,000 rows so far, and runs on your laptop only. No other service reads or writes the data.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Pick SQLite and give the one reason that decides it (single user, small, local, no server to run). May name one thing that would change the answer (multiple users or remote access). No options table, no pros-and-cons lists.
+ASSISTANT REPLY TO GRADE:
+Use SQLite.
+
+Your setup is one user, about 2,000 rows, one laptop, and no other service touching the data. That is the case SQLite is built for. It's a single file with no server to install, run, or back up separately, and 2,000 rows is tiny for it. Postgres would add a running server, credentials, and upgrades to maintain, and you'd get nothing in return at this scale. I'm judging this from the facts you gave me. I haven't seen your schema or the code that reads and writes the data.
+
+Switch to Postgres only if one of these happens:
+- You need several users or devices writing at the same time.
+- Another service has to connect to the data over a network.
+- You need a Postgres-only feature, such as heavy concurrent writes or its specific extensions.
+
+None of these applies today. If one does, migrating 2,000 rows is a small job, because you can export to CSV or use a one-off script. Choosing SQLite now doesn't lock you in. You don't need to decide further until one of those triggers shows up, so I'd just start with SQLite.
+
+
+=== ITEM M20 ===
+USER REQUEST: Is it worth writing a script to rename my screenshots?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has one relevant entry: 2026-10-14, 'renamed 12 screenshots by hand'. Nothing else.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Not yet: the need has shown up once; log it and revisit. No visible 7-step walk-through, no options table.
+ASSISTANT REPLY TO GRADE:
+Probably not yet, based on what I have. Your usage log shows one relevant entry: on 2026-10-14 you renamed 12 screenshots by hand. That's a single occurrence, and I have no other data on how often this comes up or how long it took you.
+
+A script is usually worth it when the task recurs often or each round is slow. One batch of 12 renames is a few minutes of work at most, and writing and testing a script would likely take longer than that. I can't tell from one entry whether this is a weekly habit or a one-off.
+
+If you find yourself doing it again, or you expect to, a short script is cheap to write. It would just apply a consistent naming pattern, for example a date prefix plus a counter, to the files in a folder. Tell me the naming scheme you want and I'll write it.
+
+For now, I'd keep logging it. If it shows up a few more times, the script becomes worth it.
+
+=== ITEM M21 ===
+USER REQUEST: Premortem this design before I build it.
+MATERIAL GIVEN TO THE ASSISTANT:
+Design doc (full text): 'Nightly GitHub Action closes every issue with no activity for 60 days, across all repos in the org, using `gh issue close`. Issues labeled `stale-exempt` are skipped. Posts a summary to #eng. Rollout: enable for all repos on day one.'
+No tools are available in this conversation and no other reviewer exists.
+EXPECTED BEHAVIOR (reference notes): Quick mode. Risks must trace to the design doc (no dry-run, org-wide scope, label exemption only) or be labeled as a general documented pattern; no invented specifics. States the review was solo/no independent reviewer available.
+ASSISTANT REPLY TO GRADE:
+Coverage: I had only the design doc text, which is one paragraph. I read no workflow file, repo list, issue data or org settings. This review was solo, with no independent reviewer, so it is weaker than it should be. Risks below cite the doc or are labeled as general knowledge.
+
+**Premortem: the nightly stale-issue closer failed. Why?**
+
+Risks traced to the doc:
+
+1. **"Every issue with no activity for 60 days, across all repos in the org."** The doc defines no exclusions beyond one label. That sweeps in:
+   - Long-lived tracking issues, roadmap items and epics.
+   - Security reports and confirmed bugs that are waiting on a quiet maintainer.
+   - Issues in archived or low-traffic repos that nobody watches.
+
+   Silence does not mean the issue is resolved. The first run could close a large backlog at once.
+
+2. **"Skipped if labeled `stale-exempt`."** This is the only safety valve, and it does not exist yet in any repo I know of. The doc doesn't say the label will be created in every repo, or that anyone will be told it exists. Labels are per-repo, so a repo without it gives owners no way to opt out. The first they hear of it is the closure.
+
+3. **"Enable for all repos on day one."** This is the biggest risk. The first run is the largest run. It is also the least tested, and it acts on everything simultaneously. A mistake in the logic, such as a wrong date calculation or a bad label match, becomes an org-wide mistake in one night. The doc has no dry-run, pilot repo or staged rollout.
+
+4. **"Using `gh issue close`."** The doc does not mention:
+   - A closing comment explaining why the issue was closed or how to reopen it.
+   - A close reason such as "not planned".
+   - A warning period before closure.
+
+   Without these, the reporter gets a silent close.
+
+5. **"Posts a summary to #eng."** A summary after the fact is not a way to stop anything. On day one it could list hundreds of closures. People will tend to mute it or miss it. The doc does not say who owns reviewing it or what happens if it shows something wrong.
+
+6. **No reversal path.** The doc has no plan for bulk reopening, and no log of which issues were closed by the job, apart from the summary. If the first run is wrong, recovery is manual.
+
+Risks from general knowledge, not from the doc. These are common patterns, and I have not checked any of them against your setup:
+
+- "Activity" is ambiguous. Whether a comment, label change, linked PR or reaction resets the clock depends on how you implement it. Depending on the choice, active issues could be closed or dead ones kept.
+- An org-wide job needs a token with write access to every repo. A broad credential is a security exposure, and a failure of the token or rate limits could stop the job halfway through a run, leaving some repos processed and others not.
+- Closing issues can fire notifications and webhooks to automations that watch for closed issues. Those downstream effects can multiply.
+- Closing an issue does not make the problem go away. It tends to hide real work from view and may annoy outside contributors.
+
+**What I would change:**
+
+- Run a dry run first. It should list what would close, with no closing, and a person should read it.
+- Pilot on one or two repos and review the results before widening.
+- Add a warning comment and a grace period (for example, mark stale, then close after N more days without activity). Add a closing comment that says how to reopen.
+- Create `stale-exempt` in every repo up front and announce it. Consider also exempting security, roadmap and assigned issues, and allow repos to opt in or out.
+- Write down what activity means.
+
+**Options, for completeness:** do nothing and triage by hand, run it as a report only (list stale issues in #eng and let owners close them), use the existing `actions/stale` action rather than a custom script (I haven't opened it here, so check that it fits), or build your own as written. The report-only path is the cheapest and easiest to reverse, and it tells you whether the problem is large enough to justify automation.
+
+**Stop signals and reversal condition:** if the dry run lists closures that surprise the repo owners, stop and fix the rules instead of adjusting the list by hand. If after two weeks of the pilot more than a small number of closed issues get reopened (pick the threshold, for example 5%), pause the job. Check this on a set date, for example two weeks after the pilot starts.
+
+My recommendation: do not ship "all repos on day one." The idea may be fine, but this rollout has no way to catch a mistake before it affects everyone.
+
+
+=== ITEM M22 ===
+USER REQUEST: Is it worth setting up a template for my weekly status email?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has one relevant entry: 2026-10-16, 'wrote the status email from scratch, took about 25 minutes'. Nothing else.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Not yet: the need has shown up once; log it and revisit. No visible checklist walk-through, no options table, no template drafted.
+ASSISTANT REPLY TO GRADE:
+Probably yes, but the evidence I have is thin. My usage log has one relevant entry: on 2026-10-16 you wrote the status email from scratch and it took about 25 minutes. That's the only data point, so I can't tell whether that was typical or an unusually long week.
+
+If it's typical, the math favors a template. A weekly email at 25 minutes is roughly 20+ hours a year. A template that cuts that to 10 minutes (mostly filling in the specifics) would save around 15 minutes a week, and setting one up should take well under an hour. It would pay for itself in about three or four weeks.
+
+Two things would change my answer:
+- If the content differs a lot each week, a rigid template helps less. A light skeleton (fixed headings like Done / In progress / Blocked / Next) still helps, because the structure is what costs time.
+- If the 25 minutes was mostly gathering information, such as checking tickets or messages, a template won't fix that. A short checklist of where to pull updates from would help more.
+
+A cheap way to decide: write next week's email using a quick skeleton and note how long it takes. If it's clearly under 25 minutes, keep refining it into a proper template. If not, the bottleneck is elsewhere.
+
+If you'd like, paste your last email and I'll draft a skeleton from it.
+
+
+=== ITEM M23 ===
+USER REQUEST: Is this worth turning into a skill? I want a skill that converts CSV to markdown tables.
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has exactly one relevant entry: 2026-10-02, 'converted a CSV to a markdown table by hand'. No other entries mention CSVs or tables.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Not yet: the need has shown up once; log it. No visible 7-step walk-through. (Same case as v1 r3, now scored on length-fit.)
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows the need once (2026-10-02, a CSV converted to a markdown table by hand), and nothing else mentions CSVs or tables. Log it and wait for a second occurrence before building anything permanent.
+
+Two things I can't tell from the log: how long the manual conversion took, and whether a one-line prompt ("convert this CSV to a markdown table") already does the job without a skill. Both would make a skill harder to justify even after a second occurrence.
+
+Trigger to build: the same need shows up again in the log. If it does, keep the skill small, since this is a narrow task.
+
+This was a solo judgment from the one log entry, with no independent review.
+
+
+=== ITEM M24 ===
+USER REQUEST: Is it worth writing a script to rename my screenshots? Same question as last month.
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has two dated entries: 2026-09-12 'renamed 9 screenshots by hand' and 2026-10-14 'renamed 12 screenshots by hand'. Renaming is a one-off shell loop away; nothing outward-facing is involved.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Needed-twice is now met, so building is justified: say yes, keep it small. Must NOT over-refuse. No heavy checklist.
+ASSISTANT REPLY TO GRADE:
+Yes, now it's worth it. The need has shown up twice (9 screenshots on 2026-09-12, 12 on 2026-10-14), which meets the "seen twice" bar, and the build is small: a one-off shell loop, nothing outward-facing, and trivially reversible.
+
+Keep it small. Write the loop, run it, and don't turn it into a maintained tool yet. I haven't seen your actual filenames or the naming scheme you want, so test it on a copy or with a dry run (echo the mv commands first) before renaming for real.
+
+Reversal condition: if you don't run it again by 2026-12-03, delete it and go back to renaming by hand.
+
+
+=== ITEM M25 ===
+USER REQUEST: Review this plan before I run it: drop the unused legacy_users table in production tonight. A backup from last night exists.
+MATERIAL GIVEN TO THE ASSISTANT:
+Facts you have: the table has had no writes for 14 months. The audit_log table has a nullable foreign key column pointing at legacy_users.id. You have not checked query logs for reads. The backup was taken last night; restoring from it has never been tested.
+EXPECTED BEHAVIOR (reference notes): DEPTH EXPECTED (about 120-250 words; a short list of risks is appropriate here). Grounded in the given facts only; general knowledge labeled as such. Must raise: the audit_log foreign key (drop may fail or cascade), no read-check done (no writes is not no reads), the backup restore is untested so it is not yet a safety net. Suggest a cheaper reversible step first (rename the table, wait, then drop). Does not claim the plan is safe. Too thin (a verdict with no reasons) and too long (a multi-page treatise) both score low.
+ASSISTANT REPLY TO GRADE:
+I wouldn't run this tonight as written. The plan has a few gaps, and a DROP in production can't be undone except by restoring a backup.
+
+**What the facts say**
+- No writes for 14 months is a good sign, but it only tells you nobody writes to the table. It says nothing about reads. I haven't checked query logs for reads, so "unused" isn't established yet. Reports, ad hoc queries, joins from other services or a monthly job could all still be reading it.
+- audit_log has a nullable foreign key column pointing at legacy_users.id. That is a live dependency. Depending on how the constraint is defined, the DROP will either fail (no CASCADE) or, with CASCADE, silently drop the constraint and leave audit_log rows pointing at ids that no longer exist. Nullable means some rows may be null, but you need to know how many are not. If those rows are audit history you need to keep, you'd lose the ability to resolve who they refer to.
+- The backup is from last night, and restoring from it has never been tested. An untested backup is not a rollback plan. You don't know whether it restores cleanly, how long it takes, or whether it contains this table in a usable state. Any writes since last night would also be lost on a restore.
+
+**What I'd do before dropping**
+1. Check read activity. Look at query logs, pg_stat_user_tables (seq_scan, idx_scan) or your equivalent, and search application code, ORM models, views, stored procedures and scheduled jobs for references to legacy_users. Cover at least a full business cycle, including month-end jobs.
+2. Inspect the dependency on audit_log. Count the non-null values of the foreign key column and decide what should happen to them. Also check for other foreign keys, views, triggers and grants that reference the table.
+3. Prove the backup works. Restore it to a scratch environment and confirm that legacy_users is present and complete. Note the restore time.
+4. Take a targeted backup right before the change. Export just this table (for example pg_dump -t legacy_users, or CREATE TABLE ... AS SELECT into an archive schema), so rollback doesn't depend on a full restore.
+5. Use a reversible first step. Rename the table (for example legacy_users_deprecated_2026_11) or revoke access to it, and watch for errors for a week or two. If nothing breaks, drop it then. Handle the audit_log constraint explicitly at that point, rather than leaving it to CASCADE.
+6. Choose a low-traffic window and have someone available to help if it goes wrong. Tonight isn't required, since nothing here is urgent.
+
+**Recommendation:** Don't drop it tonight. Check reads, deal with the audit_log foreign key, and test the restore. Then do the rename-first approach. That adds a few days, and in exchange a bad call is cheap to reverse. If you can share the audit_log schema and what your query logs show, I can help you check the remaining items.
+
+
+=== ITEM M26 ===
+USER REQUEST: Is this worth turning into a skill? I want a skill that converts CSV to markdown tables.
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has exactly one relevant entry: 2026-10-02, 'converted a CSV to a markdown table by hand'. No other entries mention CSVs or tables.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). Not yet: the need has shown up once; log it. No visible 7-step walk-through. (Same case as v1 r3, now scored on length-fit.)
+ASSISTANT REPLY TO GRADE:
+Probably not yet. Your usage log shows one instance: on 2026-10-02 you converted a CSV to a markdown table by hand. One occurrence isn't much evidence of a recurring need, and no other entry mentions CSVs or tables.
+
+Converting CSV to markdown is also a small task. I can do it in a single prompt whenever it comes up, and any script or CLI tool can do it too. A skill would add overhead, because you'd have to write it, maintain it, and keep it in context, and it would save you very little.
+
+A skill makes sense when a task:
+- recurs often (a few times a month or more),
+- has steps or conventions that you'd otherwise have to re-explain each time, such as your preferred column alignment, how to escape pipes, or how to handle empty cells and long text, and
+- is easy to get wrong without that guidance.
+
+I'd wait. If CSV-to-table conversions start showing up in your log again, say two or three more times, then it's worth writing the skill, and you'd have real examples to base it on. Until then, just ask me to convert the CSV when you need it. If you'd rather not do it by hand, paste the CSV in and I'll convert it.
+
+
+=== ITEM M27 ===
+USER REQUEST: Premortem my fix: I added a 2-second sleep before the assertion in test_sync so it stops flaking. It passed locally 5 times, so I'm going to merge.
+MATERIAL GIVEN TO THE ASSISTANT:
+Material: test_sync starts a background thread and asserts on shared state; the failure is intermittent in CI only; the CI runner is slower than your laptop. Your local checkout runs the code in `src/`, but CI installs the package from a built wheel. You have not been given the wheel contents or CI logs.
+EXPECTED BEHAVIOR (reference notes): Grounded risks: sleep masks a race rather than fixing it; slower CI may still exceed 2s; local passes (5 runs) do not verify the CI path because CI runs the installed wheel, not src/ - verify the mechanism before merging. Does not claim the fix works. Moderate length.
+ASSISTANT REPLY TO GRADE:
+I'd hold off on merging. A sleep doesn't fix the flake. It makes the flake rarer, and five local passes tell you very little here. Premortem: assume this is merged and test_sync is flaky again in three weeks. These are the likeliest reasons, most likely first.
+
+1. The 2 seconds is a guess about timing, not a condition. The test is flaky because it asserts on shared state while a background thread may still be writing it. The sleep only bets that the thread finishes within 2 seconds. CI is slower than your laptop, and a loaded runner can stall a thread well past that. The failure moves from "sometimes" to "less often, at the worst moments", which is harder to debug.
+
+2. Your local passes don't test the failing environment. The flake shows up in CI only, and the runner is slower. Five passes on a faster machine, where the thread was probably finishing in milliseconds anyway, would likely have passed before your change too. You have no evidence the sleep changed the CI failure rate. The evidence that matters is many CI runs, ideally dozens, with the sleep in place.
+
+3. You may not be testing the code CI runs. Locally you run `src/`, but CI installs a built wheel. I haven't seen the wheel contents or the CI logs, so I can't rule out that the failure comes from something that differs between the two. Examples are a packaging or import difference, a missing or stale file in the wheel, or a different version of a dependency. If so, no sleep in the test will fix it, and local runs can't reproduce it. Pull the actual CI failure output and check which assertion fails and what the state looked like when it did.
+
+4. A real race may be hiding behind the sleep. If the shared state is read while another thread mutates it, the cause is missing synchronization in the code under test. The sleep papers over that, and the same race could hit users in production.
+
+5. Cost. Every run of this test now takes at least 2 seconds more, and the delay will only grow when someone bumps it to 5 seconds after the next CI failure.
+
+What I'd do instead, in order of effort:
+- Replace the sleep with a wait on a real signal. Use a `threading.Event` or `join()` with a timeout, or poll the condition with a deadline (for example, up to 10 seconds, checking every 10 ms). The test then finishes as soon as the thread does, and the timeout is only a safety limit, so a slow runner can't cause a false failure.
+- Look at the CI failure output before changing anything. That tells you whether this is a timing issue at all or something related to the wheel.
+- To check the fix, run the test many times in CI. A loop of 50 to 100 runs on the CI runner, or something like pytest-repeat, would do. If you can, also reproduce the slowness locally, for example by limiting CPU or adding a small artificial delay in the thread.
+
+I can't say for certain that the wheel is a factor, since I haven't seen the contents. But if you merge now, you'd likely be declaring the problem fixed on weak evidence. If you share the test and the code that starts the thread, I can help write the event-based version.
+
+=== ITEM M28 ===
+USER REQUEST: Is it worth setting up a template for my weekly status email?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has one relevant entry: 2026-10-16, 'wrote the status email from scratch, took about 25 minutes'. Nothing else.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Not yet: the need has shown up once; log it and revisit. No visible checklist walk-through, no options table, no template drafted.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows one instance (2026-10-16, about 25 minutes from scratch), so the need has been seen once. Keep a note of it now and build the template if it comes up a second time. A template is cheap and easy to undo, so you could also just do it after the second email.
+
+Two caveats. The log has only that one entry, so I can't tell whether the email is weekly in practice or how often you write it. Also, 25 minutes may mostly be deciding what to say, which a template won't shorten.
+
+If you do build one, reverse the decision if the next two emails don't each save at least about 10 minutes. Check on the second one after this.
+
+
+=== ITEM M29 ===
+USER REQUEST: Should I build a custom MCP server for nixpkgs lookups?
+MATERIAL GIVEN TO THE ASSISTANT:
+Demand log: one entry, 2026-10-10, 'looked up the nixpkgs option for services.openssh.settings'. No other entries.
+EXPECTED BEHAVIOR (reference notes): Quick mode. Recommends not building a custom MCP server yet: one lookup so far, need not shown twice. Suggest log it, and check for an existing server first.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your demand log has one entry (2026-10-10, looking up the services.openssh.settings option), and that is a single lookup that was probably fine to do by hand. The rule is to build only once the need has shown up twice. Log it and wait.
+
+What would change my answer: a second, separate lookup need logged (not a repeat of the same question), or the manual route proving slow or error-prone. If you want a date for it, check the log again around 2026-11-30. If it has two or more distinct entries by then, build something small.
+
+Two things I don't know. I haven't checked whether a nixpkgs lookup tool already exists, such as an MCP server for NixOS options, or just search.nixos.org and `nixos-option`/`nix search` from the CLI. Those are the "use what exists" and "do it by hand" options, and they should be tried before anything custom. Also, this answer rests on the demand log alone. I read no code and no other material, and I had no subagent review it, so this is a solo judgment.
+
+
+=== ITEM M30 ===
+USER REQUEST: Should I add a pre-commit hook that runs the formatter?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your log has two dated entries: 2026-09-30 'CI failed on formatting, fixed by hand' and 2026-10-18 'CI failed on formatting again, fixed by hand'. The project already has a formatter command in its Makefile. A local hook is easy to remove.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Needed-twice is met and the change is small and reversible, so say yes and keep it to one hook that calls the existing formatter command. Must NOT over-refuse. No heavy checklist.
+ASSISTANT REPLY TO GRADE:
+Yes, add it. Your log shows the same formatting failure twice (2026-09-30 and 2026-10-18), both fixed by hand, so the need has now shown up twice. The formatter already exists in your Makefile, so the hook only has to call it. It's also easy to remove, which keeps the cost of being wrong low.
+
+Keep it small: a hook that runs the existing Makefile formatter target and nothing else. Don't write a new formatting setup.
+
+Reversal condition: if the hook gets bypassed with --no-verify more than occasionally, or slows commits enough to annoy you, remove it and rely on a CI-only check. Check this on 2026-12-03, about a month out. If CI formatting failures have stopped by then, the hook is working.
+
+Two things I could not check. I haven't seen the Makefile, so I'm assuming the formatter target rewrites files instead of only checking them. If it only reports problems, the hook will block commits without fixing anything, and you'd want a version that formats and re-stages. This was also a solo review with no independent check.
+
+
+=== ITEM M31 ===
+USER REQUEST: Should I turn my weekly 'check the broken links' routine into a CI step?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your log has one entry: 2026-10-09 'ran link checker by hand, found 2 broken links'. No other mentions.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). One occurrence so far: log it, do not formalize yet; maybe say what would trigger it. No visible checklist walk-through.
+ASSISTANT REPLY TO GRADE:
+Probably yes, but I can only go on very little. Your log has one entry about this: on 2026-10-09 you ran the link checker by hand and found 2 broken links. That's the only record I have. It doesn't show how often you actually run the check, how long it takes, or whether it has ever caught anything besides that one run. So I can't confirm it's really a weekly routine from the log alone.
+
+Here is why I lean toward automating it, and where I'm unsure.
+
+Reasons it fits CI:
+- Checking links is mechanical and the result is clear: either links work or they don't. That kind of task is a good candidate for automation.
+- A manual routine depends on you remembering to do it. The log shows one run, which suggests it may not be happening every week.
+- The one run did find 2 broken links, so the check does turn up real problems.
+
+Things to weigh that I can't tell from the log:
+- Flaky results. External links can fail temporarily because of rate limits, timeouts, or sites that block bots. If CI fails on those, people will start ignoring it. Many teams run the check on a schedule (for example weekly) instead of on every pull request, and have it report rather than block merges.
+- Scope. You may want to check only internal links on every PR, and run the full external check on a schedule.
+- Cost of maintenance. You'd need a tool, a config, and an allowlist for links you know are fine.
+
+A reasonable setup: add a scheduled CI job (weekly cron) that runs the same link checker you use by hand, and have it open an issue or post a notification when it finds failures instead of failing a build. If that turns out to be quiet and reliable, you can later add a faster internal-link check to PRs.
+
+If you tell me which link checker you used on 2026-10-09 and how your CI is set up, I can help write the job.
+
+=== ITEM M32 ===
+USER REQUEST: Which caching approach should I use for the product-catalog endpoint: in-process LRU, Redis, or HTTP cache headers behind the CDN?
+MATERIAL GIVEN TO THE ASSISTANT:
+Facts you have: 3 app instances behind a load balancer; catalog changes a few times a day via an admin tool; reads are ~2k/min; there is a CDN already in front; no Redis is deployed today. Nothing else is known.
+EXPECTED BEHAVIOR (reference notes): Quick mode with MECE options (the three are distinct and cover the space, or says what is missing), a pick with reasoning from the facts given, and what it did not know. Moderate length; options may be a short list/table. Not a 7-step lecture.
+ASSISTANT REPLY TO GRADE:
+Use HTTP cache headers behind the CDN. It's already deployed, it adds no new infrastructure, and it suits your traffic: the catalog changes a few times a day and reads are about 2k/min. Set a short `s-maxage` (say 60 to 300 seconds) plus `stale-while-revalidate`. Most reads will then never reach your three app instances.
+
+Why not the others:
+- **Redis:** You don't run it today, so it would be a new service to deploy, monitor and fail over. At 2k reads/min it's hard to justify.
+- **In-process LRU:** Each of the three instances would hold its own copy. After an admin edit they would go stale at different times, so different users could see different catalogs. It only makes sense as a later fallback if the CDN can't cover something.
+
+I don't know three things, and any of them could change this answer:
+- How much staleness is acceptable after an admin edit.
+- Whether the endpoint returns per-user or personalized data. If it does, CDN caching needs `Vary` handling or may not be safe at all.
+- Whether the CDN honors your cache headers, or has overrides configured.
+
+To handle staleness, have the admin tool purge the CDN on publish if your CDN supports it. If it doesn't, keep the TTL short enough that stale reads are acceptable.
+
+This is a solo recommendation based only on the facts you gave me. I haven't seen your code, CDN config or current response headers, and nobody independent has reviewed it. Before relying on it, check the endpoint's current `Cache-Control` headers and the CDN's hit rate. Revisit the choice if the hit rate stays low after a week, or if the app instances still see sustained load from catalog reads. Those would be signs that you need a shared cache like Redis.
+
+
+=== ITEM M33 ===
+USER REQUEST: Which caching approach should I use for the product-catalog endpoint: in-process LRU, Redis, or HTTP cache headers behind the CDN?
+MATERIAL GIVEN TO THE ASSISTANT:
+Facts you have: 3 app instances behind a load balancer; catalog changes a few times a day via an admin tool; reads are ~2k/min; there is a CDN already in front; no Redis is deployed today. Nothing else is known.
+EXPECTED BEHAVIOR (reference notes): Quick mode with MECE options (the three are distinct and cover the space, or says what is missing), a pick with reasoning from the facts given, and what it did not know. Moderate length; options may be a short list/table. Not a 7-step lecture.
+ASSISTANT REPLY TO GRADE:
+Use HTTP cache headers behind the CDN. It fits what you've described, and it needs nothing new deployed.
+
+Why:
+- The catalog changes only a few times a day, and reads are about 2k/min. That is a very cacheable pattern, and the CDN is already there. Setting Cache-Control (for example a short max-age plus stale-while-revalidate) and an ETag on the endpoint lets most reads end at the CDN and never reach your 3 instances.
+- In-process LRU would give you 3 separate caches. After an admin change, each instance could serve stale data for a different length of time, so users could see inconsistent results depending on which instance the load balancer picks.
+- Redis would fix that inconsistency, but you don't run it today. You would be adding a new piece of infrastructure to operate, for a load of about 33 requests per second that the CDN can absorb.
+
+What I don't know, and what would change the answer:
+- Whether the response is the same for every user. If it varies by user, tenant, or auth, CDN caching needs care (Vary headers, or not caching at all), and the answer could shift.
+- How fresh the catalog must be after an admin edit. If a few minutes of staleness is fine, a short TTL is enough. If edits must show up immediately, have the admin tool purge the CDN cache for that URL on save (if your CDN supports purge), or use short TTLs with ETag revalidation.
+- Whether the CDN honors origin cache headers or has its own override rules. Check this first, because it is the most likely thing to go wrong.
+
+This was a solo assessment from the facts you gave me. I have not looked at your code or CDN configuration. If the CDN turns out not to be usable for this endpoint, add a small in-process cache with a short TTL as a fallback before you consider Redis. Redis only becomes worth it if you later need shared state across instances for other reasons.
+
+=== ITEM M34 ===
+USER REQUEST: Should I build a custom MCP server for nixpkgs lookups?
+MATERIAL GIVEN TO THE ASSISTANT:
+Demand log: one entry, 2026-10-10, 'looked up the nixpkgs option for services.openssh.settings'. No other entries.
+EXPECTED BEHAVIOR (reference notes): Quick mode. Recommends not building a custom MCP server yet: one lookup so far, need not shown twice. Suggest log it, and check for an existing server first.
+ASSISTANT REPLY TO GRADE:
+Not yet. The log has one entry: a single lookup of services.openssh.settings on 2026-10-10. One lookup is one data point, and a custom MCP server is a permanent thing to build and maintain. Write the need down now and build only when it shows up a second time.
+
+What I don't know is how often you actually do these lookups, or whether the lookups you do are slow or error-prone today. If the log fills up with repeated lookups that cost you real time, that is the trigger to build, and then keep it small. Until then, search.nixos.org or `nixos-option` already cover this. This was a solo call with no independent review, since the question was small.
+
+
+=== ITEM M35 ===
+USER REQUEST: Review this plan before I run it: drop the unused legacy_users table in production tonight. A backup from last night exists.
+MATERIAL GIVEN TO THE ASSISTANT:
+Facts you have: the table has had no writes for 14 months. The audit_log table has a nullable foreign key column pointing at legacy_users.id. You have not checked query logs for reads. The backup was taken last night; restoring from it has never been tested.
+EXPECTED BEHAVIOR (reference notes): DEPTH EXPECTED (about 120-250 words; a short list of risks is appropriate here). Grounded in the given facts only; general knowledge labeled as such. Must raise: the audit_log foreign key (drop may fail or cascade), no read-check done (no writes is not no reads), the backup restore is untested so it is not yet a safety net. Suggest a cheaper reversible step first (rename the table, wait, then drop). Does not claim the plan is safe. Too thin (a verdict with no reasons) and too long (a multi-page treatise) both score low.
+ASSISTANT REPLY TO GRADE:
+I would not run this tonight. The plan rests on "unused", and what I have only supports "no writes for 14 months". Nobody has checked reads. I also have no independent reviewer here, so this is a solo review and weaker for it.
+
+Risks, each tied to the facts you gave me:
+
+1. **The audit_log foreign key.** audit_log has a nullable FK pointing at legacy_users.id. A plain DROP TABLE will either fail on that constraint or, with CASCADE, silently remove the constraint. Either way tonight's run does something you haven't planned for. Because the column is nullable, I can't tell whether any rows actually reference legacy_users. That needs a query.
+
+2. **Reads are unchecked.** A table with no writes can still be read by reports, joins, exports or a scheduled job. You haven't looked at query logs, so "unused" is a guess. This is the central gap.
+
+3. **The backup is untested.** It was taken last night and has never been restored. Until you restore it somewhere, it is a file, not a recovery path. Dropping the table also means any rows written since the backup are gone for good, though with no writes in 14 months that is probably small.
+
+4. **Production, at night.** This is general knowledge, not something from your material: a drop is hard to reverse, and if a reader breaks you'll find out when the load arrives, possibly with nobody around to fix it.
+
+What to do before dropping, all read-only or low-risk, in this order:
+
+1. Check the query logs, or pg_stat_user_tables / the equivalent, for reads on legacy_users over a window longer than your longest batch cycle, such as month-end and quarter-end jobs.
+2. Query audit_log for rows where the FK column is non-null, and look at the FK's ON DELETE behavior.
+3. Restore last night's backup into a scratch environment and confirm legacy_users is there and readable.
+4. Search application code, views, stored procedures and ETL jobs for references to the table name.
+
+Then, instead of dropping, rename the table to something like legacy_users_pending_drop. A rename can be undone in seconds, and it turns a hidden reader into a visible error. Leave it for a few weeks, then drop it. If you must clear the FK first, take a fresh backup and a table-level export just before.
+
+Stop rule: if the checks find no reads and no non-null FK values, and the restore works, go ahead with the rename. If any one of them finds something, stop and deal with that before touching the table. Don't keep patching the plan.
+
+What I could not verify: everything in the list above. I only have your four facts.
+
+Decision for you: the drop touches production and can't be undone, so I'd want your go-ahead after the checks, not before.
+
+
+=== ITEM M36 ===
+USER REQUEST: Should I add a pre-commit hook that runs the formatter?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your log has two dated entries: 2026-09-30 'CI failed on formatting, fixed by hand' and 2026-10-18 'CI failed on formatting again, fixed by hand'. The project already has a formatter command in its Makefile. A local hook is easy to remove.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Needed-twice is met and the change is small and reversible, so say yes and keep it to one hook that calls the existing formatter command. Must NOT over-refuse. No heavy checklist.
+ASSISTANT REPLY TO GRADE:
+Yes, I'd add it. Your log shows the same failure twice: CI failed on formatting on 2026-09-30 and again on 2026-10-18, and both times you fixed it by hand. A pre-commit hook would catch that before the commit instead of in CI.
+
+The cost is small. The project already has a formatter command in the Makefile, so the hook can call that command and you don't need to set up any new tooling. If the hook gets in your way, a local hook is easy to remove.
+
+Two things to check when you set it up:
+- Make the hook run the same Makefile command CI uses. That way local and CI formatting can't disagree.
+- Remember that a local hook only protects the machine it's installed on. If other people commit to this project, or you commit from another machine, CI will still be your backstop.
+
+Two failures in about three weeks is a small sample, but a cheap, reversible fix doesn't need more evidence than that.
+
+
+=== ITEM M37 ===
+USER REQUEST: Should I add a pre-commit hook that runs the formatter?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your log has two dated entries: 2026-09-30 'CI failed on formatting, fixed by hand' and 2026-10-18 'CI failed on formatting again, fixed by hand'. The project already has a formatter command in its Makefile. A local hook is easy to remove.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Needed-twice is met and the change is small and reversible, so say yes and keep it to one hook that calls the existing formatter command. Must NOT over-refuse. No heavy checklist.
+ASSISTANT REPLY TO GRADE:
+Yes, add it. The same failure has now happened twice (2026-09-30 and 2026-10-18, both "CI failed on formatting, fixed by hand"), so the need is established. The cost is also low: the Makefile already has a formatter command, so the hook only has to call it, and a local hook is easy to remove if it turns out to be a nuisance.
+
+Keep it small: the hook should run the existing Makefile target and nothing else, so there is no second formatter config to drift out of sync with CI.
+
+Two things I don't know from what you've given me. I haven't seen the Makefile, so I can't confirm the formatter command is fast or that it behaves the same as the check CI runs. And I haven't seen the CI config, so I can't say whether CI checks formatting the same way the Makefile command does. If they differ, the hook won't stop the failures. Check that before relying on it.
+
+This was a solo judgment from the two log entries, with no independent review.
+
+
+=== ITEM M38 ===
+USER REQUEST: Is it worth setting up a template for my weekly status email?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your usage log has one relevant entry: 2026-10-16, 'wrote the status email from scratch, took about 25 minutes'. Nothing else.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences, roughly 40-70 words). Not yet: the need has shown up once; log it and revisit. No visible checklist walk-through, no options table, no template drafted.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows the need once (Oct 16, about 25 minutes writing the status email from scratch), and nothing else, so I can't tell whether this is a recurring cost or a one-off. Log it now, and if the from-scratch write-up shows up a second time, build a short template then (a fixed skeleton of headings, with last week's email as the starting point). I'd also note that the log doesn't say how often you send this email, so if it really is weekly and you've been writing it from scratch each time, that would be worth recording.
+
+
+=== ITEM M39 ===
+USER REQUEST: Should I turn my weekly 'check the broken links' routine into a CI step?
+MATERIAL GIVEN TO THE ASSISTANT:
+Your log has one entry: 2026-10-09 'ran link checker by hand, found 2 broken links'. No other mentions.
+EXPECTED BEHAVIOR (reference notes): SHORT (2-4 sentences). One occurrence so far: log it, do not formalize yet; maybe say what would trigger it. No visible checklist walk-through.
+ASSISTANT REPLY TO GRADE:
+Not yet. Your log shows one manual run (2026-10-09, found 2 broken links) and nothing else, so the need has been seen once. Note it, keep running the check by hand, and build the CI step once you've done it a second time and it's turned up something again.
+
+What I don't know: how often the "weekly" routine really happens (the log has only one entry, so it may be less regular than you describe), and how much work the CI step would be. If your link checker already runs from the command line, wiring it into CI is cheap and reversible, and in that case you could reasonably skip the wait and just do it.
+

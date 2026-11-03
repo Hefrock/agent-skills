@@ -1,0 +1,16 @@
+Short answer: the repo already has one, so the question is less "add" and more "what to do with the one you have."
+
+What exists. `mcp/obsidian-vault/test/retrieval-eval.mjs` computes recall@5 and MRR for `search_notes` against a real vault, using a hand-written query set with known-correct note paths. That is essentially what you describe DeepTutor's `kb eval` doing: run a set of questions against a knowledge base and report retrieval quality. The sitrep says it has been run once, against a real vault with 20 hand-written queries: recall@5 0.950 (19/20), MRR 0.932.
+
+Two design choices in the existing script look deliberate, and I would keep them:
+- It is not run in CI and ships no fixtures. The header says it is meant to be run locally by a human who can judge whether a result is actually right, against a vault whose content nobody else has. A synthetic fixture vault in CI would measure how well search handles the fixtures, not how it handles real notes.
+- `npm test` runs only `server.test.mjs` and `warehouse.test.mjs`. The eval is correctly kept out of that path.
+
+What I would not claim. The 0.950 / 0.932 numbers are a first baseline, not a before/after comparison. The sitrep says so, and the script's header says the comparison is the real acceptance check: run it on a build from before a `search_notes` change and again after, then compare the two reports. With 20 queries, one query is 5 points of recall, so small differences between runs are noise. I can't tell from the material how the query set was chosen or whether it will keep up as search changes.
+
+Recommendation: don't add a second eval or copy DeepTutor's `kb eval` wholesale. Instead:
+1. Keep `retrieval-eval.mjs` as is. Before the next change to `search_notes` or the BM25F weighting, run it on the pre-change build and save the report, then run it after and compare. That is the use it was written for.
+2. If you want something from DeepTutor, I'd look at whether `kb eval` offers anything the script lacks, such as per-query failure output or a standard query-file format. I haven't seen DeepTutor's implementation, so I can't say whether it does. Adding a small gain like that to the existing script is cheap.
+3. Only grow the query set if you start seeing differences that fall inside the 20-query noise.
+
+If your question was about the two warehouse retrieval tools rather than vault search, that's a different matter. The existing eval covers `search_notes` only, and I saw nothing in the material that evaluates warehouse passage retrieval. That would be a reasonable thing to add, but it needs its own real data and a human judge, for the same reasons as above.

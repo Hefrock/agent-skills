@@ -1,0 +1,23 @@
+It depends on what you want out of it, and from the excerpts I have I can't give you a flat yes. Here is what the material supports and what it doesn't.
+
+What it is: claude-mem is a Claude Code plugin that captures your tool usage as observations, writes semantic summaries, and makes them available to later sessions (README line 126). Install is `npx claude-mem install`. If your pain is that Claude forgets what happened in earlier sessions, it targets that directly.
+
+What matters for you, since you work on several private repos:
+
+1. Everything you do in a session becomes an observation. Tool calls, including Bash commands, get captured by default. `CLAUDE_MEM_SKIP_BASH_PATTERNS` is empty, so every shell command is recorded. The default skip list only covers low-value tools (ListMcpResourcesTool, SlashCommand, Skill, TodoWrite, AskUserQuestion).
+
+2. Secret redaction is off by default. `CLAUDE_MEM_REDACT_ENABLED` is 'false', and so is `CLAUDE_MEM_REDACT_GENERIC_ENABLED`, the setting that catches un-prefixed credentials like `password=`, `*_TOKEN=`, `*_API_KEY=` and `Authorization: Bearer`. If a command or file read in a private repo touches a credential, it would be stored unless you turn these on.
+
+3. No projects are excluded by default. `CLAUDE_MEM_EXCLUDED_PROJECTS` is empty. Observations from your private repos would be captured unless you add glob patterns.
+
+4. Summarization uses a model provider. The default is `CLAUDE_MEM_PROVIDER: 'claude'`, so captured content is presumably sent to a model to generate summaries. The excerpts don't say exactly what is sent or where the data is stored, so check this before using it on confidential code.
+
+What I can't tell from the excerpts: where the memory database lives and whether it stays local, what the install command changes on your machine (hooks, settings, background processes), how the project is maintained, or what its security track record is. I only saw a README line, a partial settings listing and the top-level directory names, so I haven't evaluated the code.
+
+My suggestion:
+- Before installing, read what `npx claude-mem install` does, and don't run it blind. Look at the install script and the hooks it registers.
+- Try it first on one non-sensitive repo, not all of them.
+- Before using it on private repos, set `CLAUDE_MEM_REDACT_ENABLED` and `CLAUDE_MEM_REDACT_GENERIC_ENABLED` to true, and add `CLAUDE_MEM_EXCLUDED_PROJECTS` patterns for anything confidential. Consider `CLAUDE_MEM_SKIP_BASH_PATTERNS` for commands that handle secrets.
+- Confirm where the stored observations live and what gets sent to the provider.
+
+If you're fine with those controls and want cross-session memory, it's reasonable to try on a low-risk repo. If your private repos have strict confidentiality requirements, I'd hold off until you've verified the data handling.

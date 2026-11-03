@@ -1,0 +1,10 @@
+Probably not yet. Your usage log shows one instance: on 2026-10-02 you converted a CSV to a markdown table by hand. One occurrence isn't much evidence of a recurring need, and no other entry mentions CSVs or tables.
+
+Converting CSV to markdown is also a small task. I can do it in a single prompt whenever it comes up, and any script or CLI tool can do it too. A skill would add overhead, because you'd have to write it, maintain it, and keep it in context, and it would save you very little.
+
+A skill makes sense when a task:
+- recurs often (a few times a month or more),
+- has steps or conventions that you'd otherwise have to re-explain each time, such as your preferred column alignment, how to escape pipes, or how to handle empty cells and long text, and
+- is easy to get wrong without that guidance.
+
+I'd wait. If CSV-to-table conversions start showing up in your log again, say two or three more times, then it's worth writing the skill, and you'd have real examples to base it on. Until then, just ask me to convert the CSV when you need it. If you'd rather not do it by hand, paste the CSV in and I'll convert it.

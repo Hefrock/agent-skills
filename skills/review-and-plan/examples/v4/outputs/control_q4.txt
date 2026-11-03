@@ -1,0 +1,7 @@
+Yes, but keep it small. Your log shows the same chore twice, on 2026-09-12 (9 screenshots) and 2026-10-14 (12 screenshots), about a month apart. That's enough of a pattern to automate, and nothing outward-facing is involved, so a mistake costs you almost nothing.
+
+A one-off shell loop is all you need, not a proper tool. Write it once, save it as a shell function or alias, and rerun it each month. It pays for itself within a run or two.
+
+Before you run it on real files, print the new names without renaming anything (a dry run) to check them. That is the only safeguard it needs.
+
+To write the loop I need the pattern you rename by, for example "Screenshot 2026-10-14 at 10.32.11.png" to "2026-10-14_1032.png". Send me one before and after example and I'll give you the exact loop.

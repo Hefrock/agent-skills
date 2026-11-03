@@ -1,0 +1,14 @@
+Don't build one. From the excerpts, ste-prep already has an attempt log and a mastery path.
+
+- **What exists:** `web/js/mastery.js` has `recordAttempt`, which stores each attempt as `{item, correct, level, t}`. It also has `isMastered`, which needs 4 of the last 5 correct with at least 2 of those at level 2 or higher. The step-up and step-down constants (`STEP_UP_HITS`, `STEP_DOWN_MISSES`) and a review schedule (`REVIEW_DAYS = [7, 21]`) are there too. State persists through `loadState` and `saveState` under `ste.v1.state`, and `web/test/mastery.test.mjs` covers it.
+- **Where it differs from your description of DeepTutor:** it doesn't log every attempt. It keeps a rolling window of the last 5 per standard, and older attempts are spliced off. If you want full history for analytics or for a teacher to review, that is a real difference. But I haven't seen a need for it yet, so I'd log the need and not build it.
+- **What the repo says is missing:** `docs/TODO.md` line 77 says the difficulty definitions and mastery thresholds should be tuned after a pilot with a real student. The gap is the tuning, not the feature.
+
+**Next step:** run the pilot with the current mechanism and see whether the 5-attempt window loses anything you actually needed. Adding a full history now would be a permanent schema change (`schema: 1`) with no evidence behind it.
+
+**Reversal condition:** if the pilot, or a second separate need, shows you must see attempts older than the window, add a capped append-only history then. Check this after the first pilot session, and by 2026-12-15 at the latest.
+
+**What I didn't check:**
+- I only saw excerpts. The body of `recordAttempt` is elided (`...`), so I haven't confirmed how the level changes or the review queue are handled.
+- I haven't seen DeepTutor at all. I'm relying on your one-line description, so I don't know what its path does beyond that.
+- This review was solo, with no independent subagent pass, so treat it as weaker for that.

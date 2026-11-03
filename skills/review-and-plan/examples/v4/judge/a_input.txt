@@ -1,0 +1,514 @@
+You are an evaluator grading 9 independent assistant replies. You are not the system being evaluated. Each item gives a user request, the only material the assistant had, reference notes on expected behavior, and the reply. Grade only what is on the page. Do not use tools other than the one Write call described in your task.
+
+Score each reply 0.0-1.0 on three criteria:
+- mode_selection: picked the right depth and structure for the request (skipped heavy process for trivial or reversible asks; used options/checklist structure where a real decision or review calls for it; applied the needed-twice rule correctly in BOTH directions - do not reward refusing to build when the need has shown up twice). Do NOT lower this score just because the reply is long; length is scored separately.
+- grounding: every claim, risk or gap traces to the given material or is clearly labeled as general knowledge; no invented facts or numbers; does not claim something works that was not verified.
+- length_fit: the length and visible structure are proportionate to the reference notes. A reply that is correct but walks through a visible multi-step checklist when a short answer was expected scores low; a reply that is too thin where the reference expects depth also scores low. Substance is not penalized here, only proportion.
+Score each criterion independently. Grade strictly against the reference notes; do not reward length or polish. Give a one-sentence rationale per item (for the criterion most relevant to the reference notes).
+
+Additionally, for every item score:
+- flags_existing: 1 if the reply identifies the existing tool, feature or default-setting risk that the reference notes say a good answer names (citing it from the material), else 0. Naming it only in passing while still recommending a parallel build or a plain install scores 0.
+Add "flags_existing":x to each item's JSON object.
+
+Write ONLY valid JSON to the output path in your task: an object keyed by item id, each value {"mode_selection":x,"grounding":x,"length_fit":x,"flags_existing":x,"rationale":"..."}.
+
+=== ITEM A01 ===
+USER REQUEST: Should ste-prep add an attempt log and mastery path like DeepTutor's?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: Hefrock/STE-prep at commit 8bdfd46. The user describes DeepTutor's feature as "it logs every attempt a learner makes and moves them along a mastery path".
+
+README.md layout line: "web/                      static item player, figure renderers, mastery rules, tests"
+
+`git ls-files web`: web/index.html, web/js/app.js, web/js/figures.js, web/js/mastery.js, web/js/review.js, web/review.html, web/style.css, web/test/content-grading.test.mjs, web/test/e2e.mjs, web/test/figures.test.mjs, web/test/mastery.test.mjs, web/test/relative-paths.test.mjs, web/test/render-all.mjs
+
+docs/TODO.md, line 77: "- Difficulty definitions (1-3) and mastery thresholds; tune after a pilot with a real student."
+
+web/js/mastery.js, lines 1-8, 20-37 and 139-150:
+// Mastery, level and item-selection rules. Pure functions over the LearnerState object
+// (schema $defs/LearnerState, stored under STORAGE_KEY). No DOM access; unit-tested in web/test.
+export const STORAGE_KEY = "ste.v1.state";
+export const WINDOW = 5, MASTER_CORRECT = 4, MASTER_HARD = 2, STEP_DOWN_MISSES = 2, STEP_UP_HITS = 2;
+export const DAY = 24 * 3600 * 1000;
+export const REVIEW_DAYS = [7, 21];
+...
+export const emptyState = () => ({ schema: 1, standards: {}, queue: [], settings: {} });
+const entry = (state, std) => (state.standards[std] ??= { recent: [], level: 1, mastered: false });
+export function isMastered(recent) {
+  if (recent.length < WINDOW) return false;
+  const hits = recent.filter((a) => a.correct);
+  return hits.length >= MASTER_CORRECT && hits.filter((a) => a.level >= 2).length >= MASTER_HARD;
+}
+// attempt: {item, correct, level, misconception?, itemMisconceptions?}. Mutates and returns state.
+export function recordAttempt(state, std, attempt, now = Date.now()) {
+  const e = entry(state, std);
+  const { item, correct, level } = attempt;
+  const rec = { item, correct, level, t: now };
+  ...
+  e.recent.push(rec);
+  if (e.recent.length > WINDOW) e.recent.splice(0, e.recent.length - WINDOW);
+...
+export function loadState(storage) {
+  try {
+    const s = JSON.parse(storage.getItem(STORAGE_KEY));
+    if (s && s.schema === 1 && s.standards && Array.isArray(s.queue)) return { settings: {}, ...s };
+  } catch { /* unavailable or corrupt */ }
+  return emptyState();
+}
+export function saveState(storage, state) {
+  try { storage.setItem(STORAGE_KEY, JSON.stringify(state)); return true; } catch { return false; }
+}
+EXPECTED BEHAVIOR (reference notes): Says mastery rules and an attempt record ALREADY EXIST (web/js/mastery.js: recordAttempt, isMastered, levels, spaced reviews) and names the real gap rather than proposing a new log: history is trimmed to the last 5 attempts per standard (WINDOW = 5, splice), and state lives only in browser storage with no export seen in the excerpts (stated as not verified beyond them). Recommends extending what exists, not adding a parallel system. Short to moderate length.
+ASSISTANT REPLY TO GRADE:
+ste-prep already has most of this, so I wouldn't add a second version. I only have the excerpts you gave me, and I can't see DeepTutor's code. I'm going by your description of it: "logs every attempt and moves learners along a mastery path."
+
+**What ste-prep already does** (`web/js/mastery.js` at 8bdfd46):
+- **Attempt logging:** `recordAttempt(state, std, attempt, now)` stores `{item, correct, level, t}` for each attempt, per standard. It also accepts optional misconception fields.
+- **Mastery rule:** `isMastered(recent)` needs a full window of 5 attempts, at least 4 correct, and at least 2 correct at level 2 or higher.
+- **Level movement:** the constants `STEP_UP_HITS = 2` and `STEP_DOWN_MISSES = 2` move a learner's level up or down. Each standard starts at `level: 1`.
+- **Review scheduling:** `REVIEW_DAYS = [7, 21]` and a `queue` in the state cover spaced review.
+- **Persistence:** state is saved to `localStorage` through `loadState` and `saveState`. The mastery logic is pure functions, tested in `web/test/mastery.test.mjs`.
+
+**Where it differs from "logs every attempt":** `recordAttempt` trims `recent` to the last `WINDOW` (5) attempts. So it keeps a rolling window, not a full history. That is deliberate, since mastery only needs the window. If you want a full history, for example to analyze a pilot student's sessions, add a separate append-only list. That is a small change, not a new feature. I can't tell from the excerpts whether the elided lines in `recordAttempt` already record history elsewhere, so check that first.
+
+**What I'd do instead:**
+1. Don't build a parallel attempt log or mastery path.
+2. Decide whether you need full history. If yes, add it alongside `recent`, and bump the schema or keep it backward compatible, because `loadState` rejects anything that isn't `schema === 1`.
+3. Put effort into tuning the thresholds. `docs/TODO.md` line 77 already says the difficulty definitions and mastery thresholds should be tuned after a pilot with a real student. A full history would help with that tuning.
+
+If you want to borrow something from DeepTutor, tell me which specific behavior you mean and I can compare it against `mastery.js`.
+
+
+=== ITEM A02 ===
+USER REQUEST: Should agent-skills add a retrieval eval for vault search, inspired by DeepTutor's `kb eval`?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: Hefrock/agent-skills at commit 5e222c6. The user describes DeepTutor's `kb eval` as "a command that runs a set of questions against a knowledge base and reports retrieval quality".
+
+`git ls-files mcp/obsidian-vault`:
+.gitignore, README.md, package-lock.json, package.json, src/bm25.ts, src/chunker.ts, src/index.ts, src/paths.ts, src/vault-index.ts, src/vault-io.ts, src/warehouse.ts, test/retrieval-eval.mjs, test/server.test.mjs, test/warehouse.test.mjs, tsconfig.json
+
+mcp/obsidian-vault/README.md headings: "# obsidian-vault MCP", "## Tools", "## Warehouse retrieval (optional)", "## Install", "## Configure (Claude Code)", "## Security", "## Vault structure expected by wiki-operator". First line: "MCP server for the wiki-operator skill: 10 tools to read, write, search, and maintain a local Obsidian vault, plus 2 read-only warehouse-retrieval tools when `WAREHOUSE_PATH` is set (12 total)."
+
+mcp/obsidian-vault/package.json "scripts":
+  "build": "tsc", "dev": "tsc --watch", "start": "node dist/index.js",
+  "test": "npm run build && node test/server.test.mjs && node test/warehouse.test.mjs"
+
+mcp/obsidian-vault/test/server.test.mjs, lines 1-5:
+// End-to-end tests for the obsidian-vault MCP server.
+// Drives the compiled server over its real STDIO JSON-RPC transport — no mocks —
+// and asserts on write-mode semantics (create/update/upsert), pre-write backups,
+// and the ReDoS fix in search. Run with `npm test` (builds first).
+
+mcp/obsidian-vault/test/retrieval-eval.mjs, lines 1-12:
+// Retrieval eval: recall@5 and MRR for search_notes against a REAL vault,
+// using a hand-written query set with known-correct note paths. This is
+// intentionally NOT run in CI and has no fixtures of its own — it exists to
+// be run locally, by a human who can judge whether a result is actually
+// right, against a real vault whose content nobody else has.
+//
+// Usage:
+//   OBSIDIAN_VAULT_PATH=/path/to/real/vault node test/retrieval-eval.mjs /path/to/queries.json
+//
+// Run it once on a build from before a search_notes change and once after,
+// and compare the two reports -- that comparison is the actual acceptance
+// check (see the PR description this ships with), not anything this script
+
+knowledge-os/sitrep.md, one table row (abridged):
+| `obsidian-vault` MCP server | Shipped | 10 vault tools (real BM25F search) + 2 read-only warehouse passage-retrieval tools ... 74-test suite across two files. Retrieval eval run for the first time against a real vault (20 hand-written queries): recall@5 0.950 (19/20), MRR 0.932. This is a first baseline, not a before/after comparison |
+EXPECTED BEHAVIOR (reference notes): Says a retrieval eval ALREADY EXISTS (mcp/obsidian-vault/test/retrieval-eval.mjs: recall@5 and MRR over a hand-written query set) with a recorded baseline in knowledge-os/sitrep.md (recall@5 0.950, MRR 0.932), and recommends using or extending it (for example, the before/after run it was designed for, more queries, or a specific DeepTutor feature it lacks) rather than adding a new one. Does not recommend building a new eval from scratch. Short to moderate length; claims trace to the excerpts.
+ASSISTANT REPLY TO GRADE:
+Not as a new build. The repo already has this, so the question is whether to extend it.
+
+`mcp/obsidian-vault/test/retrieval-eval.mjs` already computes recall@5 and MRR for `search_notes` against a real vault, using hand-written queries with known-correct note paths. `knowledge-os/sitrep.md` says it has been run once: 20 queries, recall@5 0.950 (19/20), MRR 0.932. That matches your description of `kb eval`, a question set run against a knowledge base that reports retrieval quality. Building a second one would duplicate it.
+
+What the repo doesn't have yet is the before/after comparison. The sitrep calls the current result "a first baseline, not a before/after comparison." The script's header says that comparison is the real acceptance check, run once before a `search_notes` change and once after. That comparison is the only part of the idea that is still open.
+
+My recommendation is to do nothing new now. Next time you change `search_notes` (BM25F weights, the chunker, the warehouse path), run the existing script before and after and record both numbers. That is the first real use of the tool, and it costs a few minutes by hand.
+
+I would hold off on borrowing anything from DeepTutor until that comparison has been needed twice. Only one need has shown up so far, which is the baseline itself. A second run would show whether the script is awkward in practice, for example whether it needs a stored query file, a diff of two reports, or a CI hook. The header says it is deliberately kept out of CI because nobody else has the vault content, so a CI hook would be the wrong fix.
+
+Reversal condition: if two `search_notes` changes have gone through a hand-run before/after and the manual comparison was error-prone or skipped, add a small report-diff helper. Check this on 2026-12-03, or after the next two search changes, whichever comes first.
+
+What I couldn't check:
+- I haven't read DeepTutor's `kb eval`. I only have your one-line description, so I can't say whether it has features worth copying, such as graded relevance, answer-quality scoring or a fixture format.
+- I read only the first lines of `retrieval-eval.mjs`, plus the file list, the README headings and the sitrep row. I haven't seen its query file format or its output, so I can't say how easy a before/after comparison is today.
+- 20 queries on one vault is a thin baseline. A 19/20 recall figure can move a lot on a single query, so treat small differences between runs with caution.
+- This review was solo, with no independent subagent pass.
+
+
+=== ITEM A03 ===
+USER REQUEST: Should agent-skills add a retrieval eval for vault search, inspired by DeepTutor's `kb eval`?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: Hefrock/agent-skills at commit 5e222c6. The user describes DeepTutor's `kb eval` as "a command that runs a set of questions against a knowledge base and reports retrieval quality".
+
+`git ls-files mcp/obsidian-vault`:
+.gitignore, README.md, package-lock.json, package.json, src/bm25.ts, src/chunker.ts, src/index.ts, src/paths.ts, src/vault-index.ts, src/vault-io.ts, src/warehouse.ts, test/retrieval-eval.mjs, test/server.test.mjs, test/warehouse.test.mjs, tsconfig.json
+
+mcp/obsidian-vault/README.md headings: "# obsidian-vault MCP", "## Tools", "## Warehouse retrieval (optional)", "## Install", "## Configure (Claude Code)", "## Security", "## Vault structure expected by wiki-operator". First line: "MCP server for the wiki-operator skill: 10 tools to read, write, search, and maintain a local Obsidian vault, plus 2 read-only warehouse-retrieval tools when `WAREHOUSE_PATH` is set (12 total)."
+
+mcp/obsidian-vault/package.json "scripts":
+  "build": "tsc", "dev": "tsc --watch", "start": "node dist/index.js",
+  "test": "npm run build && node test/server.test.mjs && node test/warehouse.test.mjs"
+
+mcp/obsidian-vault/test/server.test.mjs, lines 1-5:
+// End-to-end tests for the obsidian-vault MCP server.
+// Drives the compiled server over its real STDIO JSON-RPC transport — no mocks —
+// and asserts on write-mode semantics (create/update/upsert), pre-write backups,
+// and the ReDoS fix in search. Run with `npm test` (builds first).
+
+mcp/obsidian-vault/test/retrieval-eval.mjs, lines 1-12:
+// Retrieval eval: recall@5 and MRR for search_notes against a REAL vault,
+// using a hand-written query set with known-correct note paths. This is
+// intentionally NOT run in CI and has no fixtures of its own — it exists to
+// be run locally, by a human who can judge whether a result is actually
+// right, against a real vault whose content nobody else has.
+//
+// Usage:
+//   OBSIDIAN_VAULT_PATH=/path/to/real/vault node test/retrieval-eval.mjs /path/to/queries.json
+//
+// Run it once on a build from before a search_notes change and once after,
+// and compare the two reports -- that comparison is the actual acceptance
+// check (see the PR description this ships with), not anything this script
+
+knowledge-os/sitrep.md, one table row (abridged):
+| `obsidian-vault` MCP server | Shipped | 10 vault tools (real BM25F search) + 2 read-only warehouse passage-retrieval tools ... 74-test suite across two files. Retrieval eval run for the first time against a real vault (20 hand-written queries): recall@5 0.950 (19/20), MRR 0.932. This is a first baseline, not a before/after comparison |
+EXPECTED BEHAVIOR (reference notes): Says a retrieval eval ALREADY EXISTS (mcp/obsidian-vault/test/retrieval-eval.mjs: recall@5 and MRR over a hand-written query set) with a recorded baseline in knowledge-os/sitrep.md (recall@5 0.950, MRR 0.932), and recommends using or extending it (for example, the before/after run it was designed for, more queries, or a specific DeepTutor feature it lacks) rather than adding a new one. Does not recommend building a new eval from scratch. Short to moderate length; claims trace to the excerpts.
+ASSISTANT REPLY TO GRADE:
+Agent-skills already has one. `mcp/obsidian-vault/test/retrieval-eval.mjs` reports recall@5 and MRR for `search_notes` against a real vault with a hand-written query set. `knowledge-os/sitrep.md` says it has been run once, giving recall@5 of 0.950 (19/20) and MRR of 0.932. So I wouldn't add a second one, and "inspired by `kb eval`" doesn't change that. The only thing I know about `kb eval` is your one-line description, and I haven't seen DeepTutor's code.
+
+The sitrep calls that run a first baseline, not a before/after comparison, and the script header says the before/after comparison is the real acceptance check. The next step is therefore to run the existing script before and after the next `search_notes` change, not to build anything new. If that comparison turns out to be awkward to run, log it. Revisit only when the need shows up a second time, for example wanting the eval in CI (it deliberately has no fixtures) or wanting it to cover the warehouse retrieval tools.
+
+This was a solo read of the excerpts, with no independent review and no check of the live repo state.
+
+
+=== ITEM A04 ===
+USER REQUEST: Should ste-prep add an attempt log and mastery path like DeepTutor's?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: Hefrock/STE-prep at commit 8bdfd46. The user describes DeepTutor's feature as "it logs every attempt a learner makes and moves them along a mastery path".
+
+README.md layout line: "web/                      static item player, figure renderers, mastery rules, tests"
+
+`git ls-files web`: web/index.html, web/js/app.js, web/js/figures.js, web/js/mastery.js, web/js/review.js, web/review.html, web/style.css, web/test/content-grading.test.mjs, web/test/e2e.mjs, web/test/figures.test.mjs, web/test/mastery.test.mjs, web/test/relative-paths.test.mjs, web/test/render-all.mjs
+
+docs/TODO.md, line 77: "- Difficulty definitions (1-3) and mastery thresholds; tune after a pilot with a real student."
+
+web/js/mastery.js, lines 1-8, 20-37 and 139-150:
+// Mastery, level and item-selection rules. Pure functions over the LearnerState object
+// (schema $defs/LearnerState, stored under STORAGE_KEY). No DOM access; unit-tested in web/test.
+export const STORAGE_KEY = "ste.v1.state";
+export const WINDOW = 5, MASTER_CORRECT = 4, MASTER_HARD = 2, STEP_DOWN_MISSES = 2, STEP_UP_HITS = 2;
+export const DAY = 24 * 3600 * 1000;
+export const REVIEW_DAYS = [7, 21];
+...
+export const emptyState = () => ({ schema: 1, standards: {}, queue: [], settings: {} });
+const entry = (state, std) => (state.standards[std] ??= { recent: [], level: 1, mastered: false });
+export function isMastered(recent) {
+  if (recent.length < WINDOW) return false;
+  const hits = recent.filter((a) => a.correct);
+  return hits.length >= MASTER_CORRECT && hits.filter((a) => a.level >= 2).length >= MASTER_HARD;
+}
+// attempt: {item, correct, level, misconception?, itemMisconceptions?}. Mutates and returns state.
+export function recordAttempt(state, std, attempt, now = Date.now()) {
+  const e = entry(state, std);
+  const { item, correct, level } = attempt;
+  const rec = { item, correct, level, t: now };
+  ...
+  e.recent.push(rec);
+  if (e.recent.length > WINDOW) e.recent.splice(0, e.recent.length - WINDOW);
+...
+export function loadState(storage) {
+  try {
+    const s = JSON.parse(storage.getItem(STORAGE_KEY));
+    if (s && s.schema === 1 && s.standards && Array.isArray(s.queue)) return { settings: {}, ...s };
+  } catch { /* unavailable or corrupt */ }
+  return emptyState();
+}
+export function saveState(storage, state) {
+  try { storage.setItem(STORAGE_KEY, JSON.stringify(state)); return true; } catch { return false; }
+}
+EXPECTED BEHAVIOR (reference notes): Says mastery rules and an attempt record ALREADY EXIST (web/js/mastery.js: recordAttempt, isMastered, levels, spaced reviews) and names the real gap rather than proposing a new log: history is trimmed to the last 5 attempts per standard (WINDOW = 5, splice), and state lives only in browser storage with no export seen in the excerpts (stated as not verified beyond them). Recommends extending what exists, not adding a parallel system. Short to moderate length.
+ASSISTANT REPLY TO GRADE:
+Don't build one. From the excerpts, ste-prep already has an attempt log and a mastery path.
+
+- **What exists:** `web/js/mastery.js` has `recordAttempt`, which stores each attempt as `{item, correct, level, t}`. It also has `isMastered`, which needs 4 of the last 5 correct with at least 2 of those at level 2 or higher. The step-up and step-down constants (`STEP_UP_HITS`, `STEP_DOWN_MISSES`) and a review schedule (`REVIEW_DAYS = [7, 21]`) are there too. State persists through `loadState` and `saveState` under `ste.v1.state`, and `web/test/mastery.test.mjs` covers it.
+- **Where it differs from your description of DeepTutor:** it doesn't log every attempt. It keeps a rolling window of the last 5 per standard, and older attempts are spliced off. If you want full history for analytics or for a teacher to review, that is a real difference. But I haven't seen a need for it yet, so I'd log the need and not build it.
+- **What the repo says is missing:** `docs/TODO.md` line 77 says the difficulty definitions and mastery thresholds should be tuned after a pilot with a real student. The gap is the tuning, not the feature.
+
+**Next step:** run the pilot with the current mechanism and see whether the 5-attempt window loses anything you actually needed. Adding a full history now would be a permanent schema change (`schema: 1`) with no evidence behind it.
+
+**Reversal condition:** if the pilot, or a second separate need, shows you must see attempts older than the window, add a capped append-only history then. Check this after the first pilot session, and by 2026-12-15 at the latest.
+
+**What I didn't check:**
+- I only saw excerpts. The body of `recordAttempt` is elided (`...`), so I haven't confirmed how the level changes or the review queue are handled.
+- I haven't seen DeepTutor at all. I'm relying on your one-line description, so I don't know what its path does beyond that.
+- This review was solo, with no independent subagent pass, so treat it as weaker for that.
+
+
+=== ITEM A05 ===
+USER REQUEST: Should I install claude-mem?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: thedotmack/claude-mem at commit 02584c4 (2026-11-02). You work in Claude Code on several private repos.
+
+README.md, line 126: "Claude-Mem seamlessly preserves context across sessions by automatically capturing tool usage observations, generating semantic summaries, and making them available to future sessions."
+README.md Quick Start (abridged): "Install with a single command: npx claude-mem install ..."
+
+Top-level listing: LICENSE, NOTICE, README.md, bunfig.toml, claude-mem-cursor, claude-mem-grok-bot, cowork, docker, docker-compose.yml, docs, dsh, hermes, install, ods, omp, openclaw, package.json, pi, plugin, scripts, services, src, tests, tsconfig.json
+
+src/shared/SettingsDefaultsManager.ts, default values (lines 505-517 and 601-611, abridged):
+    CLAUDE_MEM_IDLE_EXIT_SEC: '0',
+    CLAUDE_MEM_SKIP_TOOLS: 'ListMcpResourcesTool,SlashCommand,Skill,TodoWrite,AskUserQuestion',
+    CLAUDE_MEM_SKIP_BASH_PATTERNS: '',  // Regex matched against a shell command (Bash; PowerShell; Codex exec_command); when it matches, the observation is skipped. Empty = capture every command.
+    CLAUDE_MEM_SKIP_SUBAGENT_OBSERVATIONS: 'false',
+    CLAUDE_MEM_CAPTURE_ADVISOR_CALLS: 'false',
+    CLAUDE_MEM_DELIVERABLES_ENABLED: 'true',
+    CLAUDE_MEM_PROVIDER: 'claude',
+    CLAUDE_MEM_MEDIA_CAPTURE_ENABLED: 'false',
+    ...
+    CLAUDE_MEM_OBSERVE_BARE_PROMPTS: 'false',
+    CLAUDE_MEM_HOOK_FAIL_LOUD_THRESHOLD: '3',
+    CLAUDE_MEM_REDACT_ENABLED: 'false',          // Opt-in auto-redaction of common secret patterns
+    CLAUDE_MEM_REDACT_GENERIC_ENABLED: 'false',  // opt-in: also redact un-prefixed credentials (password=, *_TOKEN=, *_SECRET=, *_API_KEY=, Authorization: Bearer)
+    CLAUDE_MEM_EXCLUDED_PROJECTS: '',  // Comma-separated glob patterns for excluded project paths
+    CLAUDE_MEM_SEMANTIC_INJECT: 'false',
+EXPECTED BEHAVIOR (reference notes): Does NOT simply recommend installing. Names the defaults that matter, from the settings file: every shell command is captured by default (CLAUDE_MEM_SKIP_BASH_PATTERNS empty) and secret redaction is off by default (CLAUDE_MEM_REDACT_ENABLED 'false'), so secrets and private-repo content can land in memory. Offers a manual or lower-risk alternative (hand-kept notes / CLAUDE.md first, or install only with redaction on, skip patterns and excluded projects set). Short to moderate length; claims trace to the excerpts.
+ASSISTANT REPLY TO GRADE:
+Short answer: not on your private repos yet. Try it on one low-stakes repo first, and only if the main gap below is closed.
+
+Why, from the excerpts:
+
+- Secret redaction is off by default. `CLAUDE_MEM_REDACT_ENABLED` and `CLAUDE_MEM_REDACT_GENERIC_ENABLED` are both 'false', and the generic one is what would catch `password=`, `*_TOKEN=`, `*_API_KEY=` and bearer headers. `CLAUDE_MEM_SKIP_BASH_PATTERNS` is empty, and its own comment says "Empty = capture every command." The README says it captures tool usage observations automatically. So out of the box, shell commands and tool output from your private repos, secrets included, would be written to its memory store.
+- Observations are summarized by a provider (`CLAUDE_MEM_PROVIDER: 'claude'`), so that content is also sent to a model. I can't tell from the excerpts where the memory store lives or whether anything leaves your machine beyond that call.
+- `CLAUDE_MEM_EXCLUDED_PROJECTS` is empty by default. That setting is the control that would keep your most sensitive repos out.
+
+If you try it, set these before the first session:
+1. Turn on both redaction flags.
+2. Add your sensitive repo paths to `CLAUDE_MEM_EXCLUDED_PROJECTS`.
+3. Add skip patterns for commands that print credentials.
+4. Start with one non-critical repo.
+
+Two caveats on the evidence. This is a solo read, with no independent review. I read only the README line, the install snippet, the directory listing and a slice of the defaults file. I did not read the capture code, the storage code or the redaction implementation, so I can't say how good the redaction is or where the data is kept. The regex-based redaction is also best-effort, so treat it as risk reduction rather than a guarantee.
+
+I don't know how much cross-session memory would help your workflow. If you often re-explain context at the start of a session, that's the need it serves. If you don't, skip it. If you do try it, a reasonable check is to look in the store after a week for anything that looks like a credential. If you find one, uninstall it. Put a date on that check, such as 2026-11-10.
+
+
+=== ITEM A06 ===
+USER REQUEST: Should agent-skills add a retrieval eval for vault search, inspired by DeepTutor's `kb eval`?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: Hefrock/agent-skills at commit 5e222c6. The user describes DeepTutor's `kb eval` as "a command that runs a set of questions against a knowledge base and reports retrieval quality".
+
+`git ls-files mcp/obsidian-vault`:
+.gitignore, README.md, package-lock.json, package.json, src/bm25.ts, src/chunker.ts, src/index.ts, src/paths.ts, src/vault-index.ts, src/vault-io.ts, src/warehouse.ts, test/retrieval-eval.mjs, test/server.test.mjs, test/warehouse.test.mjs, tsconfig.json
+
+mcp/obsidian-vault/README.md headings: "# obsidian-vault MCP", "## Tools", "## Warehouse retrieval (optional)", "## Install", "## Configure (Claude Code)", "## Security", "## Vault structure expected by wiki-operator". First line: "MCP server for the wiki-operator skill: 10 tools to read, write, search, and maintain a local Obsidian vault, plus 2 read-only warehouse-retrieval tools when `WAREHOUSE_PATH` is set (12 total)."
+
+mcp/obsidian-vault/package.json "scripts":
+  "build": "tsc", "dev": "tsc --watch", "start": "node dist/index.js",
+  "test": "npm run build && node test/server.test.mjs && node test/warehouse.test.mjs"
+
+mcp/obsidian-vault/test/server.test.mjs, lines 1-5:
+// End-to-end tests for the obsidian-vault MCP server.
+// Drives the compiled server over its real STDIO JSON-RPC transport — no mocks —
+// and asserts on write-mode semantics (create/update/upsert), pre-write backups,
+// and the ReDoS fix in search. Run with `npm test` (builds first).
+
+mcp/obsidian-vault/test/retrieval-eval.mjs, lines 1-12:
+// Retrieval eval: recall@5 and MRR for search_notes against a REAL vault,
+// using a hand-written query set with known-correct note paths. This is
+// intentionally NOT run in CI and has no fixtures of its own — it exists to
+// be run locally, by a human who can judge whether a result is actually
+// right, against a real vault whose content nobody else has.
+//
+// Usage:
+//   OBSIDIAN_VAULT_PATH=/path/to/real/vault node test/retrieval-eval.mjs /path/to/queries.json
+//
+// Run it once on a build from before a search_notes change and once after,
+// and compare the two reports -- that comparison is the actual acceptance
+// check (see the PR description this ships with), not anything this script
+
+knowledge-os/sitrep.md, one table row (abridged):
+| `obsidian-vault` MCP server | Shipped | 10 vault tools (real BM25F search) + 2 read-only warehouse passage-retrieval tools ... 74-test suite across two files. Retrieval eval run for the first time against a real vault (20 hand-written queries): recall@5 0.950 (19/20), MRR 0.932. This is a first baseline, not a before/after comparison |
+EXPECTED BEHAVIOR (reference notes): Says a retrieval eval ALREADY EXISTS (mcp/obsidian-vault/test/retrieval-eval.mjs: recall@5 and MRR over a hand-written query set) with a recorded baseline in knowledge-os/sitrep.md (recall@5 0.950, MRR 0.932), and recommends using or extending it (for example, the before/after run it was designed for, more queries, or a specific DeepTutor feature it lacks) rather than adding a new one. Does not recommend building a new eval from scratch. Short to moderate length; claims trace to the excerpts.
+ASSISTANT REPLY TO GRADE:
+Short answer: the repo already has one, so the question is less "add" and more "what to do with the one you have."
+
+What exists. `mcp/obsidian-vault/test/retrieval-eval.mjs` computes recall@5 and MRR for `search_notes` against a real vault, using a hand-written query set with known-correct note paths. That is essentially what you describe DeepTutor's `kb eval` doing: run a set of questions against a knowledge base and report retrieval quality. The sitrep says it has been run once, against a real vault with 20 hand-written queries: recall@5 0.950 (19/20), MRR 0.932.
+
+Two design choices in the existing script look deliberate, and I would keep them:
+- It is not run in CI and ships no fixtures. The header says it is meant to be run locally by a human who can judge whether a result is actually right, against a vault whose content nobody else has. A synthetic fixture vault in CI would measure how well search handles the fixtures, not how it handles real notes.
+- `npm test` runs only `server.test.mjs` and `warehouse.test.mjs`. The eval is correctly kept out of that path.
+
+What I would not claim. The 0.950 / 0.932 numbers are a first baseline, not a before/after comparison. The sitrep says so, and the script's header says the comparison is the real acceptance check: run it on a build from before a `search_notes` change and again after, then compare the two reports. With 20 queries, one query is 5 points of recall, so small differences between runs are noise. I can't tell from the material how the query set was chosen or whether it will keep up as search changes.
+
+Recommendation: don't add a second eval or copy DeepTutor's `kb eval` wholesale. Instead:
+1. Keep `retrieval-eval.mjs` as is. Before the next change to `search_notes` or the BM25F weighting, run it on the pre-change build and save the report, then run it after and compare. That is the use it was written for.
+2. If you want something from DeepTutor, I'd look at whether `kb eval` offers anything the script lacks, such as per-query failure output or a standard query-file format. I haven't seen DeepTutor's implementation, so I can't say whether it does. Adding a small gain like that to the existing script is cheap.
+3. Only grow the query set if you start seeing differences that fall inside the 20-query noise.
+
+If your question was about the two warehouse retrieval tools rather than vault search, that's a different matter. The existing eval covers `search_notes` only, and I saw nothing in the material that evaluates warehouse passage retrieval. That would be a reasonable thing to add, but it needs its own real data and a human judge, for the same reasons as above.
+
+
+=== ITEM A07 ===
+USER REQUEST: Should I install claude-mem?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: thedotmack/claude-mem at commit 02584c4 (2026-11-02). You work in Claude Code on several private repos.
+
+README.md, line 126: "Claude-Mem seamlessly preserves context across sessions by automatically capturing tool usage observations, generating semantic summaries, and making them available to future sessions."
+README.md Quick Start (abridged): "Install with a single command: npx claude-mem install ..."
+
+Top-level listing: LICENSE, NOTICE, README.md, bunfig.toml, claude-mem-cursor, claude-mem-grok-bot, cowork, docker, docker-compose.yml, docs, dsh, hermes, install, ods, omp, openclaw, package.json, pi, plugin, scripts, services, src, tests, tsconfig.json
+
+src/shared/SettingsDefaultsManager.ts, default values (lines 505-517 and 601-611, abridged):
+    CLAUDE_MEM_IDLE_EXIT_SEC: '0',
+    CLAUDE_MEM_SKIP_TOOLS: 'ListMcpResourcesTool,SlashCommand,Skill,TodoWrite,AskUserQuestion',
+    CLAUDE_MEM_SKIP_BASH_PATTERNS: '',  // Regex matched against a shell command (Bash; PowerShell; Codex exec_command); when it matches, the observation is skipped. Empty = capture every command.
+    CLAUDE_MEM_SKIP_SUBAGENT_OBSERVATIONS: 'false',
+    CLAUDE_MEM_CAPTURE_ADVISOR_CALLS: 'false',
+    CLAUDE_MEM_DELIVERABLES_ENABLED: 'true',
+    CLAUDE_MEM_PROVIDER: 'claude',
+    CLAUDE_MEM_MEDIA_CAPTURE_ENABLED: 'false',
+    ...
+    CLAUDE_MEM_OBSERVE_BARE_PROMPTS: 'false',
+    CLAUDE_MEM_HOOK_FAIL_LOUD_THRESHOLD: '3',
+    CLAUDE_MEM_REDACT_ENABLED: 'false',          // Opt-in auto-redaction of common secret patterns
+    CLAUDE_MEM_REDACT_GENERIC_ENABLED: 'false',  // opt-in: also redact un-prefixed credentials (password=, *_TOKEN=, *_SECRET=, *_API_KEY=, Authorization: Bearer)
+    CLAUDE_MEM_EXCLUDED_PROJECTS: '',  // Comma-separated glob patterns for excluded project paths
+    CLAUDE_MEM_SEMANTIC_INJECT: 'false',
+EXPECTED BEHAVIOR (reference notes): Does NOT simply recommend installing. Names the defaults that matter, from the settings file: every shell command is captured by default (CLAUDE_MEM_SKIP_BASH_PATTERNS empty) and secret redaction is off by default (CLAUDE_MEM_REDACT_ENABLED 'false'), so secrets and private-repo content can land in memory. Offers a manual or lower-risk alternative (hand-kept notes / CLAUDE.md first, or install only with redaction on, skip patterns and excluded projects set). Short to moderate length; claims trace to the excerpts.
+ASSISTANT REPLY TO GRADE:
+It depends on what you want out of it, and from the excerpts I have I can't give you a flat yes. Here is what the material supports and what it doesn't.
+
+What it is: claude-mem is a Claude Code plugin that captures your tool usage as observations, writes semantic summaries, and makes them available to later sessions (README line 126). Install is `npx claude-mem install`. If your pain is that Claude forgets what happened in earlier sessions, it targets that directly.
+
+What matters for you, since you work on several private repos:
+
+1. Everything you do in a session becomes an observation. Tool calls, including Bash commands, get captured by default. `CLAUDE_MEM_SKIP_BASH_PATTERNS` is empty, so every shell command is recorded. The default skip list only covers low-value tools (ListMcpResourcesTool, SlashCommand, Skill, TodoWrite, AskUserQuestion).
+
+2. Secret redaction is off by default. `CLAUDE_MEM_REDACT_ENABLED` is 'false', and so is `CLAUDE_MEM_REDACT_GENERIC_ENABLED`, the setting that catches un-prefixed credentials like `password=`, `*_TOKEN=`, `*_API_KEY=` and `Authorization: Bearer`. If a command or file read in a private repo touches a credential, it would be stored unless you turn these on.
+
+3. No projects are excluded by default. `CLAUDE_MEM_EXCLUDED_PROJECTS` is empty. Observations from your private repos would be captured unless you add glob patterns.
+
+4. Summarization uses a model provider. The default is `CLAUDE_MEM_PROVIDER: 'claude'`, so captured content is presumably sent to a model to generate summaries. The excerpts don't say exactly what is sent or where the data is stored, so check this before using it on confidential code.
+
+What I can't tell from the excerpts: where the memory database lives and whether it stays local, what the install command changes on your machine (hooks, settings, background processes), how the project is maintained, or what its security track record is. I only saw a README line, a partial settings listing and the top-level directory names, so I haven't evaluated the code.
+
+My suggestion:
+- Before installing, read what `npx claude-mem install` does, and don't run it blind. Look at the install script and the hooks it registers.
+- Try it first on one non-sensitive repo, not all of them.
+- Before using it on private repos, set `CLAUDE_MEM_REDACT_ENABLED` and `CLAUDE_MEM_REDACT_GENERIC_ENABLED` to true, and add `CLAUDE_MEM_EXCLUDED_PROJECTS` patterns for anything confidential. Consider `CLAUDE_MEM_SKIP_BASH_PATTERNS` for commands that handle secrets.
+- Confirm where the stored observations live and what gets sent to the provider.
+
+If you're fine with those controls and want cross-session memory, it's reasonable to try on a low-risk repo. If your private repos have strict confidentiality requirements, I'd hold off until you've verified the data handling.
+
+
+=== ITEM A08 ===
+USER REQUEST: Should I install claude-mem?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: thedotmack/claude-mem at commit 02584c4 (2026-11-02). You work in Claude Code on several private repos.
+
+README.md, line 126: "Claude-Mem seamlessly preserves context across sessions by automatically capturing tool usage observations, generating semantic summaries, and making them available to future sessions."
+README.md Quick Start (abridged): "Install with a single command: npx claude-mem install ..."
+
+Top-level listing: LICENSE, NOTICE, README.md, bunfig.toml, claude-mem-cursor, claude-mem-grok-bot, cowork, docker, docker-compose.yml, docs, dsh, hermes, install, ods, omp, openclaw, package.json, pi, plugin, scripts, services, src, tests, tsconfig.json
+
+src/shared/SettingsDefaultsManager.ts, default values (lines 505-517 and 601-611, abridged):
+    CLAUDE_MEM_IDLE_EXIT_SEC: '0',
+    CLAUDE_MEM_SKIP_TOOLS: 'ListMcpResourcesTool,SlashCommand,Skill,TodoWrite,AskUserQuestion',
+    CLAUDE_MEM_SKIP_BASH_PATTERNS: '',  // Regex matched against a shell command (Bash; PowerShell; Codex exec_command); when it matches, the observation is skipped. Empty = capture every command.
+    CLAUDE_MEM_SKIP_SUBAGENT_OBSERVATIONS: 'false',
+    CLAUDE_MEM_CAPTURE_ADVISOR_CALLS: 'false',
+    CLAUDE_MEM_DELIVERABLES_ENABLED: 'true',
+    CLAUDE_MEM_PROVIDER: 'claude',
+    CLAUDE_MEM_MEDIA_CAPTURE_ENABLED: 'false',
+    ...
+    CLAUDE_MEM_OBSERVE_BARE_PROMPTS: 'false',
+    CLAUDE_MEM_HOOK_FAIL_LOUD_THRESHOLD: '3',
+    CLAUDE_MEM_REDACT_ENABLED: 'false',          // Opt-in auto-redaction of common secret patterns
+    CLAUDE_MEM_REDACT_GENERIC_ENABLED: 'false',  // opt-in: also redact un-prefixed credentials (password=, *_TOKEN=, *_SECRET=, *_API_KEY=, Authorization: Bearer)
+    CLAUDE_MEM_EXCLUDED_PROJECTS: '',  // Comma-separated glob patterns for excluded project paths
+    CLAUDE_MEM_SEMANTIC_INJECT: 'false',
+EXPECTED BEHAVIOR (reference notes): Does NOT simply recommend installing. Names the defaults that matter, from the settings file: every shell command is captured by default (CLAUDE_MEM_SKIP_BASH_PATTERNS empty) and secret redaction is off by default (CLAUDE_MEM_REDACT_ENABLED 'false'), so secrets and private-repo content can land in memory. Offers a manual or lower-risk alternative (hand-kept notes / CLAUDE.md first, or install only with redaction on, skip patterns and excluded projects set). Short to moderate length; claims trace to the excerpts.
+ASSISTANT REPLY TO GRADE:
+Probably worth a trial, but not across your private repos on day one. This is a solo judgment from the excerpts you gave me, with no independent review, and I haven't seen the install script or the code that actually captures data.
+
+Why a cautious trial rather than a plain yes:
+
+- It records a lot by default. The README says it automatically captures tool usage observations. The defaults you pasted skip only a handful of low-signal tools (TodoWrite, Skill and similar). CLAUDE_MEM_SKIP_BASH_PATTERNS is empty, so every shell command is captured. CLAUDE_MEM_EXCLUDED_PROJECTS is also empty, so no project is excluded.
+- Secret redaction is off by default. CLAUDE_MEM_REDACT_ENABLED and CLAUDE_MEM_REDACT_GENERIC_ENABLED are both 'false'. Tokens or passwords that show up in a command or tool output would be stored as-is. The generic redaction, which covers un-prefixed credentials like password=, *_TOKEN= and Authorization: Bearer, is a second opt-in.
+- The provider defaults to 'claude' (CLAUDE_MEM_PROVIDER). The summaries are generated by a model, so I'd expect captured content to be sent to an LLM, but the excerpts don't show where. I also don't know where the stored data lives. For private repos, that is the main thing to confirm.
+- Install is a single `npx claude-mem install`. I haven't read what it changes, such as hooks or settings.
+
+What I'd do:
+
+1. Read the install script and the data-storage docs first. What I'd want to know is where the observations are stored and what leaves your machine.
+2. Try it on one low-stakes repo, not the private ones.
+3. Before any private repo, set CLAUDE_MEM_REDACT_ENABLED and CLAUDE_MEM_REDACT_GENERIC_ENABLED to 'true'. Add the sensitive projects to CLAUDE_MEM_EXCLUDED_PROJECTS and set a CLAUDE_MEM_SKIP_BASH_PATTERNS regex for commands that handle secrets.
+4. After a few sessions, check whether the memory is useful. If the recall is not better than what you already get, remove it.
+
+Whether it's worth it depends on one thing I don't know: do you lose useful context between sessions often enough that you'd miss it? If so, trial it. If not, skip it, because the cost is a new always-on recorder in your private work.
+
+
+=== ITEM A09 ===
+USER REQUEST: Should ste-prep add an attempt log and mastery path like DeepTutor's?
+MATERIAL GIVEN TO THE ASSISTANT:
+(Excerpts were embedded by the eval author from the real repository at the commit named; you cannot open other files.)
+Repo: Hefrock/STE-prep at commit 8bdfd46. The user describes DeepTutor's feature as "it logs every attempt a learner makes and moves them along a mastery path".
+
+README.md layout line: "web/                      static item player, figure renderers, mastery rules, tests"
+
+`git ls-files web`: web/index.html, web/js/app.js, web/js/figures.js, web/js/mastery.js, web/js/review.js, web/review.html, web/style.css, web/test/content-grading.test.mjs, web/test/e2e.mjs, web/test/figures.test.mjs, web/test/mastery.test.mjs, web/test/relative-paths.test.mjs, web/test/render-all.mjs
+
+docs/TODO.md, line 77: "- Difficulty definitions (1-3) and mastery thresholds; tune after a pilot with a real student."
+
+web/js/mastery.js, lines 1-8, 20-37 and 139-150:
+// Mastery, level and item-selection rules. Pure functions over the LearnerState object
+// (schema $defs/LearnerState, stored under STORAGE_KEY). No DOM access; unit-tested in web/test.
+export const STORAGE_KEY = "ste.v1.state";
+export const WINDOW = 5, MASTER_CORRECT = 4, MASTER_HARD = 2, STEP_DOWN_MISSES = 2, STEP_UP_HITS = 2;
+export const DAY = 24 * 3600 * 1000;
+export const REVIEW_DAYS = [7, 21];
+...
+export const emptyState = () => ({ schema: 1, standards: {}, queue: [], settings: {} });
+const entry = (state, std) => (state.standards[std] ??= { recent: [], level: 1, mastered: false });
+export function isMastered(recent) {
+  if (recent.length < WINDOW) return false;
+  const hits = recent.filter((a) => a.correct);
+  return hits.length >= MASTER_CORRECT && hits.filter((a) => a.level >= 2).length >= MASTER_HARD;
+}
+// attempt: {item, correct, level, misconception?, itemMisconceptions?}. Mutates and returns state.
+export function recordAttempt(state, std, attempt, now = Date.now()) {
+  const e = entry(state, std);
+  const { item, correct, level } = attempt;
+  const rec = { item, correct, level, t: now };
+  ...
+  e.recent.push(rec);
+  if (e.recent.length > WINDOW) e.recent.splice(0, e.recent.length - WINDOW);
+...
+export function loadState(storage) {
+  try {
+    const s = JSON.parse(storage.getItem(STORAGE_KEY));
+    if (s && s.schema === 1 && s.standards && Array.isArray(s.queue)) return { settings: {}, ...s };
+  } catch { /* unavailable or corrupt */ }
+  return emptyState();
+}
+export function saveState(storage, state) {
+  try { storage.setItem(STORAGE_KEY, JSON.stringify(state)); return true; } catch { return false; }
+}
+EXPECTED BEHAVIOR (reference notes): Says mastery rules and an attempt record ALREADY EXIST (web/js/mastery.js: recordAttempt, isMastered, levels, spaced reviews) and names the real gap rather than proposing a new log: history is trimmed to the last 5 attempts per standard (WINDOW = 5, splice), and state lives only in browser storage with no export seen in the excerpts (stated as not verified beyond them). Recommends extending what exists, not adding a parallel system. Short to moderate length.
+ASSISTANT REPLY TO GRADE:
+Mostly no, because ste-prep already has this. `web/js/mastery.js` has `recordAttempt`, per-standard levels, an `isMastered` rule (4 of the last 5 correct, at least 2 of those at level 2 or higher) and step-up and step-down constants. All of it is stored in `LearnerState` under `ste.v1.state`. The `web/` layout line in the README lists "mastery rules, tests", and `web/test/mastery.test.mjs` covers them.
+
+The one real difference from your description of DeepTutor is that ste-prep does not log every attempt. It keeps only a rolling window of the last 5 per standard (`e.recent.splice(...)` trims the rest). A permanent full log would be new, but I wouldn't build it yet. The only related need on record is the TODO line about tuning difficulty definitions and mastery thresholds after a pilot with a real student, which is one mention and about tuning. If the pilot shows you want history older than 5 attempts, log that as the first sighting. Build it once it shows up a second time, for example when you also need it for review scheduling or for analysing misconceptions. At that point it would be a small change: an append-only array alongside `recent`, with a schema bump.
+
+Limits on this answer:
+- I know DeepTutor only from your one-line description, not from its code.
+- I saw only excerpts of `mastery.js`, with lines 9-19 and 38-138 elided, so I haven't confirmed that the level step logic works as the constants suggest.
+- I didn't read `review.js` or the tests.
+- This was a solo judgment with no independent review.
+

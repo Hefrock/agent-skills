@@ -116,3 +116,16 @@ One rater blind-scored the nine v3 cases on the same three criteria, comparing t
 - **Calibration.** Over all three criteria, the mean difference from judge A was 0.203 on 17 blind first-pass items (at the 0.2 line; one typing slip excluded). Length-fit anchors were then added to the human rubric and tested on 8 new replies written afterwards: 0.131, within the pre-registered 0.15 (the largest single item hit the 0.4 limit exactly).
 - **Depth cases unchanged.** On a new plan-review question both arms ran about 550 words against a reference of 120 to 250, so the v3 edit shortened Quick answers but not that kind of reply.
 - Supersedes "no human calibration" in the limits above. Remaining limits: one rater, same model family for runners and judges, small n; three run-1 scores still to redo and a cross-family (Gemini) judge still to run.
+
+## v4 (2026-11-03): decision-protocol edit, reverted
+A handoff proposed four additions: step 1 reads current state, not a README; step 2 always includes doing nothing, doing it by hand, and using what already exists; step 7 gives build or adopt decisions a dated reversal condition; the coverage line declares skipped steps. Rules were pre-registered before any reply existed (`v4/PROTOCOL.md`, commit 6613327). The old skill (5e222c6), the edit and no skill were generated fresh and graded in **one** blind batch, because stored v2/v3 scores were from other batches and older models. Cases: v2 (9), the frozen fresh set (4), and new a1-a3 (`v4/a_cases.json`), which embed real repo excerpts where the right answer is "this already exists" or "this tool's defaults capture too much". Build and score with `scripts/v4.py`.
+
+| category (n) | old A / B | edit A / B | control A / B |
+|---|---|---|---|
+| length-fit, short (7) | 0.76 / 0.84 | 0.53 / 0.64 | 0.38 / 0.51 |
+| grounding (3: q1, q5, q7) | 0.88 / 0.82 | 0.88 / 0.87 | 0.62 / 0.73 |
+| a1-a3 flagged by both judges | 3 / 3 | 3 / 3 | 3 / 3 |
+
+- **Reverted.** The pre-registered revert rule fired: the edit cost length-fit on all seven short cases with both judges, about twice the judge noise seen before. Grounding did not move. The dated reversal condition leaked into "not yet" answers even though it was scoped to build or adopt decisions, and the "already exists" option added a paragraph. `SKILL.md` is back to 5e222c6.
+- **a1-a3 do not discriminate.** Every arm, including no skill, named the existing tool or risk once the excerpt was in the prompt. The real failure (not going to look) needs a runner that has to read a repo to find the answer. That means a tool-using runner, which these scripts do not support.
+- Limits: n = 1 per case per arm; cases written by the same author as the edit; all-Claude runners and judges; no human check. `v4/A_FREEZE.txt` hashes the edited `SKILL.md`, which now matches commit 6613327, not the working tree.

@@ -1,0 +1,5 @@
+Yes, now it's worth it. The need has shown up twice (9 screenshots on 2026-09-12, 12 on 2026-10-14), which meets the "seen twice" bar, and the build is small: a one-off shell loop, nothing outward-facing, and trivially reversible.
+
+Keep it small. Write the loop, run it, and don't turn it into a maintained tool yet. I haven't seen your actual filenames or the naming scheme you want, so test it on a copy or with a dry run (echo the mv commands first) before renaming for real.
+
+Reversal condition: if you don't run it again by 2026-12-03, delete it and go back to renaming by hand.

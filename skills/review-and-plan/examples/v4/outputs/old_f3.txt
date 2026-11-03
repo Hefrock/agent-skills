@@ -1,0 +1,5 @@
+SQLite. For one user, about 2,000 rows, running only on your laptop with no other service touching the data, Postgres gives you nothing you need and costs you a server to install, run, and back up. SQLite is a single file, needs no setup, and handles this scale trivially, since 2,000 rows is tiny for it.
+
+What I don't know: whether you plan to access the tracker from multiple devices or add a web front end later. If either is likely, that could change the answer, but you can migrate to Postgres later if the need shows up. Don't build for it now.
+
+This was a solo judgment from the facts you gave me, with no independent review.

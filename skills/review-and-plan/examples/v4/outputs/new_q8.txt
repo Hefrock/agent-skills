@@ -1,0 +1,7 @@
+Not yet. Your log shows one manual run (2026-10-09, found 2 broken links), and nothing else, so the need has been seen once. Log it, keep running the check by hand, and build the CI step when the need shows up a second time.
+
+What I don't know: whether "weekly" means you actually do this every week (the log only has one entry, which suggests either the routine is looser than it sounds or it isn't being logged), which link checker you use, and how many links or pages are involved. I only have the log entry, so I haven't looked at your repo, your CI config, or the checker itself. This is a solo judgment with no independent review.
+
+A cheap way to get the second data point: log every run from now on, including runs that find nothing. If a second run turns up broken links, or you find yourself skipping weeks, that is the trigger. If you do build it, start with a scheduled (cron) CI job that reuses the checker you already run by hand, and have it report rather than fail the build, since external links break for reasons unrelated to your changes.
+
+Reversal condition: if by 2026-12-03 the log shows fewer than two runs that found broken links, keep it manual and drop the idea.

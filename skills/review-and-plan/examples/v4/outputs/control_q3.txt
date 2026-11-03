@@ -1,0 +1,7 @@
+Probably not yet, based on what I have. Your usage log shows one relevant entry: on 2026-10-14 you renamed 12 screenshots by hand. That's a single occurrence, and I have no other data on how often this comes up or how long it took you.
+
+A script is usually worth it when the task recurs often or each round is slow. One batch of 12 renames is a few minutes of work at most, and writing and testing a script would likely take longer than that. I can't tell from one entry whether this is a weekly habit or a one-off.
+
+If you find yourself doing it again, or you expect to, a short script is cheap to write. It would just apply a consistent naming pattern, for example a date prefix plus a counter, to the files in a folder. Tell me the naming scheme you want and I'll write it.
+
+For now, I'd keep logging it. If it shows up a few more times, the script becomes worth it.

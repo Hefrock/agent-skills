@@ -1,0 +1,18 @@
+I'd hold off on merging. A sleep doesn't fix the flake. It makes the flake rarer, and five local passes tell you very little here. Premortem: assume this is merged and test_sync is flaky again in three weeks. These are the likeliest reasons, most likely first.
+
+1. The 2 seconds is a guess about timing, not a condition. The test is flaky because it asserts on shared state while a background thread may still be writing it. The sleep only bets that the thread finishes within 2 seconds. CI is slower than your laptop, and a loaded runner can stall a thread well past that. The failure moves from "sometimes" to "less often, at the worst moments", which is harder to debug.
+
+2. Your local passes don't test the failing environment. The flake shows up in CI only, and the runner is slower. Five passes on a faster machine, where the thread was probably finishing in milliseconds anyway, would likely have passed before your change too. You have no evidence the sleep changed the CI failure rate. The evidence that matters is many CI runs, ideally dozens, with the sleep in place.
+
+3. You may not be testing the code CI runs. Locally you run `src/`, but CI installs a built wheel. I haven't seen the wheel contents or the CI logs, so I can't rule out that the failure comes from something that differs between the two. Examples are a packaging or import difference, a missing or stale file in the wheel, or a different version of a dependency. If so, no sleep in the test will fix it, and local runs can't reproduce it. Pull the actual CI failure output and check which assertion fails and what the state looked like when it did.
+
+4. A real race may be hiding behind the sleep. If the shared state is read while another thread mutates it, the cause is missing synchronization in the code under test. The sleep papers over that, and the same race could hit users in production.
+
+5. Cost. Every run of this test now takes at least 2 seconds more, and the delay will only grow when someone bumps it to 5 seconds after the next CI failure.
+
+What I'd do instead, in order of effort:
+- Replace the sleep with a wait on a real signal. Use a `threading.Event` or `join()` with a timeout, or poll the condition with a deadline (for example, up to 10 seconds, checking every 10 ms). The test then finishes as soon as the thread does, and the timeout is only a safety limit, so a slow runner can't cause a false failure.
+- Look at the CI failure output before changing anything. That tells you whether this is a timing issue at all or something related to the wheel.
+- To check the fix, run the test many times in CI. A loop of 50 to 100 runs on the CI runner, or something like pytest-repeat, would do. If you can, also reproduce the slowness locally, for example by limiting CPU or adding a small artificial delay in the thread.
+
+I can't say for certain that the wheel is a factor, since I haven't seen the contents. But if you merge now, you'd likely be declaring the problem fixed on weak evidence. If you share the test and the code that starts the thread, I can help write the event-based version.
