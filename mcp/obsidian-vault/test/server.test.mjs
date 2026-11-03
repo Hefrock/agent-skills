@@ -262,6 +262,39 @@ check(
   d.results?.some((res) => res.path === "Knowledge/existing.md")
 );
 
+// #206 regression: gray-matter 4.0.3 caches parses by input string, and a
+// failed parse is never added to the server's own note cache, so every scan
+// re-parses the bad file. The first parse throws (correctly skipped); before
+// the fix, every later parse in the same process returned gray-matter's
+// cached result -- empty frontmatter, raw text as body -- and the bad note
+// was indexed as a normal result. list_notes above was the first parse; these
+// are the second and later ones.
+check(
+  "search_notes — malformed file still in `skipped` on a later scan in the same process (#206)",
+  d.skipped?.some((s) => s.path === "Knowledge/malformed.md" && s.error?.includes("engine")),
+  `skipped: ${JSON.stringify(d.skipped)}`
+);
+r = await tool(90, "search_notes", { query: "malformed" });
+d = parse(r);
+check(
+  "search_notes — malformed note never returned as a normal result (#206)",
+  !d.results?.some((res) => res.path === "Knowledge/malformed.md"),
+  `results: ${JSON.stringify(d.results?.map((x) => x.path))}`
+);
+r = await tool(91, "list_notes", {});
+d = parse(r);
+check(
+  "list_notes — malformed file still skipped on a repeat call (#206)",
+  d.skipped?.some((s) => s.path === "Knowledge/malformed.md") && !d.notes?.some((n) => n.path === "Knowledge/malformed.md"),
+  `skipped: ${JSON.stringify(d.skipped)}`
+);
+r = await tool(92, "read_note", { path: "Knowledge/malformed.md" });
+check(
+  "read_note — malformed file errors on a repeat read, not empty frontmatter (#206)",
+  r.result?.isError,
+  `result: ${JSON.stringify(r.result)}`
+);
+
 r = await tool(17, "query_frontmatter", { field: "type", value: "concept" });
 d = parse(r);
 check(
@@ -485,10 +518,10 @@ check(
 );
 
 // Test 7 (a note with broken frontmatter still appears in `skipped` and
-// doesn't break search) is already covered above by the "Vault-wide scans
-// tolerate one malformed file" section — search_notes there is asserted to
-// still return valid results and list the bad file in `skipped`, which is
-// the same property this item asks for. Not duplicated here.
+// doesn't break search) is covered above by the "Vault-wide scans tolerate
+// one malformed file" section. Until #206 that section asserted `skipped`
+// only for list_notes (the first parse); search_notes' `skipped` is now
+// asserted too, on a later scan where the gray-matter cache used to hide it.
 //
 // Test 9 (existing tests, including the ReDoS regression, still pass) is the
 // whole file: everything above this new section is unchanged from before the
