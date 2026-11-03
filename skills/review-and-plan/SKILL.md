@@ -20,8 +20,8 @@ If unsure which mode, ask once.
 
 ## The checklist
 
-1. **Clarify first.** Confirm scope and intent before generating options. If the target's own files can answer the question, read them instead of asking.
-2. **MECE options.** Lay out choices so they neither overlap nor leave gaps.
+1. **Clarify first.** Confirm scope and intent before generating options. If the target's own files can answer the question, read them instead of asking. Before listing options, read the current state itself (code, files, config), not a README, summary or memory of it. Absence of evidence counts only if the source could have shown the problem.
+2. **MECE options.** Lay out choices so they neither overlap nor leave gaps. Always include doing nothing, doing it by hand first, and using or extending what already exists. For each build or adopt option, say whether it already exists, citing what you read.
 3. **Grounded premortem.** Imagine the pick failed. A risk counts only if it traces to something you actually read or a documented failure pattern. Cite the source next to each risk. Drop invented ones.
 4. **Independent review.** The judge of soundness should not be the mind that proposed the idea. Where subagents exist, hand the idea to a fresh, non-forked agent and have it choose its own dimensions to check. If not, state that the review was solo and weaker for it.
 5. **Verify the mechanism.** Reasoning cannot catch a tool that does not behave as assumed. Before calling anything done:
@@ -30,7 +30,7 @@ If unsure which mode, ask once.
    - Compare installed or cached copies of tools against their source before trusting a run.
    - Prove a check can fail: revert the fix and watch the test fail, then restore it.
 6. **Stop signals, written first.** Before starting a sweep or repair loop, write down what ends it, for example: a rerun returns the same findings, a fix touches something outside the list, two checks in a row find nothing new. Do not fix, recheck, fix the fix.
-7. **Needed twice.** Do not build anything permanent until the need has shown up twice. Write it down first, formalize later.
+7. **Needed twice.** Do not build anything permanent until the need has shown up twice. Write it down first, formalize later. Every build or adopt decision ends with a measurable reversal condition and a date to check it.
 
 ## Review mode
 
@@ -45,7 +45,7 @@ A short ordered list, each task with a "done when" line. Put read-only and low-r
 
 ## Report honestly
 
-- Open with coverage: what you read in full, in part, listed only, and not at all.
+- Open with coverage: what you read in full, in part, listed only, and not at all, plus any checklist step you skipped and why. One line, not a checklist.
 - If a check was skipped, or an earlier statement turned out wrong, say so and correct it.
 - Ask the user before any outward-facing or hard-to-reverse action.
 
