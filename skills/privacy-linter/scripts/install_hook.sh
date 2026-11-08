@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # install_hook.sh — install scan_diff.py as a target repo's git pre-commit hook.
 #
-# Usage: ./install_hook.sh /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path]
+# Usage: ./install_hook.sh /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path] [--runner "CMD"]
+#
+# --runner "CMD" (for machines where python3 is not on PATH at commit time, e.g. NixOS
+# or a version-manager shell): the hook runs the whole scan command as ONE quoted
+# argument appended to CMD, e.g. --runner "nix-shell -p python3 git --run" installs a
+# hook that calls: nix-shell -p python3 git --run 'python3 ".../scan_diff.py" ...'.
+# Without --runner the installer requires python3 on PATH now and fails with a hint
+# if it is missing, instead of writing a hook that exits 127 and blocks every commit.
+# CMD is written into the hook as-is: only pass a runner you trust.
 #
 # --log-dir (opt-in, off by default) makes the installed hook pass --log-dir to
 # scan_diff.py, so every commit-time scan appends a findings-only record (never the
@@ -18,6 +26,7 @@ set -euo pipefail
 
 BLOCK_ON="high"
 LOG_DIR=""
+RUNNER=""
 TARGET_REPO_ARG=""
 
 while [ $# -gt 0 ]; do
@@ -34,9 +43,17 @@ while [ $# -gt 0 ]; do
       fi
       shift 2
       ;;
+    --runner)
+      RUNNER="${2:-}"
+      if [ -z "$RUNNER" ]; then
+        echo "Error: --runner needs a command prefix, e.g. --runner \"nix-shell -p python3 git --run\"." >&2
+        exit 1
+      fi
+      shift 2
+      ;;
     *)
       if [ -n "$TARGET_REPO_ARG" ]; then
-        echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path]" >&2
+        echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path] [--runner \"CMD\"]" >&2
         exit 1
       fi
       TARGET_REPO_ARG="$1"
@@ -46,7 +63,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$TARGET_REPO_ARG" ]; then
-  echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path]" >&2
+  echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path] [--runner \"CMD\"]" >&2
   exit 1
 fi
 
@@ -57,6 +74,15 @@ case "$BLOCK_ON" in
     exit 1
     ;;
 esac
+
+# Fail now, loudly, rather than install a hook that exits 127 (python3: command not
+# found) on every commit and so blocks all of them.
+if [ -z "$RUNNER" ] && ! command -v python3 >/dev/null 2>&1; then
+  echo "Error: python3 is not on PATH, so the installed hook could not run." >&2
+  echo "Pass --runner with a command that provides it, e.g." >&2
+  echo "  --runner \"nix-shell -p python3 git --run\"" >&2
+  exit 1
+fi
 
 # Expand a leading ~/ once, now: the generated hook quotes the path, and a quoted ~
 # is never expanded by bash at commit time. A relative path would resolve against
@@ -109,6 +135,11 @@ else
   MODE_COMMENT="# Installed by privacy-linter's install_hook.sh — blocks the commit on any"
   MODE_COMMENT="$MODE_COMMENT
 # finding at or above '$BLOCK_ON' severity."
+fi
+
+if [ -n "$RUNNER" ]; then
+  # The whole scan command goes to the runner as ONE argument (%q-quoted).
+  SCAN_INVOCATION="$RUNNER $(printf '%q' "$SCAN_INVOCATION")"
 fi
 
 if [ -n "$LOG_DIR" ]; then

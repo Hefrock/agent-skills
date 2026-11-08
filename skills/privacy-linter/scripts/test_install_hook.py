@@ -7,6 +7,7 @@ scan_diff.py, so even a user who followed the script's own printed instructions
 always let the commit through. See install_hook.sh's own comment for the fix.
 """
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -199,6 +200,71 @@ class InstallHook(unittest.TestCase):
     def test_block_on_without_value_rejected(self):
         proc = subprocess.run(
             ["bash", INSTALL_HOOK, self.repo, "--block-on"], capture_output=True, text=True
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(os.path.exists(self._hook_path()))
+
+    # --- --runner (python3 not on PATH at commit time) ---
+
+    def _path_without_python(self):
+        """A PATH dir holding only what install_hook.sh itself needs, no python3."""
+        bindir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, bindir, True)
+        for tool in ("dirname", "cat", "chmod"):
+            os.symlink(shutil.which(tool), os.path.join(bindir, tool))
+        return bindir
+
+    def _install_without_python(self, *extra_args):
+        env = dict(os.environ, PATH=self._path_without_python())
+        return subprocess.run(
+            [shutil.which("bash"), INSTALL_HOOK, self.repo, *extra_args],
+            capture_output=True, text=True, env=env,
+        )
+
+    def test_missing_python3_fails_at_install_time_not_commit_time(self):
+        proc = self._install_without_python()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("python3", proc.stderr)
+        self.assertIn("--runner", proc.stderr)
+        # No hook may be written: a hook that exits 127 would block every commit.
+        self.assertFalse(os.path.exists(self._hook_path()))
+
+    def test_runner_skips_the_python3_check_and_wraps_the_scan_command(self):
+        proc = self._install_without_python("--runner", "bash -c")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        hook = Path(self._hook_path()).read_text()
+        line = [l for l in hook.splitlines() if l.startswith("bash -c ")][0]
+        # The scan command must reach the runner as ONE argument.
+        parts = shlex.split(line)
+        self.assertEqual(parts[:2], ["bash", "-c"])
+        self.assertEqual(len(parts), 3)
+        self.assertIn("scan_diff.py", parts[2])
+        self.assertIn("--block-on high", parts[2])
+
+    def test_runner_hook_blocks_a_high_severity_finding(self):
+        self._install("--runner", "bash -c")
+        self._write("notes.txt", "ssn 123-45-6789\n")  # synthetic example SSN; privacy-linter: ignore
+        self._git("add", "notes.txt")
+        self.assertNotEqual(self._run_hook().returncode, 0)
+
+    def test_runner_hook_passes_a_clean_commit(self):
+        self._install("--runner", "bash -c")
+        self._write("notes.txt", "nothing sensitive here\n")
+        self._git("add", "notes.txt")
+        self.assertEqual(self._run_hook().returncode, 0)
+
+    def test_runner_combines_with_log_dir_path_needing_quoting(self):
+        with tempfile.TemporaryDirectory() as parent:
+            log_dir = os.path.join(parent, "my logs", "it's here")
+            self._install("--runner", "bash -c", "--log-dir", log_dir)
+            self._write("notes.txt", "nothing sensitive here\n")
+            self._git("add", "notes.txt")
+            self.assertEqual(self._run_hook().returncode, 0)
+            self.assertEqual(len(self._log_records(log_dir)), 1)
+
+    def test_runner_without_value_rejected(self):
+        proc = subprocess.run(
+            ["bash", INSTALL_HOOK, self.repo, "--runner"], capture_output=True, text=True
         )
         self.assertNotEqual(proc.returncode, 0)
         self.assertFalse(os.path.exists(self._hook_path()))
