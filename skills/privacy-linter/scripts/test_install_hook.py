@@ -122,6 +122,87 @@ class InstallHook(unittest.TestCase):
         self.assertNotIn("echo existing", hook)
         self.assertIn("--block-on high", hook)
 
+    # --- --log-dir pass-through (opt-in run logging) ---
+
+    def _log_records(self, log_dir):
+        return sorted(Path(log_dir).glob("*.json"))
+
+    def test_default_install_has_no_log_dir_in_invocation(self):
+        self._install()
+        hook = Path(self._hook_path()).read_text()
+        invocation_line = [l for l in hook.splitlines() if l.startswith("python3")][0]
+        self.assertNotIn("--log-dir", invocation_line)
+
+    def test_log_dir_hook_writes_a_findings_only_record(self):
+        with tempfile.TemporaryDirectory() as log_dir:
+            proc = self._install("--log-dir", log_dir)
+            self.assertEqual(proc.returncode, 0)
+            self._write("notes.txt", "ssn 123-45-6789\n")  # synthetic example SSN; privacy-linter: ignore
+            self._git("add", "notes.txt")
+            self._run_hook()
+            records = self._log_records(log_dir)
+            self.assertEqual(len(records), 1)
+            body = records[0].read_text()
+            self.assertIn("direct_pii", body)
+            # The log must never become a second copy of the matched content.
+            self.assertNotIn("123-45-6789", body)  # synthetic example SSN; privacy-linter: ignore
+
+    def test_log_dir_keeps_block_on_behavior(self):
+        with tempfile.TemporaryDirectory() as log_dir:
+            self._install("--log-dir", log_dir)
+            self._write("notes.txt", "ssn 123-45-6789\n")  # synthetic example SSN; privacy-linter: ignore
+            self._git("add", "notes.txt")
+            self.assertNotEqual(self._run_hook().returncode, 0)
+
+    def test_log_dir_with_block_on_none_stays_advisory(self):
+        with tempfile.TemporaryDirectory() as log_dir:
+            self._install("--block-on", "none", "--log-dir", log_dir)
+            self._write("notes.txt", "ssn 123-45-6789\n")  # synthetic example SSN; privacy-linter: ignore
+            self._git("add", "notes.txt")
+            self.assertEqual(self._run_hook().returncode, 0)
+            self.assertEqual(len(self._log_records(log_dir)), 1)
+
+    def test_log_dir_path_with_spaces_and_quote_survives(self):
+        with tempfile.TemporaryDirectory() as parent:
+            log_dir = os.path.join(parent, "my logs", "it's here")
+            self._install("--log-dir", log_dir)
+            self._write("notes.txt", "nothing sensitive here\n")
+            self._git("add", "notes.txt")
+            self.assertEqual(self._run_hook().returncode, 0)
+            self.assertEqual(len(self._log_records(log_dir)), 1)
+
+    def test_log_dir_tilde_expanded_at_install_time(self):
+        with tempfile.TemporaryDirectory() as fake_home:
+            env = dict(os.environ, HOME=fake_home)
+            proc = subprocess.run(
+                ["bash", INSTALL_HOOK, self.repo, "--log-dir", "~/plog"],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(proc.returncode, 0)
+            hook = Path(self._hook_path()).read_text()
+            self.assertIn(os.path.join(fake_home, "plog"), hook)
+            self.assertNotIn("~", [l for l in hook.splitlines() if l.startswith("python3")][0])
+
+    def test_relative_log_dir_rejected(self):
+        proc = self._install("--log-dir", "relative/logs")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("absolute", proc.stderr)
+        self.assertFalse(os.path.exists(self._hook_path()))
+
+    def test_log_dir_without_value_rejected(self):
+        proc = subprocess.run(
+            ["bash", INSTALL_HOOK, self.repo, "--log-dir"], capture_output=True, text=True
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(os.path.exists(self._hook_path()))
+
+    def test_block_on_without_value_rejected(self):
+        proc = subprocess.run(
+            ["bash", INSTALL_HOOK, self.repo, "--block-on"], capture_output=True, text=True
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertFalse(os.path.exists(self._hook_path()))
+
 
 if __name__ == "__main__":
     unittest.main()
