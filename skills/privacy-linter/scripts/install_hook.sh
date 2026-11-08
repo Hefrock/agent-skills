@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # install_hook.sh — install scan_diff.py as a target repo's git pre-commit hook.
 #
-# Usage: ./install_hook.sh /path/to/target/repo [--block-on low|medium|high|none]
+# Usage: ./install_hook.sh /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path]
+#
+# --log-dir (opt-in, off by default) makes the installed hook pass --log-dir to
+# scan_diff.py, so every commit-time scan appends a findings-only record (never the
+# scanned content) for scan_log_history.py's trend bridge. The path must be absolute
+# (a leading ~/ is expanded here, once, at install time).
 #
 # Default --block-on high: a confirmed high-severity finding (Luhn-valid credit
 # card, a matched secret pattern, confirmed EXIF GPS) blocks the commit; medium/low
@@ -12,17 +17,26 @@
 set -euo pipefail
 
 BLOCK_ON="high"
+LOG_DIR=""
 TARGET_REPO_ARG=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --block-on)
-      BLOCK_ON="$2"
+      BLOCK_ON="${2:-}"
+      [ $# -ge 2 ] && shift 2 || shift
+      ;;
+    --log-dir)
+      LOG_DIR="${2:-}"
+      if [ -z "$LOG_DIR" ]; then
+        echo "Error: --log-dir needs a directory path." >&2
+        exit 1
+      fi
       shift 2
       ;;
     *)
       if [ -n "$TARGET_REPO_ARG" ]; then
-        echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none]" >&2
+        echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path]" >&2
         exit 1
       fi
       TARGET_REPO_ARG="$1"
@@ -32,7 +46,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$TARGET_REPO_ARG" ]; then
-  echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none]" >&2
+  echo "Usage: $0 /path/to/target/repo [--block-on low|medium|high|none] [--log-dir /abs/path]" >&2
   exit 1
 fi
 
@@ -43,6 +57,23 @@ case "$BLOCK_ON" in
     exit 1
     ;;
 esac
+
+# Expand a leading ~/ once, now: the generated hook quotes the path, and a quoted ~
+# is never expanded by bash at commit time. A relative path would resolve against
+# whatever directory git runs the hook from, so require an absolute one.
+if [ -n "$LOG_DIR" ]; then
+  case "$LOG_DIR" in
+    "~") LOG_DIR="$HOME" ;;
+    "~/"*) LOG_DIR="$HOME/${LOG_DIR#"~/"}" ;;
+  esac
+  case "$LOG_DIR" in
+    /*) ;;
+    *)
+      echo "Error: --log-dir must be an absolute path (got '$LOG_DIR')." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 TARGET_REPO="$(cd "$TARGET_REPO_ARG" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,14 +95,28 @@ if [ -e "$HOOK_PATH" ]; then
   esac
 fi
 
+LOG_ARGS=""
+if [ -n "$LOG_DIR" ]; then
+  # %q makes the path safe to embed in the generated bash file (spaces, quotes).
+  LOG_ARGS=" --log-dir $(printf '%q' "$LOG_DIR")"
+fi
+
 if [ "$BLOCK_ON" = "none" ]; then
-  SCAN_INVOCATION="python3 \"$SCAN_SCRIPT\""
+  SCAN_INVOCATION="python3 \"$SCAN_SCRIPT\"$LOG_ARGS"
   MODE_COMMENT="# Installed by privacy-linter's install_hook.sh — advisory only (never blocks)."
 else
-  SCAN_INVOCATION="python3 \"$SCAN_SCRIPT\" --block-on $BLOCK_ON"
+  SCAN_INVOCATION="python3 \"$SCAN_SCRIPT\" --block-on $BLOCK_ON$LOG_ARGS"
   MODE_COMMENT="# Installed by privacy-linter's install_hook.sh — blocks the commit on any"
   MODE_COMMENT="$MODE_COMMENT
 # finding at or above '$BLOCK_ON' severity."
+fi
+
+if [ -n "$LOG_DIR" ]; then
+  LOG_COMMENT="# Logging is ON (--log-dir): findings only, never the scanned content. See
+# scan_log_history.py for the trend bridge."
+else
+  LOG_COMMENT="# Add --log-dir /abs/path/to/log/dir to track findings over time (see
+# scan_log_history.py) — off by default, since it writes to disk on every run."
 fi
 
 cat > "$HOOK_PATH" <<EOF
@@ -81,8 +126,7 @@ $MODE_COMMENT
 # the flag entirely for a purely advisory hook. The hook's exit code is whatever
 # scan_diff.py exits with — don't append an unconditional "exit 0" below, or
 # --block-on becomes a no-op (that was this file's own bug before 2026-09-16).
-# Add --log-dir /path/to/log/dir to track findings over time (see
-# scan_log_history.py) — off by default, since it writes to disk on every run.
+$LOG_COMMENT
 $SCAN_INVOCATION
 EOF
 
@@ -95,4 +139,6 @@ else
   echo "Blocks commits on any '$BLOCK_ON'-or-above finding. Edit the hook directly to"
   echo "change the threshold, or remove --block-on for advisory-only."
 fi
-echo "Add --log-dir /path/to/log/dir to track findings over time (see scan_log_history.py)."
+if [ -z "$LOG_DIR" ]; then
+  echo "Re-run with --log-dir /abs/path/to/log/dir to track findings over time (see scan_log_history.py)."
+fi

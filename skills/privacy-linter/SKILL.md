@@ -105,6 +105,12 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
    python ../agent-eval/scripts/score_eval.py trend.jsonl --fail-under 0.9
    python ../agent-eval/scripts/score_eval.py trend.jsonl --baseline last_month.jsonl --fail-on-regression
    ```
+   To have the git pre-commit hook log every commit-time scan, install it with the
+   opt-in flag (absolute path; a leading `~/` is expanded once at install time):
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/install_hook.sh /path/to/repo --log-dir ~/.privacy-linter-log
+   ```
+   Without it the hook does not log, so no run data accumulates for the trend bridge.
    `--log-dir` writes one timestamped JSON record per run (the findings only, never the
    scanned content — this log can't become a second copy of whatever triggered a
    finding). `scan_log_history.py` is the bridge, not a second aggregation engine — it
