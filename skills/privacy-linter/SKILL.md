@@ -111,6 +111,11 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/install_hook.sh /path/to/repo --log-dir ~/.privacy-linter-log
    ```
    Without it the hook does not log, so no run data accumulates for the trend bridge.
+   If `python3` is not on `PATH` where you commit (NixOS, some version-manager shells),
+   the installer refuses to write a hook that would exit 127 and block every commit;
+   pass `--runner` with a command that provides it, for example
+   `--runner "nix-shell -p python3 git --run"`. The runner is written into the hook as-is,
+   so only pass one you trust.
    `--log-dir` writes one timestamped JSON record per run (the findings only, never the
    scanned content — this log can't become a second copy of whatever triggered a
    finding). `scan_log_history.py` is the bridge, not a second aggregation engine — it
