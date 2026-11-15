@@ -44,19 +44,24 @@ on:
     - cron: "0 12 * * *"
   workflow_dispatch:
 
+# Least privilege: nothing here needs more than a read-only checkout.
+permissions:
+  contents: read
+
 jobs:
   scheduled-episode:
     name: Run the scheduled episode (skipped unless BROADCAST_SCHEDULE_ENABLED=true, or manually triggered)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     if: github.event_name == 'workflow_dispatch' || vars.BROADCAST_SCHEDULE_ENABLED == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: npm
@@ -69,7 +74,7 @@ jobs:
           npm run build
 
       - name: Restore broadcast --data-dir (best-effort cache — see workflow header)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.broadcast-data
           key: broadcast-data-${{ github.run_id }}
@@ -84,14 +89,14 @@ jobs:
 
       - name: Save updated broadcast --data-dir
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.broadcast-data
           key: broadcast-data-${{ github.run_id }}
 
       - name: Upload episode + report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: broadcast-scheduled-episode-${{ github.run_id }}
           path: ~/.broadcast-data/episodes/**
