@@ -36,11 +36,11 @@
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "511cc6279c928796ac4fbe2cd1d6262c5d366d404d7fb1f3c2cef15e6cc7b0d9"
+        "hash": "4bd3255e6b767f98b0f99050143314a042872dc4aa15d52acf7324e13580c06a"
       }
     ],
     "last_verified_commit": null,
-    "notes": "Revalidated during 2026-10-05 full-repo pass -- file hash moved (unrelated ${CLAUDE_PLUGIN_ROOT} path-fix commit), wording itself still accurate. Refreshed baseline."
+    "notes": "Revalidated 2026-11-15 after the frontmatter description was shortened to fit the 1024-char standard limit: body (Pairing section, How this works) is byte-identical; the new description makes no vocabulary-provenance claim beyond 'takes privacy-linter --json via --from-linter-json'. Refreshed baseline."
   },
   {
     "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
@@ -49,11 +49,11 @@
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "511cc6279c928796ac4fbe2cd1d6262c5d366d404d7fb1f3c2cef15e6cc7b0d9"
+        "hash": "4bd3255e6b767f98b0f99050143314a042872dc4aa15d52acf7324e13580c06a"
       }
     ],
     "last_verified_commit": null,
-    "notes": "Revalidated during 2026-10-05 full-repo pass -- same as sibling finding, hash moved for an unrelated reason, conclusion unchanged. Refreshed baseline."
+    "notes": "Revalidated 2026-11-15 after the frontmatter description was shortened to fit the 1024-char standard limit: body (Pairing section, How this works) is byte-identical; the new description makes no vocabulary-provenance claim beyond 'takes privacy-linter --json via --from-linter-json'. Refreshed baseline."
   },
   {
     "fingerprint": "readme:drift:fiction-workshop-missing-from-tree",

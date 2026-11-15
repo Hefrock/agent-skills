@@ -1,6 +1,7 @@
 ---
 name: agent-redteam
-description: Generates adversarial test cases targeting safe-failure behavior — refusals, hedging, graceful degradation. Use this when you want to stress-test an agent's safety boundaries, check for prompt injection, or build an adversarial eval set. Pairs with agent-eval for scoring: agent-redteam generates cases, agent-eval runs and scores them. Triggers on "red team my agent," "test for jailbreaks," "adversarial cases," "prompt injection testing," or "does my agent refuse correctly."
+description: >-
+  Generates adversarial test cases targeting safe-failure behavior — refusals, hedging, graceful degradation. Use this when you want to stress-test an agent's safety boundaries, check for prompt injection, or build an adversarial eval set. Pairs with agent-eval for scoring: agent-redteam generates cases, agent-eval runs and scores them. Triggers on "red team my agent," "test for jailbreaks," "adversarial cases," "prompt injection testing," or "does my agent refuse correctly."
 ---
 
 # Agent Redteam

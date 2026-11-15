@@ -12,17 +12,24 @@ const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? (() => {
 })();
 
 // #9 — validate vault exists at startup
-export const vaultRoot = path.resolve(VAULT_PATH);
+const configuredRoot = path.resolve(VAULT_PATH);
 try {
-  const stat = await fs.stat(vaultRoot);
+  const stat = await fs.stat(configuredRoot);
   if (!stat.isDirectory()) {
-    console.error(`OBSIDIAN_VAULT_PATH is not a directory: ${vaultRoot}`);
+    console.error(`OBSIDIAN_VAULT_PATH is not a directory: ${configuredRoot}`);
     process.exit(1);
   }
 } catch {
-  console.error(`OBSIDIAN_VAULT_PATH does not exist: ${vaultRoot}`);
+  console.error(`OBSIDIAN_VAULT_PATH does not exist: ${configuredRoot}`);
   process.exit(1);
 }
+
+// The root is canonicalized once, here. Every containment check below
+// compares a realpath'd candidate against it, so a root that is itself
+// reached through a symlink (a synced-folder link, macOS's /tmp and /var)
+// must be realpath'd too -- otherwise no real path ever starts with it and
+// every write is rejected as "symlink in parent directory".
+export const vaultRoot = await fs.realpath(configuredRoot);
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -75,10 +82,56 @@ export async function vaultPathForWrite(notePath: string): Promise<string> {
   return resolved;
 }
 
+function isInsideVault(real: string): boolean {
+  return real === vaultRoot || real.startsWith(vaultRoot + path.sep);
+}
+
+// Read-side counterpart of vaultPathForWrite: same rules (no hidden path
+// components, .md only, lexical containment, then realpath containment), so
+// a note that cannot be written through this server cannot be read through
+// it either. Without the realpath step a symlink inside the vault pointing
+// at a file outside it was readable via read_note and surfaced by scans.
+// A path that does not exist is returned as-is so the caller's readFile
+// reports the ordinary ENOENT.
+export async function vaultPathForRead(notePath: string): Promise<string> {
+  const parts = notePath.split(/[\\/]/).filter(Boolean);
+  if (parts.some((p) => p.startsWith("."))) {
+    throw new Error("Access to hidden directories or files is not allowed");
+  }
+  if (!notePath.endsWith(".md")) {
+    throw new Error("Only .md files are supported");
+  }
+  const resolved = vaultPath(notePath);
+  try {
+    if (!isInsideVault(await fs.realpath(resolved))) {
+      throw new Error("Path traversal not allowed (symlink)");
+    }
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  return resolved;
+}
+
+// Folder arguments for scans (search/list/query): lexical containment, then
+// realpath containment, so a symlinked folder cannot be used to enumerate a
+// directory outside the vault. A missing folder is returned as-is; callers
+// report it the way they did before.
+export async function vaultFolderForRead(folder: string): Promise<string> {
+  const resolved = vaultPath(folder);
+  try {
+    if (!isInsideVault(await fs.realpath(resolved))) {
+      throw new Error("Path traversal not allowed (symlink)");
+    }
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  return resolved;
+}
+
 // ── Core I/O ──────────────────────────────────────────────────────────────────
 
 export async function readNote(notePath: string): Promise<{ frontmatter: Record<string, unknown>; body: string; raw: string }> {
-  const full = vaultPath(notePath);
+  const full = await vaultPathForRead(notePath);
   const raw = await fs.readFile(full, "utf-8");
   // #206 — pass an options object: gray-matter 4.0.3 caches parses by input
   // string only when called with no options, and a cached entry is returned
