@@ -36,11 +36,11 @@
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "4bd3255e6b767f98b0f99050143314a042872dc4aa15d52acf7324e13580c06a"
+        "hash": "65efdd73ef37bebaf3c6d9217e03ccdf71ae63cf4067b5a1864041f5306f87a2"
       }
     ],
     "last_verified_commit": null,
-    "notes": "Revalidated 2026-11-15 after the frontmatter description was shortened to fit the 1024-char standard limit: body (Pairing section, How this works) is byte-identical; the new description makes no vocabulary-provenance claim beyond 'takes privacy-linter --json via --from-linter-json'. Refreshed baseline."
+    "notes": "Revalidated 2026-11-15 after path references changed from ${CLAUDE_PLUGIN_ROOT}/ to ${CLAUDE_SKILL_DIR}/ (install-path fix); prose otherwise unchanged, conclusion stands. Refreshed baseline."
   },
   {
     "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
@@ -49,11 +49,11 @@
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "4bd3255e6b767f98b0f99050143314a042872dc4aa15d52acf7324e13580c06a"
+        "hash": "65efdd73ef37bebaf3c6d9217e03ccdf71ae63cf4067b5a1864041f5306f87a2"
       }
     ],
     "last_verified_commit": null,
-    "notes": "Revalidated 2026-11-15 after the frontmatter description was shortened to fit the 1024-char standard limit: body (Pairing section, How this works) is byte-identical; the new description makes no vocabulary-provenance claim beyond 'takes privacy-linter --json via --from-linter-json'. Refreshed baseline."
+    "notes": "Revalidated 2026-11-15 after path references changed from ${CLAUDE_PLUGIN_ROOT}/ to ${CLAUDE_SKILL_DIR}/ (install-path fix); prose otherwise unchanged, conclusion stands. Refreshed baseline."
   },
   {
     "fingerprint": "readme:drift:fiction-workshop-missing-from-tree",

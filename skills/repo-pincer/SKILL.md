@@ -35,7 +35,7 @@ Two independent passes that must reconcile. Do not let the second pass be inform
 
 0. **If a findings ledger exists from a prior run against this target, load it first:**
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/track_findings.py --ledger-file findings-ledger.json --repo-root . check
+   python ${CLAUDE_SKILL_DIR}/scripts/track_findings.py --ledger-file findings-ledger.json --repo-root . check
    ```
    Every `unchanged` record's conclusion still holds — its cited source hasn't moved since it
    was last verified, so don't re-derive it from scratch; carry it straight into this run's
@@ -67,7 +67,7 @@ executing them, at least until they've been read.
    verifies one narrow, high-value claim type — "N-test suite" / "N-test regression suite"
    claims — by actually running the referenced tests and comparing counts, not estimating:
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/check_structural_claims.py --claims-file README.md --skills-dir skills
+   python ${CLAUDE_SKILL_DIR}/scripts/check_structural_claims.py --claims-file README.md --skills-dir skills
    ```
    This exists because exact-number claims are simultaneously the cheapest to verify (one
    command, no judgment) and the most likely to drift silently — nobody re-counts "26 tests"
@@ -142,7 +142,7 @@ executing them, at least until they've been read.
 4. **Record each new or changed Drift/Aspirational/Silent/Confirmed finding in the findings
    ledger**, so a later run against this same target doesn't re-derive it from scratch:
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/track_findings.py --ledger-file findings-ledger.json --repo-root . upsert \
+   python ${CLAUDE_SKILL_DIR}/scripts/track_findings.py --ledger-file findings-ledger.json --repo-root . upsert \
      --fingerprint <skill-or-area>:<verdict>:<short-slug> --verdict drift \
      --title "<one-line summary>" --source-ref <file that this conclusion depends on> \
      [--source-ref <another file>] --notes "<why, briefly>"

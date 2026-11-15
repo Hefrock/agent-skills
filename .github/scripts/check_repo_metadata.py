@@ -10,11 +10,19 @@ Fails (exit 1) when:
     the marketplace lists a skill/agent path that does not exist;
   - a skill description is longer than the Agent Skills standard's
     1024-character limit;
-  - a skills/**/test_*.py file is not run by .github/workflows/ci.yml.
+  - a skills/**/test_*.py file is not run by .github/workflows/ci.yml;
+  - a ${CLAUDE_SKILL_DIR}/... or ${CLAUDE_PLUGIN_ROOT}/... reference in a
+    skill or agent file does not resolve to a real path. SKILL_DIR is the
+    skill's own folder; PLUGIN_ROOT is the shared skills/ folder (every
+    plugin's "source"), so it needs the skill's folder name in the path.
+    ${CLAUDE_SKILL_DIR} in an agents/*.md file is also an error, since it
+    is only substituted in skill content.
 
 Needs PyYAML. Run from anywhere: paths resolve from the repo root.
 """
+import glob
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -22,6 +30,29 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_DESCRIPTION = 1024
+PATH_REF = re.compile(r"\$\{(CLAUDE_SKILL_DIR|CLAUDE_PLUGIN_ROOT)\}/([^\s`)\"',]+)")
+
+
+def check_path_refs(md: Path, skill: Path, skills_dir: Path, root: Path):
+    """Yield an error for each substituted-path reference that cannot resolve."""
+    is_agent = md.parent.name == "agents"
+    for lineno, line in enumerate(md.read_text(encoding="utf-8").split("\n"), 1):
+        for var, rest in PATH_REF.findall(line):
+            where = f"{md.relative_to(root)}:{lineno}"
+            if var == "CLAUDE_SKILL_DIR" and is_agent:
+                yield f"{where}: ${{CLAUDE_SKILL_DIR}} is not substituted in agent files; use ${{CLAUDE_PLUGIN_ROOT}}/{skill.name}/..."
+                continue
+            rest = rest.rstrip(".:;")
+            base = skill if var == "CLAUDE_SKILL_DIR" else skills_dir
+            target = base / rest
+            if "<" in rest:  # a placeholder such as <persona-slug>.md: check its folder
+                ok = (base / rest.split("<", 1)[0]).parent.exists() if not rest.split("<", 1)[0].endswith("/") else (base / rest.split("<", 1)[0]).exists()
+            elif "*" in rest:
+                ok = bool(glob.glob(str(target)))
+            else:
+                ok = target.exists()
+            if not ok:
+                yield f"{where}: ${{{var}}}/{rest} does not resolve (looked in {base.relative_to(root)}/)"
 
 
 def read_frontmatter(path: Path):
@@ -69,6 +100,10 @@ def check(root: Path = ROOT):
             if md == skill_md and fm.get("name") != skill.name:
                 errors.append(f"{mrel}: name {fm.get('name')!r} does not match folder {skill.name!r}")
 
+    for skill in skill_dirs:
+        for md in sorted(skill.rglob("*.md")):
+            errors.extend(check_path_refs(md, skill, skills_dir, root))
+
     market = json.loads((root / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     registered = set()
     for plugin in market.get("plugins", []):
@@ -104,7 +139,7 @@ def main() -> int:
     if errors:
         print(f"FAILED: {len(errors)} metadata problem(s)")
         return 1
-    print(f"OK: skill frontmatter, marketplace registration and CI test wiring ({len(warnings)} warning(s))")
+    print(f"OK: skill frontmatter, path references, marketplace registration and CI test wiring ({len(warnings)} warning(s))")
     return 0
 
 
