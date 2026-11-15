@@ -133,7 +133,7 @@ agent-skills/
 ├── mcp/
 │   ├── evidence-pinning/       # MCP server required by broadcast — durable claim/source provenance log
 │   └── obsidian-vault/         # MCP server required by wiki-operator
-│       ├── src/index.ts        # 10 tools: search, read, write, append, patch, query, links, delete
+│       ├── src/index.ts        # 10 vault tools (+2 warehouse tools with WAREHOUSE_PATH): search, read, write, append, patch, query, links, delete
 │       ├── test/               # end-to-end STDIO tests — `npm test`
 │       └── README.md           # setup and configuration guide
 ├── knowledge-os/

@@ -200,6 +200,6 @@ cat << MCP_SNIPPET
 MCP_SNIPPET
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Done. Restart Claude Code and run /mcp to verify (expect 10 tools)."
+echo "  Done. Restart Claude Code and run /mcp to verify (expect 10 tools; 12 if you add WAREHOUSE_PATH)."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
