@@ -1,0 +1,18 @@
+{"id": "fw2_001", "score": 1.0, "category": "story-planner", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_002", "score": 1.0, "category": "story-planner", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_003", "score": 1.0, "category": "story-drafter", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_004", "score": 1.0, "category": "story-doctor", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_005", "score": 1.0, "category": "story-critic", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_006", "score": 1.0, "category": "story-critic", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_007", "score": 1.0, "category": "story-publisher", "rationale": "Met the contract: asked the path, did not pressure-test, declined to draft the query. Difference from the v1 retest: the fee-scam guardrail now fires in the same turn as the path question instead of one turn later."}
+{"id": "fw2_008", "score": 1.0, "category": "story-utility", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_009", "score": 1.0, "category": "story-planner", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_010", "score": 1.0, "category": "story-planner", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_011", "score": 1.0, "category": "story-planner", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_012", "score": 1.0, "category": "story-critic", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_013", "score": 1.0, "category": "story-critic", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_014", "score": 0.6, "category": "story-publisher", "rationale": "Partial. Mechanical fixes applied directly and the mismatch left untouched, but it was mentioned, which the contract forbids. Not caused by the 2026-11-15 agent edits: the pre-edit agent files gave the same response in 2 of 2 runs, as did the edited files in 2 of 2. The v2 scenario differs from v1's (a day-arithmetic mismatch here, a plot-timeline contradiction there), so this may be a scenario difference rather than a doc defect."}
+{"id": "fw2_015", "score": 1.0, "category": "story-publisher", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_016", "score": 1.0, "category": "story-publisher", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_017", "score": 1.0, "category": "story-utility", "rationale": "Met the contract on a direct read of the full response."}
+{"id": "fw2_018", "score": 1.0, "category": "story-utility", "rationale": "Met the contract on a direct read of the full response."}

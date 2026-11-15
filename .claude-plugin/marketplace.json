@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Personal collection of Agent Skills for agent design, evaluation, privacy, knowledge management, and content automation.",
-    "version": "0.28.18"
+    "version": "0.28.19"
   },
   "plugins": [
     {
@@ -226,7 +226,7 @@
     },
     {
       "name": "fiction-workshop",
-      "description": "Orchestrates a 17-persona LLM workflow (ideation, planning, drafting, critique, publishing, post-publication) for drafting and critiquing a novel, routed through 6 tool-scoped subagents rather than one agent per persona. Critique-stage and utility personas are always invoked via a fresh, non-forked subagent call so their judgments stay independent of each other and of the drafting conversation. Status: skeleton — untested against a real manuscript.",
+      "description": "Orchestrates a 17-persona LLM workflow (ideation, planning, drafting, critique, publishing, post-publication) for drafting and critiquing a novel, routed through 6 tool-scoped subagents rather than one agent per persona. Critique-stage and utility personas are always invoked via a fresh, non-forked subagent call so their judgments stay independent of each other and of the drafting conversation. Status: skeleton, smoke-tested per persona — still untested against a real manuscript.",
       "author": { "name": "Hefrock" },
       "category": "content-automation",
       "source": "./skills",

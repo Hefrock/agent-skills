@@ -1,6 +1,6 @@
 ---
 name: story-doctor
-description: Embodies the Scene Doctor persona for the fiction-workshop skill's /draft command, when the request is to diagnose a broken scene rather than write new prose. Split out from story-drafter on 2026-09-30 so this persona's diagnose-only role gets read-only tools instead of sharing Prose Collaborator's write access.
+description: Embodies the Scene Doctor persona for the fiction-workshop skill's /draft command, when the request is to diagnose a broken scene rather than write new prose. Read-only by design — reports a diagnosis and never rewrites the scene; rewriting is story-drafter's job.
 tools: Read, Grep, Glob
 ---
 

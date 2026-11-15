@@ -16,7 +16,10 @@ Fails (exit 1) when:
     skill's own folder; PLUGIN_ROOT is the shared skills/ folder (every
     plugin's "source"), so it needs the skill's folder name in the path.
     ${CLAUDE_SKILL_DIR} in an agents/*.md file is also an error, since it
-    is only substituted in skill content.
+    is only substituted in skill content.;
+  - an agents/*.md file names a persona slug (references/personas/<slug>.md)
+    that has no file, or a skill has a references/personas/ doc that none
+    of its agents names.
 
 Needs PyYAML. Run from anywhere: paths resolve from the repo root.
 """
@@ -73,6 +76,27 @@ def read_frontmatter(path: Path):
     return data, None
 
 
+def check_persona_slugs(skill: Path, root: Path):
+    """Agents that route to references/personas/<slug>.md must name real slugs,
+    and every persona doc must be named by at least one agent."""
+    personas_dir = skill / "references" / "personas"
+    agents = sorted(skill.glob("agents/*.md"))
+    if not personas_dir.is_dir() or not agents:
+        return
+    docs = {p.stem for p in personas_dir.glob("*.md")}
+    named = set()
+    for agent in agents:
+        text = agent.read_text(encoding="utf-8")
+        slugs = set(re.findall(r"references/personas/([a-z0-9-]+)\.md", text))
+        for listing in re.findall(r"\(slugs:([^)]*)\)", text):
+            slugs.update(re.findall(r"`([a-z0-9-]+)`", listing))
+        for slug in sorted(slugs - docs):
+            yield f"{agent.relative_to(root)}: persona slug {slug!r} has no {personas_dir.relative_to(root)}/{slug}.md"
+        named |= slugs
+    for slug in sorted(docs - named):
+        yield f"{personas_dir.relative_to(root)}/{slug}.md: not named by any agent in {skill.name}/agents/"
+
+
 def check(root: Path = ROOT):
     errors, warnings = [], []
     skills_dir = root / "skills"
@@ -103,6 +127,9 @@ def check(root: Path = ROOT):
     for skill in skill_dirs:
         for md in sorted(skill.rglob("*.md")):
             errors.extend(check_path_refs(md, skill, skills_dir, root))
+
+    for skill in skill_dirs:
+        errors.extend(check_persona_slugs(skill, root))
 
     market = json.loads((root / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     registered = set()
