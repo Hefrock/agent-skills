@@ -8,10 +8,9 @@ Fails (exit 1) when:
   - a skill's `name` does not match its folder, or `description` is empty;
   - a skill folder is not registered in .claude-plugin/marketplace.json, or
     the marketplace lists a skill/agent path that does not exist;
+  - a skill description is longer than the Agent Skills standard's
+    1024-character limit;
   - a skills/**/test_*.py file is not run by .github/workflows/ci.yml.
-
-Warns (no failure) when a description is longer than the Agent Skills
-standard's 1024-character limit.
 
 Needs PyYAML. Run from anywhere: paths resolve from the repo root.
 """
@@ -64,7 +63,7 @@ def check(root: Path = ROOT):
             if not isinstance(desc, str) or not desc.strip():
                 errors.append(f"{mrel}: description missing or empty")
             elif md == skill_md and len(desc) > MAX_DESCRIPTION:
-                warnings.append(
+                errors.append(
                     f"{mrel}: description is {len(desc)} chars (standard limit {MAX_DESCRIPTION})"
                 )
             if md == skill_md and fm.get("name") != skill.name:
