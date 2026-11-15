@@ -21,9 +21,9 @@ two are mechanically detectable without a model. This version implements those t
 to end, with real tests, the same order `deid-reid-harness` used for its own tracks
 (ship the model-independent slice first) — plus **Secrets/credentials**, a class added
 afterward that isn't part of the source design's original four but is mechanically
-detectable the exact same way (see `${CLAUDE_PLUGIN_ROOT}/references/leak-taxonomy.md` for why it's called
+detectable the exact same way (see `${CLAUDE_SKILL_DIR}/references/leak-taxonomy.md` for why it's called
 out as an addition, not silently folded into "Direct PII"). Inference cues and
-stylometric fingerprinting are documented, not built — see `${CLAUDE_PLUGIN_ROOT}/references/leak-taxonomy.md`
+stylometric fingerprinting are documented, not built — see `${CLAUDE_SKILL_DIR}/references/leak-taxonomy.md`
 — because building them today would mean either standing up a local-model pipeline
 (real setup work, not yet done) or using an external LLM for exactly the analysis this
 project exists to keep local. Don't silently reach for an external model to "complete"
@@ -50,9 +50,9 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
      guess.
 2. **Or scan something specific** instead of the staged diff:
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --file path/to/thing.txt
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --commit-msg .git/COMMIT_EDITMSG
-   echo "some text" | python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --text -
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --file path/to/thing.txt
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --commit-msg .git/COMMIT_EDITMSG
+   echo "some text" | python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --text -
    ```
 3. **Report findings** in the format the source project specified: `[severity] [class]
    [finding] reason (location)`. Add `--json` for machine-readable output.
@@ -65,16 +65,16 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
    source design's "advisory, not blocking by default." Add a gate when the caller
    wants one:
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --block-on high   # exit 1 if any 'high' finding exists
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --block-on high   # exit 1 if any 'high' finding exists
    ```
    Same `--block-on`-as-CI-gate pattern `agent-eval`'s `score_eval.py` already uses —
    reused here rather than inventing a new convention.
 6. **Strip EXIF metadata outright**, instead of just flagging it (JPEG/TIFF only,
    requires Pillow):
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --strip-metadata photo.jpg               # -> photo.stripped.jpg
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --strip-metadata photo.jpg --out clean.jpg
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --strip-metadata photo.jpg --in-place    # overwrites photo.jpg
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --strip-metadata photo.jpg               # -> photo.stripped.jpg
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --strip-metadata photo.jpg --out clean.jpg
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --strip-metadata photo.jpg --in-place    # overwrites photo.jpg
    ```
    Writes a separate copy by default — never overwrites the original unless `--in-place`
    is passed explicitly — and re-reads the *output* file's EXIF afterward to confirm the
@@ -83,8 +83,8 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
 7. **Check whether something was already leaked before this tool existed**, not just
    what's staged right now:
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --scan-history                  # entire branch history
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --scan-history --max-commits 50 # just the N most recent commits
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --scan-history                  # entire branch history
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --scan-history --max-commits 50 # just the N most recent commits
    ```
    Walks every non-merge commit on the current branch (oldest first, so findings print
    in the order a leak was actually introduced), checking each commit's own added lines
@@ -101,15 +101,15 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
 8. **Track findings over time** instead of only ever seeing one run's snapshot — off by
    default, opt in per invocation:
    ```bash
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_diff.py --log-dir ~/.privacy-linter-log            # add to any normal run
-   python ${CLAUDE_PLUGIN_ROOT}/scripts/scan_log_history.py --log-dir ~/.privacy-linter-log --out trend.jsonl
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --log-dir ~/.privacy-linter-log            # add to any normal run
+   python ${CLAUDE_SKILL_DIR}/scripts/scan_log_history.py --log-dir ~/.privacy-linter-log --out trend.jsonl
    python ../agent-eval/scripts/score_eval.py trend.jsonl --fail-under 0.9
    python ../agent-eval/scripts/score_eval.py trend.jsonl --baseline last_month.jsonl --fail-on-regression
    ```
    To have the git pre-commit hook log every commit-time scan, install it with the
    opt-in flag (absolute path; a leading `~/` is expanded once at install time):
    ```bash
-   bash ${CLAUDE_PLUGIN_ROOT}/scripts/install_hook.sh /path/to/repo --log-dir ~/.privacy-linter-log
+   bash ${CLAUDE_SKILL_DIR}/scripts/install_hook.sh /path/to/repo --log-dir ~/.privacy-linter-log
    ```
    Without it the hook does not log, so no run data accumulates for the trend bridge.
    If `python3` is not on `PATH` where you commit (NixOS, some version-manager shells),
@@ -137,9 +137,9 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
 ## Installing as a git pre-commit hook
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/install_hook.sh /path/to/your/repo                    # blocks on 'high' (default)
-${CLAUDE_PLUGIN_ROOT}/scripts/install_hook.sh /path/to/your/repo --block-on medium   # blocks on medium or high
-${CLAUDE_PLUGIN_ROOT}/scripts/install_hook.sh /path/to/your/repo --block-on none     # advisory only, never blocks
+${CLAUDE_SKILL_DIR}/scripts/install_hook.sh /path/to/your/repo                    # blocks on 'high' (default)
+${CLAUDE_SKILL_DIR}/scripts/install_hook.sh /path/to/your/repo --block-on medium   # blocks on medium or high
+${CLAUDE_SKILL_DIR}/scripts/install_hook.sh /path/to/your/repo --block-on none     # advisory only, never blocks
 ```
 Writes a `pre-commit` hook that runs `scan_diff.py --block-on high` by default —
 confirmed as of 2026-09-16: a report-only linter that never actually stops anything is
@@ -157,7 +157,7 @@ it writes; it never overwrites an existing hook without confirmation.
   daily value... moment of creation" case the project itself prioritized. A fast
   follow, not a silent scope cut.
 - **Inference cues and stylometric fingerprinting.** Genuinely need judgment, not
-  pattern-matching. See `${CLAUDE_PLUGIN_ROOT}/references/leak-taxonomy.md` for what "genuinely need a
+  pattern-matching. See `${CLAUDE_SKILL_DIR}/references/leak-taxonomy.md` for what "genuinely need a
   model" means here and what the local-model path would require.
 - **Free-text name detection.** Regex can't reliably distinguish a name from an
   ordinary capitalized word without NER/a model — deliberately not attempted rather
@@ -176,7 +176,7 @@ it writes; it never overwrites an existing hook without confirmation.
   scanning covers Direct PII/Secrets only — a historical metadata check would need
   each commit's actual file content, not just its diff, real scope beyond this pass.
   Merge commits are skipped (their content already arrived via a scanned non-merge
-  ancestor). See `${CLAUDE_PLUGIN_ROOT}/references/leak-taxonomy.md`.
+  ancestor). See `${CLAUDE_SKILL_DIR}/references/leak-taxonomy.md`.
 - **Any presence at the actual point of disclosure** (a GitHub PR box or LinkedIn post
   composer typed directly in-browser, never touching a file this hook or CLI can see).
   A structural property of this whole stack's file-based architecture, not something
