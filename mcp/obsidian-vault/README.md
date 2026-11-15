@@ -72,6 +72,8 @@ Then verify inside Claude Code:
 
 - Runs locally over STDIO — no network exposure
 - Path traversal protection: all paths are resolved and validated against the vault root
+- Reads follow the same rules as writes: `.md` only, no hidden path components (`.obsidian/`, `.trash/`, …), and a symlink that resolves outside the vault is refused — for `read_note`, for vault-wide scans (reported under `skipped`), and for `folder` arguments
+- `OBSIDIAN_VAULT_PATH` may itself be a symlink (a synced-folder link, macOS `/tmp`); it is canonicalized once at startup
 - Only reads/writes `.md` files within `OBSIDIAN_VAULT_PATH`
 - Recommend enabling git on your vault for reversibility
 - Warehouse tools are read-only and apply the same symlink-aware containment check to every manifest entry's `text_path`; a bad entry is rejected and logged, not trusted, without blocking the rest of the corpus from indexing

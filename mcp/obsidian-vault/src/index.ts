@@ -9,7 +9,7 @@ import fs from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
 import { tokenize } from "./bm25.js";
-import { vaultRoot, vaultPath, vaultPathForWrite, readNote, tryReadNote, atomicWrite, walkVault, extractWikilinks } from "./vault-io.js";
+import { vaultRoot, vaultFolderForRead, vaultPathForWrite, readNote, tryReadNote, atomicWrite, walkVault, extractWikilinks } from "./vault-io.js";
 import { bm25, noteCache, syncIndex, invalidateCacheEntry, withinFolder, selectExcerpt } from "./vault-index.js";
 import * as warehouse from "./warehouse.js";
 
@@ -59,7 +59,7 @@ async function searchNotes(query: string, folder?: string, limit = 10): Promise<
   const terms = tokenize(query);
   let folderRel: string | undefined;
   if (folder) {
-    const resolved = vaultPath(folder);
+    const resolved = await vaultFolderForRead(folder);
     // Folder scoping used to walk the folder directly (fs.readdir), which
     // threw on a nonexistent path -- now that the whole vault is always
     // walked and folder scoping is a path-prefix filter instead, that same
@@ -202,7 +202,7 @@ async function patchFrontmatter(notePath: string, updates: Record<string, unknow
 }
 
 async function queryFrontmatter(field: string, value: string, folder?: string): Promise<object> {
-  const allFiles = await walkVault(folder ? vaultPath(folder) : undefined);
+  const allFiles = await walkVault(folder ? await vaultFolderForRead(folder) : undefined);
   const matches: { path: string; frontmatter: Record<string, unknown> }[] = [];
   const skipped: { path: string; error: string }[] = [];
   for (const file of allFiles) {
@@ -239,7 +239,7 @@ async function listLinks(notePath: string): Promise<object> {
 }
 
 async function listNotes(folder?: string): Promise<object> {
-  const files = await walkVault(folder ? vaultPath(folder) : undefined);
+  const files = await walkVault(folder ? await vaultFolderForRead(folder) : undefined);
   const results = await Promise.all(files.map(async (file) => ({ file, note: await tryReadNote(file) })));
   const notes: { path: string; frontmatter: Record<string, unknown> }[] = [];
   const skipped: { path: string; error: string }[] = [];
