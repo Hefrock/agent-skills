@@ -53,6 +53,16 @@ jobs:
           npm ci
           npm run build
 
+      - name: repo metadata — strict-YAML frontmatter, marketplace registration, every test suite wired into CI
+        # Guards three gaps that each shipped at least once: a SKILL.md whose
+        # frontmatter is not valid YAML (lenient loaders then drop the trigger
+        # description), a skill missing from marketplace.json, and a test_*.py
+        # suite that exists but is never run below. Over-long descriptions are
+        # reported as warnings, not failures.
+        run: |
+          python -m pip install --quiet pyyaml
+          python .github/scripts/check_repo_metadata.py
+
       - name: agent-eval — unit-test the shared JSONL loader (stdlib unittest)
         run: python skills/agent-eval/scripts/test_jsonl_io.py
 
@@ -254,6 +264,9 @@ jobs:
       - name: wiki-librarian — check_vault.py regression suite (stdlib unittest)
         run: python skills/wiki-librarian/scripts/test_check_vault.py
 
+      - name: wiki-librarian — Law 10 overlap regression suite (stdlib unittest)
+        run: python skills/wiki-librarian/scripts/test_law10_overlap.py
+
       - name: wiki-governor — health_score.py regression suite (stdlib unittest)
         run: python skills/wiki-governor/scripts/test_health_score.py
 
@@ -271,6 +284,9 @@ jobs:
         # binaries injected via PATH so the notification branches are exercised
         # without depending on a desktop notification daemon existing on the runner.
         run: python skills/wiki-privacy-audit/scripts/test_cron_check.py
+
+      - name: wiki-privacy-audit — prune_log.py test suite (stdlib unittest)
+        run: python skills/wiki-privacy-audit/scripts/test_prune_log.py
 
       - name: privacy-threat-oracle — run test suite (stdlib unittest)
         # Includes a round-trip test that pipes privacy-linter's real scan_diff.py

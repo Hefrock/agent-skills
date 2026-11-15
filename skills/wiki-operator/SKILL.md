@@ -1,6 +1,7 @@
 ---
 name: wiki-operator
-description: Operates a Karpathy-style personal knowledge wiki by reading and writing an Obsidian vault directly via MCP — searching before creating, updating existing concept pages over adding new ones, merging duplicates, and keeping all notes linked. Use this skill for any vault operation: processing new learning into wiki notes, improving a concept page, finding connections between ideas, reviewing note quality, generating study prompts, or running maintenance. Triggers on "add this to my wiki," "update my notes on X," "what do I know about Y," "connect these ideas," "clean up my vault," and the commands /learn /update /connect /ask /review /quiz /map /source /clean /health. Requires an Obsidian MCP server connected with read and write tool access.
+description: >-
+  Operates a Karpathy-style personal knowledge wiki by reading and writing an Obsidian vault directly via MCP — searching before creating, updating existing concept pages over adding new ones, merging duplicates, and keeping all notes linked. Use this skill for any vault operation: processing new learning into wiki notes, improving a concept page, finding connections between ideas, reviewing note quality, generating study prompts, or running maintenance. Triggers on "add this to my wiki," "update my notes on X," "what do I know about Y," "connect these ideas," "clean up my vault," and the commands /learn /update /connect /ask /review /quiz /map /source /clean /health. Requires an Obsidian MCP server connected with read and write tool access.
 ---
 
 # Wiki Operator
