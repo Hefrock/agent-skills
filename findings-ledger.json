@@ -6,11 +6,11 @@
     "source_refs": [
       {
         "file": "skills/agent-eval/SKILL.md",
-        "hash": "0f66807356ff431bcf9ba7eb8b61169718aed51ef95d186a771f7e7ae7635b4c"
+        "hash": "7f0a92cd34f3b307a79f67c146ce23a2d3c8ce5aa7e965f0b337a0c79098dd77"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "Revalidated 2026-11-16: --action sentence still present (2 mentions); hash moved for path-variable and description edits only."
+    "last_verified_commit": "feea983",
+    "notes": "Revalidated 2026-11-16 after the Medium/Low doc pass touched this file elsewhere; the specific fact still holds. Revalidated 2026-11-16: --action sentence still present (2 mentions); hash moved for path-variable and description edits only."
   },
   {
     "fingerprint": "agent-eval:silent:update-log-writes-into-install-dir",
@@ -74,15 +74,15 @@
       },
       {
         "file": "mcp/obsidian-vault/README.md",
-        "hash": "e01d2f2854e32ec896e012609aae8cb126a2a8d82a51bbb8e16dd001b15fa8c6"
+        "hash": "5ad11e8a7096c2e49090506d07b3c94acb5af9b062398561515c7539a24d25a7"
       },
       {
         "file": "mcp/obsidian-vault/test/containment.test.mjs",
         "hash": "cc53cb79214788dcf089a0efaaaaf0c967896cd360d8c1e4dc57fda51ee1bf0b"
       }
     ],
-    "last_verified_commit": "e1618e1",
-    "notes": "Fixed 2026-11-16: nearest existing ancestor is realpath'd; dangling symlinks refused. Covered by containment.test.mjs. Revalidate if vault-io.ts changes."
+    "last_verified_commit": "feea983",
+    "notes": "Revalidated 2026-11-16 after the Medium/Low doc pass touched this file elsewhere; the specific fact still holds. Fixed 2026-11-16: nearest existing ancestor is realpath'd; dangling symlinks refused. Covered by containment.test.mjs. Revalidate if vault-io.ts changes."
   },
   {
     "fingerprint": "obsidian-vault:silent:readme-omits-backup-and-mode",
@@ -121,11 +121,11 @@
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "65efdd73ef37bebaf3c6d9217e03ccdf71ae63cf4067b5a1864041f5306f87a2"
+        "hash": "5d751cfd6fb36f3553873afcfe40401eb3a837532b678f8b1ca7f7f659b79123"
       }
     ],
-    "last_verified_commit": null,
-    "notes": "Revalidated 2026-11-15 after path references changed from ${CLAUDE_PLUGIN_ROOT}/ to ${CLAUDE_SKILL_DIR}/ (install-path fix); prose otherwise unchanged, conclusion stands. Refreshed baseline."
+    "last_verified_commit": "feea983",
+    "notes": "Revalidated 2026-11-16 after the Medium/Low doc pass touched this file elsewhere; the specific fact still holds. Revalidated 2026-11-15 after path references changed from ${CLAUDE_PLUGIN_ROOT}/ to ${CLAUDE_SKILL_DIR}/ (install-path fix); prose otherwise unchanged, conclusion stands. Refreshed baseline."
   },
   {
     "fingerprint": "privacy-threat-oracle:drift:vocabulary-provenance-overstated",
@@ -134,11 +134,11 @@
     "source_refs": [
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "65efdd73ef37bebaf3c6d9217e03ccdf71ae63cf4067b5a1864041f5306f87a2"
+        "hash": "5d751cfd6fb36f3553873afcfe40401eb3a837532b678f8b1ca7f7f659b79123"
       }
     ],
-    "last_verified_commit": null,
-    "notes": "Revalidated 2026-11-15 after path references changed from ${CLAUDE_PLUGIN_ROOT}/ to ${CLAUDE_SKILL_DIR}/ (install-path fix); prose otherwise unchanged, conclusion stands. Refreshed baseline."
+    "last_verified_commit": "feea983",
+    "notes": "Revalidated 2026-11-16 after the Medium/Low doc pass touched this file elsewhere; the specific fact still holds. Revalidated 2026-11-15 after path references changed from ${CLAUDE_PLUGIN_ROOT}/ to ${CLAUDE_SKILL_DIR}/ (install-path fix); prose otherwise unchanged, conclusion stands. Refreshed baseline."
   },
   {
     "fingerprint": "readme:drift:fiction-workshop-missing-from-tree",
@@ -147,11 +147,11 @@
     "source_refs": [
       {
         "file": "README.md",
-        "hash": "2d404e846255fa3de01a0bd9f0ef38dc32d53e25c54fe9423290b54914e820ca"
+        "hash": "e44b340860f111c8f39204dfcd63eeab28e7cc4c76433d19b4d2d90f51870f35"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "Revalidated 2026-11-16: tree lists fiction-workshop/. Fixed earlier; verdict moved drift -> confirmed."
+    "last_verified_commit": "feea983",
+    "notes": "Revalidated 2026-11-16 after the Medium/Low doc pass touched this file elsewhere; the specific fact still holds. Revalidated 2026-11-16: tree lists fiction-workshop/. Fixed earlier; verdict moved drift -> confirmed."
   },
   {
     "fingerprint": "readme:drift:fiction-workshop-status-line-stale",
@@ -160,11 +160,11 @@
     "source_refs": [
       {
         "file": "README.md",
-        "hash": "2d404e846255fa3de01a0bd9f0ef38dc32d53e25c54fe9423290b54914e820ca"
+        "hash": "e44b340860f111c8f39204dfcd63eeab28e7cc4c76433d19b4d2d90f51870f35"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "Revalidated 2026-11-16: reads 'skeleton, smoke-tested'. Fixed earlier; verdict moved drift -> confirmed."
+    "last_verified_commit": "feea983",
+    "notes": "Revalidated 2026-11-16 after the Medium/Low doc pass touched this file elsewhere; the specific fact still holds. Revalidated 2026-11-16: reads 'skeleton, smoke-tested'. Fixed earlier; verdict moved drift -> confirmed."
   },
   {
     "fingerprint": "readme:drift:low-severity-stale-prose",
