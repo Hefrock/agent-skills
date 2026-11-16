@@ -74,7 +74,7 @@ generate_corpus.py --inference  ------->  score_inference.py     (Track 3: infer
 ## Running it
 
 ```bash
-cd scripts
+cd ${CLAUDE_SKILL_DIR}/scripts
 # Track 1 — Safe Harbor leakage
 python generate_corpus.py --n 50 --seed 20260101 --population 100000 --inference --utility --out corpus.json
 python run_track1.py --corpus corpus.json --pipeline regex-baseline-v0 --out runs.jsonl
@@ -85,7 +85,7 @@ python score_reid.py --corpus corpus.json --out reid_report.json
 
 # Track 3 — free-text inference (attacker recovers the withheld diagnosis)
 python score_inference.py --corpus corpus.json --out inference_report.json --eval-out inference_eval.jsonl
-python ../../agent-eval/scripts/score_eval.py inference_eval.jsonl   # optional: aggregate/diff
+python ${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py inference_eval.jsonl   # optional: aggregate/diff
 
 # Utility axis + privacy-utility frontier (needs a --utility corpus for clinical spans)
 python score_utility.py --corpus corpus.json --runs runs.jsonl --leakage-report leakage_report.json
@@ -178,6 +178,14 @@ inferable, 32 both; rare diagnoses 6/6). Those are checklist false-negatives: ce
 de-identified, and not. It reuses Track 2's linkage and Track 3's attacker directly (per-
 record outputs verified identical to the standalone scorers), so it is deterministic and
 adds no new assumptions.
+
+### Less common flags
+
+- `generate_corpus.py --n N` (records, default 50) and `--population-out PATH` (default `population.jsonl`, the background population Track 2 reads).
+- `score_reid.py --k K` and `score_crosstrack.py --k K`: k-anonymity threshold; a record counts as re-identifiable below it (default 5).
+- `score_inference.py`, `score_crosstrack.py`, `score_stats.py --attacker NAME`: which Track 3 attacker to use (default `signature-match-v0`).
+- `score_stats.py --n-boot N --boot-seed S`: bootstrap resamples (default 2000) and seed (default 12345).
+- `score_stats.py` seed-sweep mode (`--seeds N`): `--seed-start S` (default 20260101), `--n` records per corpus (default 50), `--population-size` (default 100000).
 
 ## Architecture — swappable parts + your eval harness as orchestrator
 

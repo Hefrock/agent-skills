@@ -62,7 +62,7 @@ python ${CLAUDE_SKILL_DIR}/scripts/oracle.py \
    action carries genuinely lower cost.
 6. **Plug in privacy-linter directly** instead of naming content classes by hand:
    ```bash
-   python ../privacy-linter/scripts/scan_diff.py --file draft_post.txt --json | \
+   python ${CLAUDE_SKILL_DIR}/../privacy-linter/scripts/scan_diff.py --file draft_post.txt --json | \
      python ${CLAUDE_SKILL_DIR}/scripts/oracle.py --source-compartment personal --target-compartment personal \
        --target-exposure public_internet --from-linter-json -
    ```

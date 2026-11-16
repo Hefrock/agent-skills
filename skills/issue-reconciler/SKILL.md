@@ -27,7 +27,7 @@ none of those PRs used "Closes #N" syntax. Only a judgment pass, checking the is
 actual ask against actual repo state, can find the rest.
 
 It is also where the false positives live. Issue #6 ("Build wiki-teacher skill") looks
-resolved at a glance: `skills/wiki-teacher/` exists. It is not. The skill that exists
+resolved at a glance: a `wiki-teacher` skill folder exists. It is not. The skill that exists
 is a `/checkin` project-accountability tool; #6 asked for quizzes, spaced repetition,
 `/study`, `/flashcards` and `/study-plan`, none of which is built. A name match is
 not a scope match. Pass 2 must compare the issue's listed responsibilities or

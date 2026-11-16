@@ -107,3 +107,7 @@ Update `Maps/_context.md` after fixes are applied.
 | Weekly | Run `/audit` at the start of the week |
 | Before synthesis | Run `/audit links orphans` before a `/synthesize` session |
 | After major edits | Run `/audit duplicates` after adding 5+ new pages |
+
+## Script flags
+
+`scripts/check_vault.py <vault>` runs the structural checks offline against a vault folder (no MCP needed). `--json` prints machine-readable output; `--warehouse PATH` points at a knowledge-warehouse checkout so `doc_id` notes are checked for Law 10 instead of reported as unchecked.

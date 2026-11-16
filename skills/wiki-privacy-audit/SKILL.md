@@ -178,6 +178,10 @@ reading `.privacy-linter-ignore` itself) is a reasonable follow-up, not built he
   single source of truth for detection and `wiki-librarian`'s own scope stays purely
   structural (as it's already documented).
 
+## Less common flags
+
+- `prune_log.py --log-file PATH` (required), `--retention-days N` (default 90), `--date YYYY-MM-DD` (reference "today"; default today). `cron_check.sh` calls it for you; run it by hand only to prune a log on a different schedule.
+
 ## Files
 
 | Path | What it is |

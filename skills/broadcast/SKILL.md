@@ -103,11 +103,11 @@ python ${CLAUDE_SKILL_DIR}/scripts/source_health_report.py --data-dir ~/.broadca
 ```
 Sums `source_utilization` across every `episodes/<date>/report.json` in the window, prints a table sorted by pooled `selection_rate` (most-starved first), and separately flags any registered source with *zero* candidates anywhere in the whole window — the clearest "worth asking a human about" signal it can produce. Same discipline as the field it aggregates: nothing here is a QA gate, and it can't tell a genuinely-starved source apart from one that's just legitimately quiet that month — it's a diagnostic to prompt a question, not a verdict. Read-only, standalone, never called automatically.
 
-`qa_checks` has the same rolling-view gap `source_utilization` had before `source_health_report.py` — one run's pass/fail is a snapshot, not a trend. `qa_gate_history.py` closes it differently: instead of reimplementing pass-rate/regression logic a third time, it flattens `qa_checks` across a window into [`skills/agent-eval/`](../agent-eval/SKILL.md)'s own JSONL schema (one row per episode/check pair, `category` = check name) and hands off to that skill's already-tested `score_eval.py` for the actual aggregation, regressions, and CI gate:
+`qa_checks` has the same rolling-view gap `source_utilization` had before `source_health_report.py` — one run's pass/fail is a snapshot, not a trend. `qa_gate_history.py` closes it differently: instead of reimplementing pass-rate/regression logic a third time, it flattens `qa_checks` across a window into the sibling `agent-eval` skill's own JSONL schema (one row per episode/check pair, `category` = check name) and hands off to that skill's already-tested `score_eval.py` for the actual aggregation, regressions, and CI gate:
 ```bash
 python ${CLAUDE_SKILL_DIR}/scripts/qa_gate_history.py --data-dir ~/.broadcast-data --out qa_results.jsonl [--days N]
-python skills/agent-eval/scripts/score_eval.py qa_results.jsonl --fail-under 0.9
-python skills/agent-eval/scripts/score_eval.py qa_results.jsonl --baseline last_weeks_qa_results.jsonl --fail-on-regression
+python ${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py qa_results.jsonl --fail-under 0.9
+python ${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py qa_results.jsonl --baseline last_weeks_qa_results.jsonl --fail-on-regression
 ```
 A documented file-format handoff, not a cross-skill import — `qa_gate_history.py` has no dependency on `agent-eval` being present to run; the second command is only useful when it is.
 
@@ -186,7 +186,7 @@ Every source lives in `config/sources.json`, validated at load time by `source_r
 
 ## Verifying a code change to this pipeline
 
-Every module in `scripts/` has a matching `test_*.py`, all stdlib `unittest`, no network calls (network-touching functions like `synthesize_text()` or `generate_narration()` are injectable and faked in tests — see any `test_orchestrate.py` `RunEpisodeWiring` test for the pattern). Run the full suite before trusting any change:
+Every module in `scripts/` except `live_smoke_test.py` (itself a live check, run by hand) has a matching `test_*.py`, all stdlib `unittest`, no network calls (network-touching functions like `synthesize_text()` or `generate_narration()` are injectable and faked in tests — see any `test_orchestrate.py` `RunEpisodeWiring` test for the pattern). Run the full suite before trusting any change:
 
 ```bash
 for f in ${CLAUDE_SKILL_DIR}/scripts/test_*.py; do python3 "$f"; done

@@ -281,6 +281,11 @@ If no vault is connected, present the same structure directly in the conversatio
 - Lead with High-severity discrepancies. A report with one High finding buried at the bottom is worse than a short one that leads with it.
 - If nothing to reconcile is found — the docs are accurate and complete for the scope checked — say so plainly. Don't manufacture findings to seem thorough.
 
+## Less common flags
+
+- `check_structural_claims.py --json` and `track_findings.py check --json`: the same report as JSON, for scripting.
+- `track_findings.py upsert --commit SHA`: stored on the record as `last_verified_commit` for a human reader. Nothing reads it back; staleness is judged by the file hashes alone.
+
 ## Files
 
 | Path | What it is |

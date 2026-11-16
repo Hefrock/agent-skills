@@ -31,7 +31,7 @@ A genuinely multi-turn-build-up case needs the conversation history itself,
 not just a final message that references the past — see `adv_015` in
 `examples/adversarial_seed.jsonl` for a real worked example (a roleplay
 frame established two turns before the actual harmful ask) and
-`skills/agent-eval/references/multi-turn-eval.md` for the `turns` field
+`../../agent-eval/references/multi-turn-eval.md` for the `turns` field
 this case shape uses and how it reaches the judge prompt as a readable
 transcript.
 

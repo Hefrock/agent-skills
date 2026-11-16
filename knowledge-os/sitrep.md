@@ -1,6 +1,6 @@
 # Wiki System — Sitrep & Gap Analysis
 
-_Last updated: 2026-09-26_
+_Last updated: 2026-09-26. Not kept current since: the test counts and per-skill status below are a historical record. For current test counts, run the suites or see the README's repo tree, which CI checks._
 
 ## Recently closed
 
