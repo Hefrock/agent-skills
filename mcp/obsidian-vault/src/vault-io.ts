@@ -56,16 +56,33 @@ export async function vaultPathForWrite(notePath: string): Promise<string> {
 
   const resolved = vaultPath(notePath); // lexical check first
 
-  // #7: realpath check on parent dir (file may not exist yet for creates)
-  const parentDir = path.dirname(resolved);
-  try {
-    const realParent = await fs.realpath(parentDir);
-    if (!realParent.startsWith(vaultRoot + path.sep) && realParent !== vaultRoot) {
+  // #7: realpath the nearest ancestor directory that exists, and require it to
+  // be inside the vault. Checking only the immediate parent was not enough: for
+  // a write into a not-yet-existing subfolder (Escape/new/x.md), the parent
+  // realpath fails with ENOENT, the lexical check passed, and atomicWrite's
+  // mkdir -p then created the folder through a symlinked "Escape" -> outside.
+  // A missing ancestor that is itself a dangling symlink is refused too, since
+  // mkdir would otherwise follow or trip over it.
+  let ancestor = path.dirname(resolved);
+  for (;;) {
+    let real: string;
+    try {
+      real = await fs.realpath(ancestor);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      const link = await fs.lstat(ancestor).catch(() => null);
+      if (link?.isSymbolicLink()) {
+        throw new Error("Path traversal not allowed (dangling symlink in parent directory)");
+      }
+      const up = path.dirname(ancestor);
+      if (up === ancestor) break;
+      ancestor = up;
+      continue;
+    }
+    if (!isInsideVault(real)) {
       throw new Error("Path traversal not allowed (symlink in parent directory)");
     }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    // Parent doesn't exist yet — will be created, trust lexical check
+    break;
   }
 
   // #7: for existing files, also realpath the file itself

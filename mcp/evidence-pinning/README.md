@@ -21,12 +21,25 @@ don't invent" can be a consumer, not just one skill's private database.
 ## Network egress this server needs
 
 `check_source_decay` makes outbound HTTPS calls to `api.crossref.org` (DOI checks) and
-`eutils.ncbi.nlm.nih.gov` (PMID checks). In an environment with a default-deny egress
+`eutils.ncbi.nlm.nih.gov` (PMID checks). For a plain-URL source (no DOI or PMID) it
+also requests **the registered URL itself** (HEAD, falling back to GET), so it reaches
+whatever public host that source names, and any host it redirects to. In an environment with a default-deny egress
 policy, both must be explicitly allowlisted or these checks always come back
 `unreachable` — indistinguishable from a genuinely dead source, since a blocked
 connection and a dead one look identical from inside the server. Every other tool
 (`register_source`, `pin_claim`, `get_claims`, `verify_claim`, `flag_claim`,
 `get_provenance`, and the retraction-cascade logic) needs no network access at all.
+
+**What a plain-URL check will not contact.** Before each request, and again for every
+redirect hop (followed by hand, at most 5), the URL must be `http` or `https` and every
+address its host resolves to must be public. Loopback, private (RFC 1918), carrier-grade
+NAT, link-local (including the `169.254.169.254` cloud-metadata address), multicast,
+reserved, and the IPv6 equivalents (`::1`, `fc00::/7`, `fe80::/10`, IPv4-mapped forms)
+are refused without sending anything: the source is reported `unreachable` with a
+`not checked: ...` detail. To check sources on your own network, set
+`EVIDENCE_ALLOW_PRIVATE_URLS=1` in the server's environment; the scheme rule still applies.
+Known gap: the host is resolved by the guard and again by `fetch`, so a DNS server that
+answers differently the second time (DNS rebinding) is not stopped.
 
 ## Install
 
