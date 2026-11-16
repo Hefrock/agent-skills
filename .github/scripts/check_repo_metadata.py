@@ -17,6 +17,10 @@ Fails (exit 1) when:
     plugin's "source"), so it needs the skill's folder name in the path.
     ${CLAUDE_SKILL_DIR} in an agents/*.md file is also an error, since it
     is only substituted in skill content.;
+  - a SKILL.md or agents/*.md file points at another file with a bare
+    "../<dir>/" or repo-relative "skills/<name>/" path. Neither resolves
+    from an installed plugin or from another working directory; write
+    ${CLAUDE_SKILL_DIR}/../<skill>/... in a SKILL.md instead;
   - an agents/*.md file names a persona slug (references/personas/<slug>.md)
     that has no file, or a skill has a references/personas/ doc that none
     of its agents names.
@@ -76,6 +80,17 @@ def read_frontmatter(path: Path):
     return data, None
 
 
+BARE_PATH = re.compile(r"(?<![\w}./-])(\.\./[\w.-]+/|skills/[a-z0-9-]+/)")
+
+
+def check_bare_paths(md: Path, root: Path):
+    for lineno, line in enumerate(md.read_text(encoding="utf-8").split("\n"), 1):
+        for m in BARE_PATH.finditer(line):
+            yield (f"{md.relative_to(root)}:{lineno}: bare path {m.group(1)!r} does not resolve from an "
+                   "installed plugin; use ${CLAUDE_SKILL_DIR}/../<skill>/... (SKILL.md) or "
+                   "${CLAUDE_PLUGIN_ROOT}/<skill>/... (agents)")
+
+
 def check_persona_slugs(skill: Path, root: Path):
     """Agents that route to references/personas/<slug>.md must name real slugs,
     and every persona doc must be named by at least one agent."""
@@ -127,6 +142,9 @@ def check(root: Path = ROOT):
     for skill in skill_dirs:
         for md in sorted(skill.rglob("*.md")):
             errors.extend(check_path_refs(md, skill, skills_dir, root))
+        for md in [skill / "SKILL.md", *sorted(skill.glob("agents/*.md"))]:
+            if md.is_file():
+                errors.extend(check_bare_paths(md, root))
 
     for skill in skill_dirs:
         errors.extend(check_persona_slugs(skill, root))

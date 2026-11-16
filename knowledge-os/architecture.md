@@ -16,6 +16,9 @@ How the wiki system fits together — the components, their responsibilities, an
 │    wiki-librarian      ← structural audits              │
 │    wiki-governor       ← maintenance loop + compliance  │
 │    wiki-teacher        ← project accountability (/checkin)│
+│    wiki-warehouse      ← raw-document cold storage      │
+│    wiki-privacy-audit  ← vault-wide PII/secret scan     │
+│    research-ledger     ← research claim ledgers → warehouse│
 └───────────────────┬─────────────────────────────────────┘
                     │ MCP (STDIO)
                     ▼
@@ -27,6 +30,8 @@ How the wiki system fits together — the components, their responsibilities, an
 │  append_note     patch_section  patch_frontmatter       │
 │  query_frontmatter  list_links  list_notes              │
 │  delete_note                                            │
+│  + search_warehouse  read_warehouse_text                │
+│    (only when WAREHOUSE_PATH is set)                    │
 └───────────────────┬─────────────────────────────────────┘
                     │ filesystem
                     ▼

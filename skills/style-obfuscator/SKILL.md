@@ -197,7 +197,7 @@ python ${CLAUDE_SKILL_DIR}/scripts/fingerprint.py --file pseudonymous_draft.md -
   pipes straight into `--from-linter-json` exactly like a `privacy-linter` scan does:
   ```bash
   python ${CLAUDE_SKILL_DIR}/scripts/fingerprint.py --file draft.md --reference ~/vault/ --emit-findings | \
-    python ../privacy-threat-oracle/scripts/oracle.py \
+    python ${CLAUDE_SKILL_DIR}/../privacy-threat-oracle/scripts/oracle.py \
       --source-compartment personal --target-compartment public_professional \
       --target-exposure public_internet --from-linter-json -
   ```

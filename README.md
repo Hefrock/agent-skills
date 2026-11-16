@@ -94,7 +94,7 @@ cp -r skills/agent-eval ~/.claude/skills/
 Zip the individual skill folder (e.g. `skills/agent-eval/`) and upload via Settings → Features → Custom Skills (requires a paid plan with code execution enabled).
 
 **Other platforms (Codex, Gemini CLI, Cursor, etc.):**
-Copy the skill folder into whatever directory that platform scans for skills — the `SKILL.md` format works unmodified.
+Copy the skill folder into whatever directory that platform scans for skills — the `SKILL.md` format works unmodified, with one Claude Code convention to know about: commands and file paths in a `SKILL.md` are written as `${CLAUDE_SKILL_DIR}/scripts/...`. Claude Code fills that in; on other platforms read `${CLAUDE_SKILL_DIR}` as "this skill's folder" (and `${CLAUDE_SKILL_DIR}/../<other-skill>` as a sibling skill installed alongside it). `fiction-workshop` is the one skill that needs Claude Code itself, for its subagents.
 
 ## Repo structure
 
@@ -104,7 +104,11 @@ Copy the skill folder into whatever directory that platform scans for skills —
 ```
 agent-skills/
 ├── .github/
-│   ├── workflows/ci.yml        # builds + tests the MCP server, runs the Python skill suites
+│   ├── workflows/
+│   │   ├── ci.yml              # builds + tests both MCP servers, runs every Python skill suite and the metadata guard
+│   │   ├── release-tag.yml     # tags main vX.Y.Z after CI passes on a version bump
+│   │   └── broadcast-*.yml     # broadcast live smoke test, text-only run, scheduled episode (manual/off by default)
+│   ├── scripts/check_repo_metadata.py # CI guard: frontmatter, path references, marketplace registration, test wiring
 │   └── ISSUE_TEMPLATE/         # blocked-human / dated-followup templates for stalled-work tracking
 ├── .claude-plugin/
 │   └── marketplace.json        # Claude Code-only install metadata — optional, additive
@@ -117,11 +121,11 @@ agent-skills/
 │   ├── deid-reid-harness/       # clinical de-id/re-id eval — scripts, refs, 76-test suite
 │   ├── repo-pincer/             # codebase reverse-engineering — claims vs. reality reconciliation, scripts/check_structural_claims.py + track_findings.py, test suite
 │   ├── issue-reconciler/        # GitHub issues vs. reality reconciliation — scripts/find_closing_references.py, test suite
-│   ├── review-and-plan/         # checklist + sitrep/gap analysis/sprint plan — instructions only, no scripts
+│   ├── review-and-plan/         # checklist + sitrep/gap analysis/sprint plan — instructions only; examples/ holds its own eval runs and harness scripts
 │   ├── privacy-linter/          # pre-disclosure PII/secrets/metadata scanner — scripts/scan_diff.py, test suite
 │   ├── privacy-threat-oracle/   # rule-based compartment/adversary decision engine — scripts/oracle.py, test suite
 │   ├── style-obfuscator/        # stylometric fingerprint + reference-corpus similarity — scripts/fingerprint.py, test suite
-│   ├── wiki-operator/           # on-demand vault operations
+│   ├── wiki-operator/           # on-demand vault operations — assets/ holds the note templates (concept, source, project, journal, map, …)
 │   ├── wiki-synthesizer/        # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/          # structural health audits — scripts/check_vault.py, 44-test regression suite
 │   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 22-test regression suite
@@ -139,11 +143,8 @@ agent-skills/
 ├── knowledge-os/
 │   ├── constitution.md         # 10 laws Claude follows when operating the wiki
 │   ├── architecture.md         # component map, data flow, note lifecycle
+│   ├── page-standard.md        # page standard copied into the vault's System/ by setup-vault.sh
 │   └── sitrep.md               # living status + gap analysis for the wiki system
-│   ├── concept.md
-│   ├── journal.md
-│   ├── source.md
-│   └── map.md
 ├── bin/
 │   └── setup-vault.sh          # one-command vault bootstrap (creates folders, copies templates + constitution)
 ├── skill-template/              # starting point for a new skill
@@ -161,7 +162,7 @@ The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-go
 - **`wiki-privacy-audit`** pairs with `privacy-linter` instead of reinventing detection — it's the one wiki skill whose "audit" is fully mechanical, so it runs the linter's scanner directly against vault notes rather than reasoning over each one.
 - **`research-ledger`** slots in just ahead of `wiki-synthesizer` — it warehouses a deep-research run's full claim ledger (including what got rejected) before synthesis only promotes the confirmed subset into `Knowledge/`.
 
-**Every wiki skill requires the `obsidian-vault` MCP server connected — nothing works without it.** To enable it:
+**Every wiki skill's slash commands require the `obsidian-vault` MCP server connected.** The exception is the offline scripts — `check_vault.py` (librarian), `health_score.py` (governor), `wiki_teacher.py` (teacher) and `check_vault_privacy.py` (privacy audit) — which read a vault folder directly and run without the server. To enable it:
 
 1. **Build it once:**
    ```bash
@@ -176,7 +177,7 @@ The wiki skills (`wiki-operator`, `wiki-synthesizer`, `wiki-librarian`, `wiki-go
        -- node /absolute/path/to/agent-skills/mcp/obsidian-vault/dist/index.js
      ```
      `-s user` registers it at the user level — available in every project, which is how this server is meant to run — and edits `~/.claude.json` for you, avoiding the occasional weirdness of hand-editing that file while a running Claude Code process has it open.
-   - **`setup-vault.sh`** — run `./bin/setup-vault.sh ~/path/to/vault`; it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints a config snippet with your paths filled in, for the manual route below.
+   - **`setup-vault.sh`** — run `./bin/setup-vault.sh ~/path/to/vault`; it bootstraps the folder structure, copies templates and the constitution into `System/`, and prints a config snippet with your paths filled in, for the manual route below. It is safe to re-run, but it never overwrites a file that already exists, so it will **not** refresh `System/constitution.md`, `System/page-standard.md` or the `Templates/` files after this repo updates them. To pick up a new version, delete that file in the vault (or copy it over by hand) and re-run.
    - **Manual** — add this to `~/.claude.json` yourself:
      ```json
      {

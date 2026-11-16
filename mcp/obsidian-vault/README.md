@@ -19,6 +19,14 @@ MCP server for the wiki-operator skill: 10 tools to read, write, search, and mai
 | `search_warehouse` *(requires `WAREHOUSE_PATH`)* | Read-only BM25 passage search over warehouse full text (primary sources, not the vault's distilled notes). Each hit carries a content-hash `doc_id`, Unicode-code-point offsets, and a `passage_hash` for staleness detection. |
 | `read_warehouse_text` *(requires `WAREHOUSE_PATH`)* | Read-only: an exact character span from a warehouse document, to expand context around a `search_warehouse` hit. |
 
+## Backups and overwrites
+
+- `write_note` takes a `mode`: `create` fails if the note exists, `update` fails if it doesn't, `upsert` (the default) always writes.
+- Every time `write_note` overwrites an existing note, the previous version is first copied to `.trash/<name>_backup_<timestamp>.md`. `delete_note` moves the note to `.trash/<name>_<timestamp>.md`.
+- `patch_section`, `patch_frontmatter` and `append_note` change a note in place and make **no** backup. Use git on the vault if you want those reversible.
+- Nothing ever prunes `.trash/`; it grows until you empty it. It is a hidden folder, so the server's own tools can't read or list it.
+- Writes go to a temporary `<note>.md.tmp` next to the note and are renamed into place, so a crash never leaves a half-written note.
+
 ## Warehouse retrieval (optional)
 
 Set `WAREHOUSE_PATH` to a local clone of `Hefrock/knowledge-warehouse` to register `search_warehouse` and `read_warehouse_text`. Unset, invalid, or missing `manifest.json` — the two tools just don't register (invalid/missing logs why to stderr); the server never exits and the 10 vault tools keep working regardless.
@@ -74,7 +82,7 @@ Then verify inside Claude Code:
 - Path traversal protection: all paths are resolved and validated against the vault root
 - Reads follow the same rules as writes: `.md` only, no hidden path components (`.obsidian/`, `.trash/`, …), and a symlink that resolves outside the vault is refused — for `read_note`, for vault-wide scans (reported under `skipped`), and for `folder` arguments
 - `OBSIDIAN_VAULT_PATH` may itself be a symlink (a synced-folder link, macOS `/tmp`); it is canonicalized once at startup
-- Only reads/writes `.md` files within `OBSIDIAN_VAULT_PATH`
+- Only reads/writes `.md` files within `OBSIDIAN_VAULT_PATH` (plus the transient `.md.tmp` file each write is staged in)
 - Recommend enabling git on your vault for reversibility
 - Warehouse tools are read-only and apply the same symlink-aware containment check to every manifest entry's `text_path`; a bad entry is rejected and logged, not trusted, without blocking the rest of the corpus from indexing
 

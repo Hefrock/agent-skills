@@ -33,7 +33,7 @@ Generates adversarial inputs designed to expose unsafe, over-compliant, or britt
    - `input` — the adversarial prompt (for a `multi-turn` case, the final turn — see `turns` below)
    - `expected_behavior` — `refuse`, `hedge` (answer with a caveat/verification), or `answer` (benign — refusing is the failure)
    - `notes` — why that behavior is the correct one
-   - `turns` (only for genuinely multi-turn cases, e.g. `adv_015`) — the full conversation history as `[{"role", "content"}, ...]` leading up to `input`, when the buildup across turns is itself part of the attack (a fictional-persona frame established earlier, an incremental escalation) rather than a single message that merely *claims* a prior turn happened (which needs only `input`, like `adv_013`/`adv_014`). See `skills/agent-eval/references/multi-turn-eval.md` for the full case-shape rationale and how `run_judge.py` renders `turns` into a judge prompt.
+   - `turns` (only for genuinely multi-turn cases, e.g. `adv_015`) — the full conversation history as `[{"role", "content"}, ...]` leading up to `input`, when the buildup across turns is itself part of the attack (a fictional-persona frame established earlier, an incremental escalation) rather than a single message that merely *claims* a prior turn happened (which needs only `input`, like `adv_013`/`adv_014`). See `${CLAUDE_SKILL_DIR}/../agent-eval/references/multi-turn-eval.md` for the full case-shape rationale and how `run_judge.py` renders `turns` into a judge prompt.
 
    Always include `answer` cases. An eval set with only refuse-cases optimizes
    the agent toward uselessly over-refusing — the over-refusal cases are what
@@ -50,7 +50,7 @@ Generates adversarial inputs designed to expose unsafe, over-compliant, or britt
    documented-schema-bridge convention `deid-reid-harness` uses to reach the
    same script:
    ```bash
-   python ../agent-eval/scripts/score_eval.py examples/adversarial_results.jsonl
+   python ${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py ${CLAUDE_SKILL_DIR}/examples/adversarial_results.jsonl
    ```
    `examples/adversarial_results.jsonl` is a worked example scoring the 15 seed
    cases — it includes three deliberate failures (a retrieved-context injection, a
@@ -75,7 +75,7 @@ Generates adversarial inputs designed to expose unsafe, over-compliant, or britt
 ## Guidelines
 
 - Never mix adversarial pass rates with correctness pass rates in the same aggregate — they measure different properties of the system.
-- Cross-reference: `references/case-generation.md` for building/growing the case set, `skills/agent-eval/SKILL.md` for rubric-based scoring, and `skills/agent-eval/references/llm-judge-prompt.md` for judge prompt templates.
+- Cross-reference: `references/case-generation.md` for building/growing the case set, `${CLAUDE_SKILL_DIR}/../agent-eval/SKILL.md` for rubric-based scoring, and `${CLAUDE_SKILL_DIR}/../agent-eval/references/llm-judge-prompt.md` for judge prompt templates.
 - This skill generates cases; agent-eval scores them. Keep these concerns separate.
 
 ## Files
@@ -88,4 +88,4 @@ Generates adversarial inputs designed to expose unsafe, over-compliant, or britt
 | `references/case-generation.md` | Coverage matrix, mutation axes, generation loop |
 | `scripts/verify_regressions_promoted.py` | CI self-check: every promoted case is unmodified from the seed and traces to a real documented failure |
 
-Scoring itself has no local script — `../agent-eval/scripts/score_eval.py` is called directly from the sibling skill (see step 3), not copied or symlinked in.
+Scoring itself has no local script — `${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py` is called directly from the sibling skill (see step 3), not copied or symlinked in.

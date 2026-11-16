@@ -103,8 +103,8 @@ little), unlike `--strip-metadata`'s EXIF removal, which has no partial-credit v
    ```bash
    python ${CLAUDE_SKILL_DIR}/scripts/scan_diff.py --log-dir ~/.privacy-linter-log            # add to any normal run
    python ${CLAUDE_SKILL_DIR}/scripts/scan_log_history.py --log-dir ~/.privacy-linter-log --out trend.jsonl
-   python ../agent-eval/scripts/score_eval.py trend.jsonl --fail-under 0.9
-   python ../agent-eval/scripts/score_eval.py trend.jsonl --baseline last_month.jsonl --fail-on-regression
+   python ${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py trend.jsonl --fail-under 0.9
+   python ${CLAUDE_SKILL_DIR}/../agent-eval/scripts/score_eval.py trend.jsonl --baseline last_month.jsonl --fail-on-regression
    ```
    To have the git pre-commit hook log every commit-time scan, install it with the
    opt-in flag (absolute path; a leading `~/` is expanded once at install time):
@@ -203,6 +203,14 @@ it writes; it never overwrites an existing hook without confirmation.
 - **wiki-privacy-audit** — reuses this skill's `scan_diff.py` directly (as a subprocess,
   per vault note) rather than reimplementing detection for a vault instead of a git
   diff. This skill stays the single source of truth for what counts as PII or a secret.
+
+## Less common flags
+
+- `scan_log_history.py --days N` (default 30) and `--date YYYY-MM-DD` (reference "today", UTC; default today): the window of `--log-dir` records to flatten.
+
+## What the output never contains
+
+Findings, `--json` output and `--log-dir` records name the pattern, severity, class and `file:line`, never the matched text itself. Running the scanner, or keeping its logs, does not copy the secret or PII it found anywhere new.
 
 ## Files
 

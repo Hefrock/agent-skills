@@ -47,3 +47,7 @@ Surface 1–2 projects that genuinely need attention — never a dump of everyth
 - Never auto-run `/checkin` — session start only suggests it.
 - Growth-mindset framing: state what's observed as a fact, never as a verdict on the person.
 - If MCP tools are unavailable, stop and tell the user — do not simulate vault operations in the conversation.
+
+## Script flags
+
+`scripts/wiki_teacher.py <vault>` runs the same narrowing offline against a vault folder (no MCP needed). `--json` prints the result as JSON; `--explicit` simulates an explicit "what should I work on" pull (step 6 above) instead of a session-start check.
