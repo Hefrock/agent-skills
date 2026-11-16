@@ -14,16 +14,16 @@
   },
   {
     "fingerprint": "agent-eval:silent:update-log-writes-into-install-dir",
-    "verdict": "silent",
-    "title": "MEDIUM: documented calibrate_judge --update-log target is inside the installed skill folder, which is replaced on plugin update",
+    "verdict": "confirmed",
+    "title": "Calibration log example writes to a user-owned path",
     "source_refs": [
       {
         "file": "skills/agent-eval/SKILL.md",
-        "hash": "0f66807356ff431bcf9ba7eb8b61169718aed51ef95d186a771f7e7ae7635b4c"
+        "hash": "7f0a92cd34f3b307a79f67c146ce23a2d3c8ce5aa7e965f0b337a0c79098dd77"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. SKILL.md step 5 passes --update-log ${CLAUDE_SKILL_DIR}/references/llm-judge-prompt.md. On an installed plugin that directory changes per version, so the calibration log is silently lost on update. Point the example at a user-owned path."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. Example copies the template to ~/agent-eval/ once and logs there."
   },
   {
     "fingerprint": "deid-reid-harness:confirmed:external-api-flag-required",
@@ -86,37 +86,33 @@
   },
   {
     "fingerprint": "obsidian-vault:silent:readme-omits-backup-and-mode",
-    "verdict": "silent",
-    "title": "MEDIUM: README does not mention write_note's automatic .trash backup, its create/update/upsert mode, that .trash is never pruned, or that patch/append tools make no backup",
+    "verdict": "confirmed",
+    "title": "obsidian-vault README documents write modes, .trash backups and no-backup tools",
     "source_refs": [
       {
-        "file": "mcp/obsidian-vault/src/index.ts",
-        "hash": "ea9d3cd3a98823288fe7e6cab45181498de11b6d8f429ec3c98abafe460e344b"
-      },
-      {
         "file": "mcp/obsidian-vault/README.md",
-        "hash": "e01d2f2854e32ec896e012609aae8cb126a2a8d82a51bbb8e16dd001b15fa8c6"
+        "hash": "5ad11e8a7096c2e49090506d07b3c94acb5af9b062398561515c7539a24d25a7"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. index.ts writeNoteContents copies the prior version to .trash/<name>_backup_<ts>.md on every overwrite; patch_section, patch_frontmatter and append_note do not. Tool descriptions in index.ts mention the backup; README tool table does not."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. New Backups and overwrites section."
   },
   {
     "fingerprint": "privacy-linter:silent:output-never-echoes-matched-value",
-    "verdict": "silent",
-    "title": "LOW: scan_diff output, JSON and --log-dir records never contain the matched text, only pattern name and location - a useful guarantee stated nowhere",
+    "verdict": "confirmed",
+    "title": "privacy-linter states its output never contains the matched text; README states setup-vault never refreshes existing files",
     "source_refs": [
       {
-        "file": "skills/privacy-linter/scripts/scan_diff.py",
-        "hash": "4c9a4f449af083424f5397e26c478efd1ec43e1eeff32da67a9082afb932014a"
+        "file": "skills/privacy-linter/SKILL.md",
+        "hash": "06fdaf2dde03ca647f22a5de670ccd4915239d05925020a341623cd63fbb8c2f"
       },
       {
-        "file": "bin/setup-vault.sh",
-        "hash": "3d579274900327f8ac6b4bcff9e543e167af06ee8752d2de565970404d45377a"
+        "file": "README.md",
+        "hash": "e44b340860f111c8f39204dfcd63eeab28e7cc4c76433d19b4d2d90f51870f35"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. Verified by running against an SSN, AWS key and email. Also: bin/setup-vault.sh skips an existing System/constitution.md, so a vault never receives an updated constitution through it (undocumented)."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. New 'What the output never contains' section; README setup-vault note."
   },
   {
     "fingerprint": "privacy-threat-oracle:drift:pairing-section-vocabulary-wording-missed",
@@ -172,49 +168,49 @@
   },
   {
     "fingerprint": "readme:drift:low-severity-stale-prose",
-    "verdict": "drift",
-    "title": "LOW: stale or inexact README/doc prose (batch)",
+    "verdict": "confirmed",
+    "title": "Low-severity stale prose batch corrected",
     "source_refs": [
       {
         "file": "README.md",
-        "hash": "2d404e846255fa3de01a0bd9f0ef38dc32d53e25c54fe9423290b54914e820ca"
+        "hash": "e44b340860f111c8f39204dfcd63eeab28e7cc4c76433d19b4d2d90f51870f35"
       },
       {
         "file": "skills/broadcast/SKILL.md",
-        "hash": "d5ca6a66fb0f2ba49c90f8a5542f9e9c9ea42f1de2b2e99abc11569047f558a6"
+        "hash": "04c989eaa313dedc026f95819fbf3244224199c00058fd5cb6059051f27b5d79"
       },
       {
         "file": "knowledge-os/sitrep.md",
-        "hash": "b5ac9d2ad41d2723802d2c153d666ff938cc509b25d5c74787f528eee7c8a57f"
+        "hash": "81e5bed1744503d72d10fc388c5a6eb5f456382d863be417fd321d604ffa6e63"
       },
       {
         "file": "knowledge-os/architecture.md",
-        "hash": "08dc7efabcd5fcb568f70b9184eecf66126596082b4f5411309e20e9c387ec6a"
+        "hash": "377450ea8aa78d18b1e4000ebc7efc73c43c73be896a6fc5127198e6cba02336"
       },
       {
         "file": "mcp/obsidian-vault/README.md",
-        "hash": "e01d2f2854e32ec896e012609aae8cb126a2a8d82a51bbb8e16dd001b15fa8c6"
+        "hash": "5ad11e8a7096c2e49090506d07b3c94acb5af9b062398561515c7539a24d25a7"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. (1) README tree: four template files (concept/journal/source/map.md) hang under knowledge-os/ but live in skills/wiki-operator/assets/; page-standard.md missing; ci.yml line says 'the MCP server' (two servers) and omits four other workflows and .github/scripts. (2) review-and-plan called 'instructions only, no scripts' but ships examples/scripts/*.py. (3) 'Every wiki skill requires the obsidian-vault MCP - nothing works without it' but check_vault.py, health_score.py, wiki_teacher.py, check_vault_privacy.py run on a vault path with no MCP. (4) broadcast SKILL.md 'every module in scripts/ has a matching test' - live_smoke_test.py has none. (5) knowledge-os/sitrep.md header 'Last updated 2026-09-26', cites check_vault.py at 26 tests (now 30 + 14). (6) knowledge-os/architecture.md never mentions wiki-privacy-audit or research-ledger. (7) obsidian README 'only reads/writes .md' vs transient .md.tmp files."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. README tree, wiki MCP claim, setup-vault refresh note, broadcast test claim, sitrep marked historical, architecture coverage."
   },
   {
     "fingerprint": "readme:drift:portability-claim-vs-claude-only-path-variables",
-    "verdict": "drift",
-    "title": "MEDIUM: README/CONTRIBUTING say SKILL.md works unmodified on other platforms; nine skills' commands use ${CLAUDE_SKILL_DIR}, which only Claude Code substitutes",
+    "verdict": "confirmed",
+    "title": "README and CONTRIBUTING explain ${CLAUDE_SKILL_DIR} for other platforms",
     "source_refs": [
       {
         "file": "README.md",
-        "hash": "2d404e846255fa3de01a0bd9f0ef38dc32d53e25c54fe9423290b54914e820ca"
+        "hash": "e44b340860f111c8f39204dfcd63eeab28e7cc4c76433d19b4d2d90f51870f35"
       },
       {
         "file": "CONTRIBUTING.md",
-        "hash": "bcedd100d08c0c7920968af910e66ed49bca29a39aeedb57aa7d063533d4dc09"
+        "hash": "d232e2762f53547b81defc1c788df5a78c570eb79777d107aa3c520548181255"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. README 'Other platforms' and CONTRIBUTING 'Keep it portable'. Only fiction-workshop is declared Claude-only. Either state the limitation or tell other platforms to read the variable as the skill folder."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. Other-platforms install note and CONTRIBUTING portability rule."
   },
   {
     "fingerprint": "repo-pincer:silent:track-findings-commit-field-inert",
@@ -231,72 +227,76 @@
   },
   {
     "fingerprint": "skills:drift:cross-skill-commands-use-relative-paths",
-    "verdict": "drift",
-    "title": "MEDIUM: runnable commands reference sibling skills by ../ or skills/ paths that do not resolve from an installed copy or another cwd",
+    "verdict": "confirmed",
+    "title": "Cross-skill commands and references use install-safe paths; CI rejects bare ../ and skills/ paths",
     "source_refs": [
       {
         "file": "skills/agent-redteam/SKILL.md",
-        "hash": "e2fc3a61d00950d85e60aa6b7e82b07e03ae066a94eb8cd105d4de895cc0b1ff"
+        "hash": "55c533c9f72fa0294682410e1d23820f2338d1dcd743f2ba5f3f8b9db8486f37"
       },
       {
         "file": "skills/broadcast/SKILL.md",
-        "hash": "d5ca6a66fb0f2ba49c90f8a5542f9e9c9ea42f1de2b2e99abc11569047f558a6"
+        "hash": "04c989eaa313dedc026f95819fbf3244224199c00058fd5cb6059051f27b5d79"
       },
       {
         "file": "skills/deid-reid-harness/SKILL.md",
-        "hash": "380a13be1fff4ce205a2c289fe8eecf91727c0ecc911528eb02abcf438175246"
+        "hash": "49ff6ae48a99fb12f771de681cefb217f8188777f8d6e3caf8f41a53e95ebb11"
       },
       {
         "file": "skills/privacy-linter/SKILL.md",
-        "hash": "36e80883f94a846d39d532bcff12ae48b8ebb83ea01d506cb8b0cca1ed3a3547"
+        "hash": "06fdaf2dde03ca647f22a5de670ccd4915239d05925020a341623cd63fbb8c2f"
       },
       {
         "file": "skills/privacy-threat-oracle/SKILL.md",
-        "hash": "65efdd73ef37bebaf3c6d9217e03ccdf71ae63cf4067b5a1864041f5306f87a2"
+        "hash": "5d751cfd6fb36f3553873afcfe40401eb3a837532b678f8b1ca7f7f659b79123"
       },
       {
         "file": "skills/style-obfuscator/SKILL.md",
-        "hash": "639a2bd66295aa2e808f1bf5f229a4531c9118941131b3691ad4413794f9e031"
+        "hash": "c6f3be485f80d2b50b98ade2c655721510f563b12ac10f839b109fa542fd3c25"
+      },
+      {
+        "file": ".github/scripts/check_repo_metadata.py",
+        "hash": "d03ceef8dc8468396b8ffc86de5597fa8736f79d81b9bfc665089dca645c6c33"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. agent-redteam SKILL.md:53,91; broadcast:109-110; deid-reid-harness:88; privacy-linter:106-107; privacy-threat-oracle:65; style-obfuscator:200; plus prose refs in agent-eval:20, agent-redteam:36,78, issue-reconciler:30, wiki-governor:57 and agent-eval/agent-redteam references. In a SKILL.md use ${CLAUDE_SKILL_DIR}/../<skill>/... (install root holds all skills side by side)."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. SKILL.md uses ${CLAUDE_SKILL_DIR}/../<skill>/; references use file-relative links. Guard: check_repo_metadata.py check_bare_paths."
   },
   {
     "fingerprint": "skills:silent:undocumented-cli-flags",
-    "verdict": "silent",
-    "title": "MEDIUM/LOW: CLI flags present in code and in no doc",
+    "verdict": "confirmed",
+    "title": "All script CLI flags are documented",
     "source_refs": [
       {
         "file": "skills/agent-eval/SKILL.md",
-        "hash": "0f66807356ff431bcf9ba7eb8b61169718aed51ef95d186a771f7e7ae7635b4c"
+        "hash": "7f0a92cd34f3b307a79f67c146ce23a2d3c8ce5aa7e965f0b337a0c79098dd77"
       },
       {
         "file": "skills/deid-reid-harness/SKILL.md",
-        "hash": "380a13be1fff4ce205a2c289fe8eecf91727c0ecc911528eb02abcf438175246"
+        "hash": "49ff6ae48a99fb12f771de681cefb217f8188777f8d6e3caf8f41a53e95ebb11"
       },
       {
         "file": "skills/privacy-linter/SKILL.md",
-        "hash": "36e80883f94a846d39d532bcff12ae48b8ebb83ea01d506cb8b0cca1ed3a3547"
+        "hash": "06fdaf2dde03ca647f22a5de670ccd4915239d05925020a341623cd63fbb8c2f"
       },
       {
         "file": "skills/wiki-privacy-audit/SKILL.md",
-        "hash": "f10efa3f49adeba70db5c59921709042aad8517bf581e80832824841ea95e0ff"
+        "hash": "79233fe7496f890e9baf92f08dde2f9a34656132d416c759f5064cd9ce90c1f3"
       },
       {
         "file": "skills/wiki-teacher/SKILL.md",
-        "hash": "91db264f7a596e5e9bb887a5f10dd9ee91e4ef5b6a4c12b6ef6de6089754d647"
+        "hash": "941cc44ff802ebf79fe9f359ca3360c6e2a74d7c22310873fdb9d6e879685672"
       },
       {
         "file": "skills/wiki-librarian/SKILL.md",
-        "hash": "063e5a3aa9e2022eca4999fd4c195ad31967079c03e59b5b8dac8ad443146435"
+        "hash": "1dfce766744f13df98bd55e0e31174d84c6055a08ae633b15b9cdd562572c083"
       },
       {
         "file": "skills/repo-pincer/SKILL.md",
-        "hash": "04b648e43e45325b75d728be4f378be2805a6a5aa03a94319e636a5a1a0684ea"
+        "hash": "a3e46192fd9193b95dfb8032fa701e531567c16375610e096015852d81be9c49"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer, mechanical flag-vs-doc diff. agent-eval: score_eval --n-boot --boot-seed; run_judge --max-tokens; human_score --force (re-prepare, reshuffles queue) --ids --minutes --priority-n --seed. deid-reid-harness: --attacker --k --n --population-out --population-size --seed-start --boot-seed. privacy-linter scan_log_history: --date --days. wiki-privacy-audit prune_log: --date --log-file --retention-days. wiki-teacher: --explicit --json. wiki-librarian check_vault: --json. repo-pincer: --json (both scripts)."
+    "last_verified_commit": "ffc6b8b",
+    "notes": "Fixed 2026-11-16 in ffc6b8b. Less common flags sections added; mechanical flag-vs-doc diff finds none missing."
   }
 ]
