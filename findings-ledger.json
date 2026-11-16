@@ -44,37 +44,45 @@
   },
   {
     "fingerprint": "evidence-pinning:drift:egress-claim-omits-arbitrary-url-fetch",
-    "verdict": "drift",
-    "title": "HIGH: README says only crossref and eutils need egress; check_source_decay also fetches any registered plain URL",
+    "verdict": "confirmed",
+    "title": "README states plain-URL egress; check_source_decay refuses internal addresses and re-checks redirects",
     "source_refs": [
       {
         "file": "mcp/evidence-pinning/src/decay.ts",
-        "hash": "56214a180e10922f159767828ade5d73ff2fe191594f221f66a152a020d2f5fb"
+        "hash": "c86e1a282dfdf5dbe012723ed76baaf1923334891a3b624ccac449cdda10b4e5"
       },
       {
         "file": "mcp/evidence-pinning/README.md",
-        "hash": "dcae860738e9750f041c7417627a3d457aa3175019bab9fdedeea0efa9be1fef"
+        "hash": "9daf1dfdac7751186422a371d7bf9f0ab245417146b996810bb4f694769b11fd"
+      },
+      {
+        "file": "mcp/evidence-pinning/test/url-guard.test.mjs",
+        "hash": "efca686f2c1c07df05e6659acd92b15b73b9cd2dfb34b1d553f584e9bdad2145"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. decay.ts HEAD/GETs the registered URL itself for plain-URL sources (line ~122), no scheme/host restriction, so it can reach arbitrary and internal hosts. README 'Network egress this server needs' lists two hosts and says every other path needs no network. Fix doc at minimum; consider http(s)-only and blocking private ranges."
+    "last_verified_commit": "e1618e1",
+    "notes": "Fixed 2026-11-16: http(s) only, private/loopback/link-local/reserved refused, manual redirects, opt-in EVIDENCE_ALLOW_PRIVATE_URLS=1. Known gap documented: DNS rebinding."
   },
   {
     "fingerprint": "obsidian-vault:drift:write-escapes-via-symlinked-folder-new-subdir",
-    "verdict": "drift",
-    "title": "HIGH: write through a symlinked folder into a not-yet-existing subfolder lands outside the vault",
+    "verdict": "confirmed",
+    "title": "Writes through a symlinked folder into a new subfolder are refused (README containment claim now holds)",
     "source_refs": [
       {
         "file": "mcp/obsidian-vault/src/vault-io.ts",
-        "hash": "892f0c27a85eed6de18673abb6d372d688a9fe6f81dffb438031072bf12e7d6b"
+        "hash": "6c7485fcbc679094e8d8d088f136b8fd8f2f7fc9c5f7c737ff9da1665cf64243"
       },
       {
         "file": "mcp/obsidian-vault/README.md",
         "hash": "e01d2f2854e32ec896e012609aae8cb126a2a8d82a51bbb8e16dd001b15fa8c6"
+      },
+      {
+        "file": "mcp/obsidian-vault/test/containment.test.mjs",
+        "hash": "cc53cb79214788dcf089a0efaaaaf0c967896cd360d8c1e4dc57fda51ee1bf0b"
       }
     ],
-    "last_verified_commit": "ca0bb0c",
-    "notes": "2026-11-16 pincer. README Security says a symlink resolving outside the vault is refused. vaultPathForWrite realpaths only the immediate parent; on ENOENT it trusts the lexical check, then atomicWrite mkdir -p's through the symlink. Reproduced: vault/Escape -> /outside, write Escape/newdir/x.md creates /outside/newdir/x.md. Fix: realpath the nearest EXISTING ancestor. Add test to test/containment.test.mjs."
+    "last_verified_commit": "e1618e1",
+    "notes": "Fixed 2026-11-16: nearest existing ancestor is realpath'd; dangling symlinks refused. Covered by containment.test.mjs. Revalidate if vault-io.ts changes."
   },
   {
     "fingerprint": "obsidian-vault:silent:readme-omits-backup-and-mode",
