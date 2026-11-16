@@ -318,7 +318,7 @@ function optionalString(args: Record<string, unknown>, key: string): string | un
 // ── MCP Server ────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "evidence-pinning", version: "0.1.0" },
+  { name: "evidence-pinning", version: "0.1.1" },
   { capabilities: { tools: {} } }
 );
 

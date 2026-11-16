@@ -185,6 +185,24 @@ r = await tool("get_provenance", { target_type: "source", target_id: unreachable
 d = parse(r);
 check("decay check logs both 'checked' and 'status_changed' (active -> unreachable)", d.events.some((e) => e.action === "checked") && d.events.some((e) => e.action === "status_changed"));
 
+console.log("\n── check_source_decay refuses internal URLs ──────────────────");
+// Regression (repo-pincer 2026-11-16): a plain-URL source was fetched at any
+// address, so the server could be used to probe loopback/LAN/metadata hosts.
+{
+  const http = await import("node:http");
+  let hits = 0;
+  const srv = http.createServer((req, res) => { hits++; res.writeHead(200); res.end("ok"); });
+  await new Promise((resolve) => srv.listen(0, "127.0.0.1", resolve));
+  const port = srv.address().port;
+  r = await tool("register_source", { url: `http://127.0.0.1:${port}/internal`, title: "Loopback target" });
+  const loopbackId = parse(r).source_id;
+  r = await tool("check_source_decay", { source_id: loopbackId });
+  d = parse(r);
+  check("a loopback URL source is reported unreachable with a 'not checked' reason", d.status === "unreachable" && /not checked/.test(d.detail), `got ${JSON.stringify(d)}`);
+  check("the loopback server received zero requests from check_source_decay", hits === 0, `hits=${hits}`);
+  srv.close();
+}
+
 console.log("\n── check_source_decay retraction cascades to pinned claims ──");
 
 r = await tool("register_source", { url: "https://doi.org/10.3000/cascade", title: "Will be manually flipped via a second registration is not possible — see below" });

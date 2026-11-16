@@ -40,6 +40,8 @@ await fs.writeFile(`${OUTSIDE}/other.md`, "---\ntype: concept\n---\nanother outs
 await fs.symlink(`${OUTSIDE}/secret.md`, `${VAULT}/Knowledge/leak.md`);
 await fs.symlink(`${VAULT}/Knowledge/plain.md`, `${VAULT}/Knowledge/alias.md`);
 await fs.symlink(OUTSIDE, `${VAULT}/Escape`);
+// A dangling symlink whose target does not exist yet, outside the vault.
+await fs.symlink(`${OUTSIDE}/not-yet`, `${VAULT}/Dangling`);
 
 // ── Server harness ────────────────────────────────────────────────────────────
 const server = spawn("node", [SERVER], {
@@ -103,6 +105,37 @@ r = await tool("write_note", { path: "Escape/planted.md", content: "---\ntype: c
 check(
   "symlinked root — write through a symlinked folder escaping the vault is still refused",
   r.result?.isError && !(await fs.stat(`${OUTSIDE}/planted.md`).catch(() => null)),
+  text(r)
+);
+
+// Regression (repo-pincer 2026-11-16): only the immediate parent used to be
+// realpath'd, so a write into a NOT-YET-EXISTING subfolder of a symlinked
+// folder passed on the lexical check and mkdir -p created it outside.
+const outsideTree = async () => (await fs.readdir(OUTSIDE, { recursive: true })).sort();
+const before = await outsideTree();
+for (const [label, p] of [
+  ["a new subfolder", "Escape/newdir/planted.md"],
+  ["two new levels", "Escape/a/b/planted.md"],
+]) {
+  r = await tool("write_note", { path: p, content: "---\ntype: concept\n---\nx" });
+  check(`symlinked root — write through a symlinked folder into ${label} is refused`, r.result?.isError === true, text(r));
+}
+r = await tool("append_note", { path: "Escape/newdir2/planted.md", content: "---\ntype: concept\n---\nx" });
+check("symlinked root — append_note through a symlinked folder into a new subfolder is refused", r.result?.isError === true, text(r));
+check(
+  "symlinked root — nothing (no file, no folder) was created outside the vault",
+  JSON.stringify(await outsideTree()) === JSON.stringify(before),
+  `before=${JSON.stringify(before)} after=${JSON.stringify(await outsideTree())}`
+);
+for (const p of ["Dangling/planted.md", "Dangling/sub/planted.md"]) {
+  r = await tool("write_note", { path: p, content: "---\ntype: concept\n---\nx" });
+  check(`symlinked root — write through a dangling symlink (${p}) is refused as traversal`, r.result?.isError === true && /traversal/i.test(text(r)), text(r));
+}
+check("symlinked root — the dangling symlink's target was not created", !(await fs.stat(`${OUTSIDE}/not-yet`).catch(() => null)));
+r = await tool("write_note", { path: "Fresh/Deep/Nested/ok.md", content: "---\ntype: concept\n---\nok", mode: "create" });
+check(
+  "symlinked root — a write into new, ordinary nested folders inside the vault still works",
+  !r.result?.isError && await fs.readFile(`${VAULT}/Fresh/Deep/Nested/ok.md`, "utf-8").then((c) => c.includes("ok"), () => false),
   text(r)
 );
 
