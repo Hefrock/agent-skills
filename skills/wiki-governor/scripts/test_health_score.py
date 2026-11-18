@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from health_score import (
     compare_runs,
+    connectedness,
     compute_health_score,
     warehouse_integrity,
     maturity,
@@ -51,9 +52,61 @@ class HealthScoreTests(unittest.TestCase):
     # from its output — see the PR description for the arithmetic.)
 
     def test_connectedness_matches_hand_count(self):
-        # 9 of 11 Knowledge/ notes have >=2 total links (orphan.md and
-        # premature-mature.md are the two exceptions, by design).
-        self.assertAlmostEqual(self.result["components"]["connectedness"], 9 / 11)
+        # Governed-graph rule: a Knowledge/ note needs >=2 DISTINCT neighbours
+        # among Knowledge/, Sources/, Projects/ (either direction). Journal
+        # provenance links, Maps/ and unresolved links don't count.
+        # Hand count over the 11 Knowledge/ fixtures:
+        #   healthy-linked-a  -> many (b, premature-mature, 6 inbound, ...)   PASS
+        #   healthy-linked-b  -> a, example-source, no-provenance, ...        PASS
+        #   no-provenance     -> a, b                                          PASS
+        #   has-open-questions, low-confidence-no-questions, missing-fields,
+        #   stale-aged-out, stale-explicit -> only a (their other link is a
+        #   Journal/ provenance link)                                        FAIL x5
+        #   premature-mature  -> only a (inbound)                              FAIL
+        #   broken-link       -> Journal + a nonexistent target                FAIL
+        #   orphan            -> Journal only                                  FAIL
+        # = 3 of 11. (The old any-note rule scored this 9/11, because the
+        # Journal and broken links padded each page's count to 2.)
+        self.assertAlmostEqual(self.result["components"]["connectedness"], 3 / 11)
+
+    @staticmethod
+    def _note(*links):
+        return {"frontmatter": {}, "body": "", "links": list(links)}
+
+    def test_connectedness_ignores_non_governed_links(self):
+        # Page "Knowledge/a" has three links that must NOT count (Journal,
+        # a Maps/ system file, a root-level placeholder) and one that does.
+        notes = {
+            "Knowledge/a.md": self._note("Journal/Daily/d", "Maps/_gaps", "Placeholder", "Knowledge/b"),
+            "Knowledge/b.md": self._note(),
+            "Journal/Daily/d.md": self._note("Knowledge/a"),
+            "Maps/_gaps.md": self._note("Knowledge/a", "Knowledge/b"),
+            "Placeholder.md": self._note("Knowledge/a", "Knowledge/b"),
+        }
+        # a: only b (1 neighbour); b: only a (1 neighbour) -> neither passes.
+        self.assertEqual(connectedness(notes), 0.0)
+
+    def test_connectedness_counts_distinct_neighbours_once(self):
+        # Reciprocal links and repeated links to the same page are ONE
+        # neighbour, not several; a third governed page makes it two.
+        notes = {
+            "Knowledge/a.md": self._note("Knowledge/b", "Knowledge/b"),
+            "Knowledge/b.md": self._note("Knowledge/a"),
+            "Knowledge/c.md": self._note("Knowledge/a"),
+        }
+        # a: {b, c} PASS; b: {a} FAIL; c: {a} FAIL.
+        self.assertAlmostEqual(connectedness(notes), 1 / 3)
+
+    def test_connectedness_counts_sources_and_projects_neighbours(self):
+        notes = {
+            "Knowledge/a.md": self._note("Sources/Papers/s", "Projects/p"),
+            "Sources/Papers/s.md": self._note(),
+            "Projects/p.md": self._note(),
+        }
+        self.assertEqual(connectedness(notes), 1.0)
+
+    def test_connectedness_none_without_knowledge_pages(self):
+        self.assertIsNone(connectedness({"Projects/p.md": self._note()}))
 
     def test_maturity_matches_hand_count(self):
         # Knowledge/ (11) + Sources/ (3: example-source, warehouse-distilled,
