@@ -128,7 +128,7 @@ agent-skills/
 │   ├── wiki-operator/           # on-demand vault operations — assets/ holds the note templates (concept, source, project, journal, map, …)
 │   ├── wiki-synthesizer/        # journal preprocessing + concept page compilation
 │   ├── wiki-librarian/          # structural health audits — scripts/check_vault.py, 44-test regression suite
-│   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 22-test regression suite
+│   ├── wiki-governor/           # maintenance loop + compliance + health score — scripts/health_score.py, 26-test regression suite
 │   ├── wiki-teacher/            # /checkin (project accountability) — scripts/wiki_teacher.py, 37-test regression suite
 │   ├── wiki-warehouse/          # raw-document cold storage (external repo) + vault pointers
 │   ├── wiki-privacy-audit/      # vault-wide PII/secret audit — reuses privacy-linter's scanner
