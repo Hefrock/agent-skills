@@ -62,7 +62,7 @@ Compute six sub-metrics, then roll them into one transparent score. Five come fr
 
 | Sub-metric | Definition | Weight |
 |---|---|---|
-| Connectedness | % of `Knowledge/` pages with ≥2 links | 0.20 |
+| Connectedness | % of `Knowledge/` pages with ≥2 **distinct neighbours in the governed graph** (`Knowledge/`, `Sources/`, `Projects/`; either direction, resolved links only). Links to or from `Journal/`, `Maps/`, `Fiction/`, `Templates/` and root-level placeholder notes don't count | 0.20 |
 | Maturity | mature ÷ (mature + draft + stale) — `paused`/`complete` projects excluded entirely, not counted against it | 0.15 |
 | Freshness | % of `Knowledge/` pages updated within 90 days | 0.10 |
 | Provenance | % of concept pages with a provenance backlink (Law 8) | 0.20 |
@@ -72,6 +72,8 @@ Compute six sub-metrics, then roll them into one transparent score. Five come fr
 `health = Σ (submetric × weight)`, reported as a 0–100 score **and** its components — never the headline alone. Show the delta versus the previous run. Weights are transparent and adjustable; the point is the trend, not the absolute number.
 
 **Report movement, not just the total.** Components near their ceiling (typically provenance, connectedness) carry most of the headline and rarely change, so a ±0.5 headline delta says almost nothing. Against the previous run, list **regressed** components first (worst first), then **improved**, then name the rest as **steady**. A component moves when it changes by at least 0.5 percentage points. A component that was excluded in either run (e.g. warehouse not in use) is "unavailable", never a move. `scripts/health_score.py --previous <earlier --json output>` produces this split deterministically.
+
+**Connectedness's rule was changed 2026-11-17.** It used to count any link, in or out, from any note, so Journal provenance links, machine-written `Maps/_gaps.md` and run-log backlinks, root placeholders and even broken links all padded a page to the 2-link bar. On a real 97-page `Knowledge/` set every page passed (100%), so the metric could not tell a wired-in page from a near-island, and it carried 0.20 of the headline. The governed-graph rule scores the same vault about 97% (hand-counted from `list_links`, not a script run). **This breaks the series:** earlier Connectedness values are not comparable, so the first run after this change is a new baseline. Report its Connectedness as "new baseline", not as a regression, and say so in the run log.
 
 **Resolution's formula was changed 2026-09-28.** It used to be `1 − (open questions ÷ total concept pages), floored at 0` — but that ratio only stays under 1 (letting the score move above 0%) if pages average *fewer than one* open question each. A full resync of a real vault (60 pages, 129 open questions, ~2.15/page) found it permanently floored at 0% regardless of actual progress — not a data problem, a formula problem, since more mature pages naturally accumulate more open threads, not fewer. The "% of pages with zero open questions" version can't go negative and moves in both directions as pages get resolved or new draft pages are added. Its own failure mode: rewards pages with *no* recorded open questions at all, which describes both "genuinely settled" and "confidence: low, needs work but nobody's asked the questions yet" — don't read a high score here as proof of depth without checking which case applies.
 

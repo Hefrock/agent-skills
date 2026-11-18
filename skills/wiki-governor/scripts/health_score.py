@@ -62,18 +62,26 @@ DEFAULT_WEIGHTS = {
 }
 
 
-def _total_links(relpath, notes, inbound_count):
-    return inbound_count[relpath] + len(set(notes[relpath]["links"]))
+def _governed_neighbors(notes):
+    """{relpath: set of distinct governed notes it shares a link with}.
 
-
-def _inbound_counts(notes):
-    counts = {relpath: 0 for relpath in notes}
-    for relpath, note in notes.items():
-        for target in note["links"]:
+    Governed = KNOWLEDGE_GRAPH_PREFIXES (Knowledge/, Sources/, Projects/), minus
+    system files. A link counts in either direction, once per distinct
+    neighbour, and only when BOTH ends are governed and the target resolves.
+    Links to or from Journal/, Maps/ (hand-authored or machine-written),
+    Fiction/, Templates/, root-level placeholders, self-links and broken links
+    never count: they say nothing about whether a page is wired into the
+    knowledge graph itself.
+    """
+    governed = set(_scoped(notes, KNOWLEDGE_GRAPH_PREFIXES))
+    neighbors = {p: set() for p in governed}
+    for src in governed:
+        for target in notes[src]["links"]:
             resolved = resolve_link(target, notes)
-            if resolved and resolved != relpath:
-                counts[resolved] += 1
-    return counts
+            if resolved and resolved != src and resolved in governed:
+                neighbors[src].add(resolved)
+                neighbors[resolved].add(src)
+    return neighbors
 
 
 def _scoped(notes, prefixes):
@@ -86,12 +94,20 @@ def _scoped(notes, prefixes):
     return [p for p in notes if p.startswith(prefixes) and not is_system_file(p)]
 
 
-def connectedness(notes, inbound_count):
-    """% of Knowledge/ pages with >=2 links. Literal SKILL.md scope: Knowledge/ only."""
+def connectedness(notes):
+    """% of Knowledge/ pages with >=2 distinct neighbours in the governed graph.
+
+    Changed from "inbound + unique outbound >= 2 from any note": that version
+    counted Journal provenance links, machine-written Maps/_gaps.md and run-log
+    backlinks, root placeholders and broken links, so every page passed
+    (100% on a real 97-page Knowledge/ set) and the metric could not
+    discriminate. See _governed_neighbors for what counts.
+    """
     knowledge_notes = _scoped(notes, ("Knowledge/",))
     if not knowledge_notes:
         return None
-    linked = sum(1 for p in knowledge_notes if _total_links(p, notes, inbound_count) >= 2)
+    neighbors = _governed_neighbors(notes)
+    linked = sum(1 for p in knowledge_notes if len(neighbors[p]) >= 2)
     return linked / len(knowledge_notes)
 
 
@@ -193,10 +209,8 @@ def compute_health_score(vault_root, now=None, warehouse_stats=None, weights=Non
     now = now or datetime.now(timezone.utc)
     weights = dict(weights or DEFAULT_WEIGHTS)
     notes = load_vault(vault_root)
-    inbound_count = _inbound_counts(notes)
-
     components = {
-        "connectedness": connectedness(notes, inbound_count),
+        "connectedness": connectedness(notes),
         "maturity": maturity(notes),
         "freshness": freshness(notes, now),
         "provenance": provenance(notes),
